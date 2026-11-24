@@ -100,12 +100,11 @@ owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입
 
 준비물은 Node.js 24 이상(또는 Docker Desktop)과 Edge/Chrome입니다. 첫 실행 시 샘플 포스터 3장, 동영상 1개, 안내 URL, 재생목록 1개, 등록 코드 **GUGAK1**인 샘플 기기가 자동으로 들어갑니다.
 
-**1) 서버 실행 — Docker Compose**
+**1) 서버 실행 — Docker Compose 첫 설정**
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-# 운영 환경에서는 관리 화면 설정에서 비밀번호를 바꾸고 SESSION_SECRET도 고유한 값으로 바꿉니다.
-docker compose up --build -d
+docker compose -f docker-compose.local.yml up --build -d
 ```
 
 **1) 서버 실행 — Node.js (Docker 없이)**
@@ -117,18 +116,75 @@ npm run dev
 
 - 관리 화면: <http://localhost:3000/admin/>
 - 재생기: <http://localhost:3000/player/>
-- 새 DB의 테스트 기본 비밀번호: `0000` — 테스트 용도로만 사용하고 운영 전 관리 화면의 **설정**에서 변경하세요.
+- 새 DB의 테스트 기본 비밀번호: `0000`
 - 데이터: `data/signage.sqlite`, 업로드 파일: `data/uploads/`
 
 기존 `.env`에 `ADMIN_PASSWORD`가 있거나 DB에 이미 관리자 비밀번호가 저장되어 있으면 기존 비밀번호를 유지합니다. 설정 화면에서 바꾼 비밀번호는 DB에 해시로 저장되어 서버를 다시 시작해도 유지되며, 변경할 때 모든 관리자 세션이 종료됩니다.
 
+#### 관리자 LAN 공개 순서
+
+관리자 네트워크 제한은 요청마다 DB에 저장된 현재 비밀번호 상태를 확인합니다. **로컬 초기 설정 → 로컬에서 비밀번호 변경 → 필요한 경우 HOST·포트 공개·방화벽 적용** 순서를 지키세요.
+
+- 새 DB의 비밀번호가 `0000`인 동안 로그인·관리 세션·보호 API와 `/admin/` 화면은 실제 TCP peer가 loopback일 때만 허용됩니다. LAN IP로 들어온 관리자 요청은 `403`으로 거부합니다. `X-Forwarded-For`, `Forwarded`, `Via`, `CF-Connecting-IP` 같은 전달 헤더는 주소 판정에 쓰지 않습니다. 초기 설정 중에는 전달 헤더가 붙은 loopback 요청도 fail-closed로 거부하며, 같은 PC의 reverse proxy를 통한 초기 설정은 지원하지 않습니다.
+- 비밀번호를 `0000`이 아닌 값으로 바꾸면 서버는 재시작 없이 다음 관리자 요청부터 LAN을 허용합니다. 기존 관리자 세션은 모두 종료되므로 새 비밀번호로 다시 로그인합니다.
+- 기존 DB의 비밀번호가 이미 `0000`이 아니면 제한은 처음부터 적용되지 않아 기존 LAN 동작이 유지됩니다.
+
+| 실행 방식 | 초기 네트워크 설정 | `0000`일 때 | 비밀번호 변경 후 LAN 전환 |
+|---|---|---|---|
+| Node 직접 실행 | `.env`의 `HOST`(기본 `0.0.0.0`) | loopback만 허용 | `HOST=0.0.0.0`이면 재시작 없이 허용. `HOST=127.0.0.1`이면 `HOST`를 바꾸고 재시작 |
+| Docker 첫 설정 | `docker-compose.local.yml`이 `127.0.0.1:3000`에만 게시 | 컨테이너에는 호스트 접속이 loopback으로 보이지 않아 차단 | 컨테이너 안에서 `npm run admin:change-password` 실행 후 일반 Compose로 재시작 |
+| Docker 기존 설치 | `docker-compose.yml`이 `3000:3000` 게시 | loopback만 허용 | 실행 중인 컨테이너에서 `docker compose exec signage npm run admin:change-password` 실행. 포트 게시가 이미 LAN이면 재시작 없이 허용 |
+| Windows 설치본 | 데이터 폴더 `.env`의 `HOST=0.0.0.0`(기본 `%ProgramData%\GugakSignage\.env`) | loopback만 허용 | 서버 PC에서 `http://127.0.0.1:<PORT>/admin/`로 변경. 방화벽 TCP 포트가 열려 있으면 재시작 없이 허용 |
+
+**Node.js 직접 실행**
+
+```powershell
+npm ci
+npm run dev
+```
+
+같은 PC에서 <http://localhost:3000/admin/>에 로그인해 **설정**에서 비밀번호를 바꿉니다. `.env`의 `HOST`가 `0.0.0.0`이면 변경 즉시 LAN 관리가 허용됩니다. `HOST=127.0.0.1`이면 LAN 관리와 재생기 제공을 위해 `HOST=0.0.0.0`으로 바꾸고 서버를 재시작합니다. Windows 방화벽에서 TCP 3000(또는 지정한 `PORT`)을 허용해야 합니다.
+
+**Docker 첫 설정과 LAN 전환**
+
+`docker-compose.local.yml`은 호스트 loopback에만 포트를 게시합니다. 컨테이너 NAT에서는 호스트 브라우저의 접속도 loopback으로 보이지 않으므로 초기 관리자 화면은 fail-closed로 거부됩니다. 아래 명령으로 컨테이너 안의 loopback을 통해 비밀번호를 바꿉니다. 입력값은 화면에 표시되지 않습니다.
+
+```powershell
+docker compose -f docker-compose.local.yml exec signage npm run admin:change-password
+```
+
+그다음 로컬 전용 컨테이너를 종료하고 일반 Compose 파일로 재시작합니다. `down`에 `-v`를 붙이지 마세요. 이름 있는 데이터 볼륨을 보존합니다.
+
+```powershell
+docker compose -f docker-compose.local.yml down
+docker compose up --build -d
+```
+
+이미 `docker-compose.yml`로 실행 중인 설치에서 DB 비밀번호가 `0000`이면 컨테이너를 재시작하지 않고 `docker compose exec signage npm run admin:change-password`로 바꿀 수 있습니다. `SESSION_SECRET`도 `.env`에서 고유한 값으로 설정하세요.
+
+**Windows 설치본**
+
+Windows 설치 프로그램은 Draft PR #4의 설치본을 기준으로 하며, 데이터 폴더의 `.env`를 사용합니다. 기본 데이터 폴더는 `%ProgramData%\GugakSignage`이고 기본 `HOST`는 `0.0.0.0`입니다. 서버 PC에서 <http://127.0.0.1:3000/admin/>에 접속해 비밀번호를 바꾸면, 포트와 방화벽이 LAN에 열려 있는 경우 재시작이나 재설치 없이 다른 PC에서 관리자 로그인을 사용할 수 있습니다. 설치 시 방화벽 규칙을 만들지 않았다면 관리자 PowerShell에서 설치 스크립트를 `-ConfigureOnly -OpenFirewall`로 다시 실행하거나 조직 방화벽 정책으로 TCP 포트를 엽니다. `HOST`나 `PORT`를 바꾼 경우에만 `set-autostart.ps1 -Restart`로 서버를 재시작합니다.
+
+기본 설치 폴더 기준 명령입니다.
+
+```powershell
+# 방화벽 규칙은 필요한 경우에만
+& "$env:ProgramFiles\GugakSignage\tools\install.ps1" -ConfigureOnly -OpenFirewall
+
+# .env의 HOST나 PORT를 바꾼 경우에만
+& "$env:ProgramFiles\GugakSignage\tools\set-autostart.ps1" -Restart
+```
+
+`ADMIN_PASSWORD`는 새 DB를 만들 때만 쓰입니다. DB의 비밀번호를 바꾼 뒤 `.env`에 `0000`이 남아 있으면 DB를 새로 만들 때 다시 기본 비밀번호가 될 수 있으므로, 운영 절차에 맞춰 `.env` 값도 갱신하거나 제거하세요.
+
 **2) 관리 화면 로그인 → 기기에서 등록 코드 확인**
 
-1. <http://localhost:3000/admin/>에 접속합니다. 새 DB이며 `ADMIN_PASSWORD`가 지정되지 않은 테스트 환경에서는 기본 비밀번호 `0000`으로 로그인합니다.
+1. Node 실행은 <http://localhost:3000/admin/>에 접속합니다. 새 DB이며 `ADMIN_PASSWORD`가 지정되지 않은 테스트 환경에서는 기본 비밀번호 `0000`으로 로그인합니다. Docker 첫 설정은 위의 대화형 명령으로 비밀번호를 변경한 뒤 일반 Compose로 전환하세요.
 2. 왼쪽 **기기** 메뉴를 엽니다. 샘플 기기 **로비 안내 화면** 카드에 큰 글씨로 **등록 코드 `GUGAK1`**이 표시됩니다.
 3. 코드 옆의 `복사`를 누르거나 `재생기 열기`를 누릅니다. 새 기기를 만들었다면 그 카드의 6자리 코드를 사용합니다.
 
-테스트 기본 비밀번호를 사용하면 로그인 화면과 관리자 화면에 변경 안내가 표시됩니다. 관리자 화면의 **설정**에서 현재 비밀번호를 확인하고 새 비밀번호를 저장할 수 있습니다. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
+테스트 기본 비밀번호를 사용하면 로그인 화면과 관리자 화면에 로컬 전용 안내가 표시됩니다. Node 실행은 관리자 화면의 **설정**에서 현재 비밀번호를 확인하고 새 비밀번호를 저장할 수 있습니다. 비밀번호 변경 시 기존 세션이 종료되므로 새 비밀번호로 다시 로그인하고, LAN 관리는 HOST·포트 공개와 방화벽 설정을 확인하세요. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
 
 **3) 윈도우 재생기 실행**
 
@@ -185,7 +241,7 @@ npm run dev
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 통과 — 22/22, 0 실패 |
+| `npm test` | 통과 — 30/30, 0 실패. 기본 비밀번호 loopback 허용·LAN 차단, 변경 후 LAN 허용, 기존 non-default LAN 유지, 프록시 헤더 위조 차단 포함 |
 | `npm run verify:first-run` | 통과 — 관리자 비밀번호 경고·설정 변경·이전 비밀번호 거부·재시작 후 로그인·샘플 기기와 재생기 검증 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
@@ -261,6 +317,10 @@ python -m http.server 4173 --directory prototype
 - 오픈소스 코드·디자인 자원을 쓰면 라이선스와 출처를 문서화한다.
 - 실제 서비스 화면 캡처는 조사 목적으로만 보관하고 배포물에 넣지 않는다.
 - 확인 없이 기존 프로그램·USB·파일을 삭제하지 않는다.
+
+## Windows 설치·무인 운영
+
+현장 PC의 설치, 로그인 후 자동 실행, watchdog 복구, 로그 위치, 자동 실행 해제와 제거 절차는 [Windows 설치·무인 운영 안내](docs/install/README.md)에 정리했습니다.
 
 ## 라이선스
 
