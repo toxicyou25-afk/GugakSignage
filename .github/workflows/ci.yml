@@ -1,0 +1,51 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    name: Validate on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Microsoft Edge for Playwright
+        run: npx playwright install msedge
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Unit and API tests
+        run: npm test
+      - name: Verify first-run flow
+        run: npm run verify:first-run
+      - name: Verify schedule and offline playback
+        if: ${{ !cancelled() }}
+        run: npm run verify:schedule
+      - name: Upload verification logs and screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-verification-${{ github.run_attempt }}
+          path: |
+            docs/verification/*.json
+            docs/verification/*.txt
+            docs/verification/evidence/*.png
+          if-no-files-found: warn
+          retention-days: 14

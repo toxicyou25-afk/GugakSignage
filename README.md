@@ -4,6 +4,8 @@
 
 공개 저장소: <https://github.com/toxicyou25-afk/GugakSignage>
 
+[![CI](https://github.com/toxicyou25-afk/GugakSignage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/toxicyou25-afk/GugakSignage/actions/workflows/ci.yml)
+
 공개 데모(설치 없이 화면 보기): <https://toxicyou25-afk.github.io/GugakSignage/>
 
 ## 현재 단계
@@ -178,6 +180,12 @@ npm run dev
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
 실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`에 저장합니다.
+
+### 자동 회귀 검증(CI)
+
+`.github/workflows/ci.yml`은 모든 Pull Request, `main` 브랜치 push, 수동 실행에서 Node.js 24 Windows 환경을 준비하고 `npm ci`, 타입 검사, 빌드, 단위·API 테스트를 순서대로 실행합니다. 이어서 임시 SQLite 데이터로 첫 실행 흐름과 예약 시간·오프라인 재생 흐름을 Microsoft Edge와 Playwright로 검증합니다.
+
+검증 스크립트의 JSON 로그와 스크린샷은 실행 성공·실패와 관계없이 `windows-verification-<실행 횟수>` 아티팩트로 14일 동안 보관됩니다. 같은 브랜치에서 새 실행이 시작되면 이전 실행은 자동 취소되며, npm 의존성은 lockfile을 기준으로 캐시됩니다.
 
 ### SQLite → PostgreSQL 전환 지점
 
