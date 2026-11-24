@@ -5,32 +5,41 @@ import type { NextFunction, Request, Response } from 'express';
 const COOKIE_NAME = 'signage_session';
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 
-function digest(value: string): Buffer {
-  return crypto.createHash('sha256').update(value).digest();
-}
-
-export function passwordMatches(expected: string, supplied: unknown): boolean {
-  const suppliedString = typeof supplied === 'string' ? supplied : '';
-  return crypto.timingSafeEqual(digest(expected), digest(suppliedString));
-}
-
 function sign(secret: string, payload: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-export function createSessionToken(secret: string, now = Date.now()): string {
+export function createSessionToken(secret: string, sessionEpoch = '0', now = Date.now()): string {
   const expires = Math.floor(now / 1000) + SESSION_TTL_SECONDS;
-  const payload = `admin.${expires}`;
+  const payload = sessionEpoch === '0' ? `admin.${expires}` : `admin.${sessionEpoch}.${expires}`;
   return `${payload}.${sign(secret, payload)}`;
 }
 
-export function verifySessionToken(secret: string, token: string | undefined, now = Date.now()): boolean {
+export function verifySessionToken(
+  secret: string,
+  token: string | undefined,
+  sessionEpoch = '0',
+  now = Date.now(),
+): boolean {
   if (!token) return false;
   const parts = token.split('.');
-  if (parts.length !== 3) return false;
-  const [role, expiresRaw, signature] = parts;
+  let role: string | undefined;
+  let expiresRaw: string | undefined;
+  let signature: string | undefined;
+  let payload: string;
+  if (sessionEpoch === '0') {
+    if (parts.length !== 3) return false;
+    [role, expiresRaw, signature] = parts;
+    payload = `${role}.${expiresRaw}`;
+  } else {
+    if (parts.length !== 4) return false;
+    const tokenEpoch = parts[1];
+    if (tokenEpoch !== sessionEpoch) return false;
+    [role, , expiresRaw, signature] = parts;
+    payload = `${role}.${tokenEpoch}.${expiresRaw}`;
+  }
   if (role !== 'admin' || !expiresRaw || !signature) return false;
-  const expected = sign(secret, `${role}.${expiresRaw}`);
+  const expected = sign(secret, payload);
   const actualBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
   if (actualBuffer.length !== expectedBuffer.length) return false;
@@ -52,13 +61,13 @@ function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-export function isAdminRequest(req: Request, secret: string): boolean {
-  return verifySessionToken(secret, readCookie(req, COOKIE_NAME));
+export function isAdminRequest(req: Request, secret: string, sessionEpoch = '0'): boolean {
+  return verifySessionToken(secret, readCookie(req, COOKIE_NAME), sessionEpoch);
 }
 
-export function requireAdmin(secret: string) {
+export function requireAdmin(secret: string, getSessionEpoch: () => string = () => '0') {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!isAdminRequest(req, secret)) {
+    if (!isAdminRequest(req, secret, getSessionEpoch())) {
       res.status(401).json({ error: '로그인이 필요합니다.' });
       return;
     }
@@ -66,8 +75,8 @@ export function requireAdmin(secret: string) {
   };
 }
 
-export function setSessionCookie(res: Response, secret: string): void {
-  res.cookie(COOKIE_NAME, createSessionToken(secret), {
+export function setSessionCookie(res: Response, secret: string, sessionEpoch = '0'): void {
+  res.cookie(COOKIE_NAME, createSessionToken(secret, sessionEpoch), {
     httpOnly: true,
     sameSite: 'lax',
     secure: false,

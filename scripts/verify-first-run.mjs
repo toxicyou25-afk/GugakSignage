@@ -44,7 +44,7 @@ function startServer() {
     DATA_DIR: tempDir,
     DB_PATH: path.join(tempDir, 'first-run.sqlite'),
     UPLOAD_DIR: path.join(tempDir, 'uploads'),
-    ADMIN_PASSWORD: 'gugak1234',
+    ADMIN_PASSWORD: '',
     SESSION_SECRET: 'first-run-session-secret-for-local-evidence',
     SEED_SAMPLES: 'true',
   };
@@ -93,15 +93,74 @@ try {
   await admin.goto(`${base}/admin/`, { waitUntil: 'networkidle' });
   await admin.waitForSelector('#login-demo-hint:not([hidden])');
   const loginHint = await admin.locator('#login-demo-hint').innerText();
-  if (!loginHint.includes('gugak1234') || !loginHint.includes('운영 전')) {
-    throw new Error(`개발 모드 비밀번호 힌트가 올바르지 않습니다: ${loginHint}`);
+  if (!loginHint.includes('테스트 기본 비밀번호입니다.') || !loginHint.includes('설정에서 변경하세요.')) {
+    throw new Error('기본 비밀번호 경고가 로그인 화면에 표시되지 않았습니다.');
   }
   await admin.screenshot({ path: path.join(evidenceDir, '14-first-run-admin-login.png') });
-  step('관리자 로그인 화면에서 개발 모드 비밀번호 힌트 확인', { loginHint });
+  step('관리자 로그인 화면에서 테스트 기본 비밀번호 경고 확인', { loginHint });
 
-  await admin.fill('#password', 'gugak1234');
+  await admin.fill('#password', '0000');
   await admin.click('#login-form button[type=submit]');
   await admin.waitForSelector('.hero', { timeout: 10_000 });
+  await admin.waitForSelector('#default-password-warning:not([hidden])');
+  const passwordWarning = await admin.locator('#default-password-warning').innerText();
+  if (!passwordWarning.includes('테스트 기본 비밀번호입니다.') || !passwordWarning.includes('설정에서 변경하세요.')) {
+    throw new Error('기본 비밀번호 경고가 관리자 화면에 표시되지 않았습니다.');
+  }
+  step('관리자 화면 기본 비밀번호 경고와 설정 링크 확인', {
+    warning: passwordWarning,
+    settingsLinkVisible: await admin.locator('#settings-link').isVisible(),
+  });
+  await admin.click('#settings-link');
+  await admin.waitForSelector('#change-password-form');
+  await admin.setViewportSize({ width: 640, height: 900 });
+  const settingsBounds = await admin.locator('#change-password-form').boundingBox();
+  if (!settingsBounds || settingsBounds.x < 0 || settingsBounds.x + settingsBounds.width > 640) {
+    throw new Error('좁은 화면에서 비밀번호 설정 양식이 화면 안에 표시되지 않습니다.');
+  }
+  await admin.locator('button[data-action=toggle-password][data-target=current-password]').focus();
+  await admin.keyboard.press('Enter');
+  if (await admin.locator('#current-password').getAttribute('type') !== 'text') {
+    throw new Error('키보드로 비밀번호 표시 버튼을 사용할 수 없습니다.');
+  }
+  await admin.keyboard.press('Enter');
+  if (await admin.locator('#current-password').getAttribute('type') !== 'password') {
+    throw new Error('키보드로 비밀번호 숨기기 버튼을 사용할 수 없습니다.');
+  }
+  await admin.setViewportSize({ width: 1600, height: 1000 });
+  await admin.fill('#current-password', '0000');
+  await admin.fill('#new-password', 'gugak-first-run-password-2026');
+  await admin.fill('#confirm-password', 'gugak-first-run-password-2026');
+  await admin.click('#change-password-form button[type=submit]');
+  await admin.waitForSelector('#login-view:not([hidden])');
+  const changedMessage = await admin.locator('#login-error').innerText();
+  if (!changedMessage.includes('비밀번호가 변경되었습니다.')) {
+    throw new Error('비밀번호 변경 후 다시 로그인 안내가 표시되지 않았습니다.');
+  }
+  const oldPasswordResponse = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: '0000' }),
+  });
+  if (oldPasswordResponse.status !== 401) throw new Error('이전 비밀번호가 거부되지 않았습니다.');
+  step('변경 전 비밀번호 로그인 거부 확인', { status: oldPasswordResponse.status });
+
+  await stopServer();
+  startServer();
+  await waitForHealth();
+  await admin.reload({ waitUntil: 'networkidle' });
+  await admin.waitForSelector('#login-view:not([hidden])');
+  await admin.fill('#password', 'gugak-first-run-password-2026');
+  await admin.click('#login-form button[type=submit]');
+  await admin.waitForSelector('#change-password-form', { timeout: 10_000 });
+  if (await admin.locator('#default-password-warning').isVisible()) {
+    throw new Error('변경 후 기본 비밀번호 경고가 계속 표시됩니다.');
+  }
+  step('서버 재시작 후 변경한 비밀번호로 다시 로그인', {
+    settingsPageAvailable: await admin.locator('#change-password-form').count() === 1,
+    narrowViewport: `${settingsBounds.width}px within 640px`,
+    passwordVisibilityKeyboard: 'passed',
+  });
   await admin.click('a[data-nav=devices]');
   await admin.waitForSelector('.device-card');
   const code = (await admin.locator('.device-card .device-code').first().innerText()).trim();
@@ -175,6 +234,10 @@ try {
     throw new Error(`연결된 기기의 재생기 링크에 선택 코드가 없습니다: ${pairedPlayerHref}`);
   }
   step('연결된 기기의 재생기 링크에서 선택 코드 유지', { href: pairedPlayerHref });
+
+  if (serverLog.includes('0000') || serverLog.includes('gugak-first-run-password-2026')) {
+    throw new Error('서버 로그에 비밀번호가 기록되었습니다.');
+  }
 
   report.result = 'passed';
   report.finishedAt = new Date().toISOString();

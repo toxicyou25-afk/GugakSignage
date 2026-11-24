@@ -47,7 +47,8 @@
 - 윈도우 실행: `start-player.cmd`는 Edge에서는 전체화면 앱 모드(`--app`/`--start-fullscreen`), Chrome에서는 `--kiosk`를 사용한다. Edge `--kiosk`는 InPrivate 세션으로 열려 localStorage/IndexedDB가 종료 시 사라지므로 캐시 유지를 위해 앱 모드를 선택했다.
 - 서버: `src/`의 Express 4 + TypeScript. Node 24 내장 `node:sqlite`를 쓴다.
 - 파일: 업로드는 `UPLOAD_DIR`, DB는 `DB_PATH`에 둔다. Docker에서는 `/data` 볼륨 하나에 함께 보관한다.
-- 로그인: 단일 관리자 비밀번호(`ADMIN_PASSWORD`)와 HMAC 서명 세션 쿠키. 기본 12시간.
+- 로그인: 관리자 비밀번호(`ADMIN_PASSWORD` 또는 DB에 저장된 scrypt 해시)와 HMAC 서명 세션 쿠키. 기본 12시간이며, 비밀번호 변경 시 저장된 세션 버전을 바꿔 모든 기존 세션을 무효화한다.
+- 첫 실행: 비밀번호 환경변수와 DB 저장 비밀번호가 모두 없는 신규 DB에 테스트 기본값 `0000`을 설정한다. 기존 환경값 또는 DB 저장값은 덮어쓰지 않는다.
 
 ## 3. 데이터 모델
 
