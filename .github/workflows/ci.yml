@@ -13,13 +13,58 @@ concurrency:
 jobs:
   validate:
     name: Validate on Windows
-    runs-on: windows-latest
+    runs-on: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","Windows","X64","gugaksignage-ci"]') || 'windows-latest' }}
     timeout-minutes: 30
     steps:
+      - name: Verify isolated runner environment
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $blockedVariables = @(
+            'GH_TOKEN',
+            'GITHUB_TOKEN',
+            'OPENAI_API_KEY',
+            'OPENROUTER_API_KEY',
+            'ORCA_AGENT_SESSION_SPAWN_TOKEN',
+            'ORCA_USER_DATA_PATH',
+            'CODEX_HOME',
+            'TOSSPAPERLAB_DATA_ROOT',
+            'DBRAINPLUS_PROD_ROOT'
+          )
+          $leakedVariables = foreach ($name in $blockedVariables) {
+            if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name, 'Process'))) {
+              $name
+            }
+          }
+          if ($leakedVariables) {
+            throw "Sensitive environment variables are present: $($leakedVariables -join ', ')"
+          }
+
+          $runnerRoot = 'C:\actions-runners\GugakSignage'
+          $isolatedVariables = @(
+            'TEMP',
+            'TMP',
+            'USERPROFILE',
+            'HOME',
+            'APPDATA',
+            'LOCALAPPDATA',
+            'RUNNER_TEMP',
+            'RUNNER_TOOL_CACHE',
+            'NPM_CONFIG_CACHE',
+            'PLAYWRIGHT_BROWSERS_PATH'
+          )
+          foreach ($name in $isolatedVariables) {
+            $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+            if ([string]::IsNullOrWhiteSpace($value) -or -not $value.StartsWith("$runnerRoot\", [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Environment variable is not isolated under the GugakSignage runner root: $name"
+            }
+          }
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
