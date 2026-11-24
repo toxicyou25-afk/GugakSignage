@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import fs from 'node:fs';
 import http from 'node:http';
+import { isLoopbackBindHost } from './admin-access.js';
+import { usesTestDefaultAdminPassword } from './admin-password.js';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
@@ -24,6 +26,14 @@ const seedResult = seedDatabase(db, config);
 if (seedResult.deviceId) ensureDeviceTopology(db, seedResult.deviceId);
 const app = createApp(db, config);
 const server = http.createServer(app);
+const localOnlyAdmin = usesTestDefaultAdminPassword(db);
+
+if (localOnlyAdmin) {
+  console.warn('[security] Test default administrator password is still in use; non-loopback administrator requests are denied until it is changed.');
+  if (!isLoopbackBindHost(config.host)) {
+    console.warn(`[security] HOST=${config.host} is not loopback. Player/content routes may be reachable on the LAN; administrator routes stay local-only until the stored password is changed.`);
+  }
+}
 
 server.listen(config.port, config.host, () => {
   const localAddress = config.host === '0.0.0.0' ? 'localhost' : config.host;
