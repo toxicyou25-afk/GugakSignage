@@ -16,3 +16,6 @@ __pycache__/
 Thumbs.db
 artifacts/
 screenshots/
+# Keep original PoC preview screenshots
+!poc/screenshots/
+!poc/screenshots/**
