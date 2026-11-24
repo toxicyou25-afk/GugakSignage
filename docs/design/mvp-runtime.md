@@ -126,7 +126,7 @@
 
 연결 화면의 샘플 힌트는 관리 DB에 `dev-sample-lobby`가 있을 때만 노출한다. 샘플 기기를 삭제한 운영 환경에서는 코드 입력과 관리 화면 링크만 보인다. 잘못된 코드 응답에는 6자리 코드의 위치와, 샘플 기기가 있으면 그 코드를 함께 안내한다. 이미 다른 재생기가 연결된 기기라면 409 응답 뒤 **기존 연결 끊고 다시 연결** 버튼을 보여 주며, 같은 6자리 코드로 서버의 기존 hardwareId·토큰을 교체한다. 이때 이전 토큰은 즉시 무효화된다.
 
-`public/player/sw.js`는 secure context(localhost/HTTPS)에서 재생기 셸을 캐시하는 보조 수단이다. LAN IP의 HTTP에서는 서비스 워커를 쓸 수 없지만, 이미 열린 탭과 IndexedDB 캐시는 동작한다. 재부팅 직후 오프라인 시작을 보장하려면 HTTPS나 별도 로컬 셸이 필요하다.
+`public/player/sw.js`는 secure context(localhost/HTTPS)에서 재생기 셸을 캐시하는 보조 수단이다. 현재 셸 캐시는 `gugak-signage-shell-v4`이며 HTML·JS·CSS는 network-first, 네트워크 실패 시 캐시로 대체한다. 설치 시 `skipWaiting`, 활성화 시 이전 셸 캐시 삭제·`clients.claim()`을 수행하고, 이전 셸이 있던 열린 재생기는 같은 URL로 한 번 갱신한다. 새 player는 15분마다 `registration.update()`를 호출한다. LAN IP의 HTTP에서는 서비스 워커를 쓸 수 없지만, 이미 열린 탭과 IndexedDB 캐시는 동작한다. 재부팅 직후 오프라인 시작을 보장하려면 HTTPS나 별도 로컬 셸이 필요하다.
 
 ## 6. PoC 엔진·RenderPlan과의 비교
 

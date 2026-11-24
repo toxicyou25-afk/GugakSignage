@@ -84,6 +84,7 @@ sites
 - URL 항목도 이미지·동영상과 같은 재생목록 위치, 표시 시간, 전환 시간, epoch를 쓴다. URL 단독 화면은 표시 시간 동안 고정되며, 혼합 화면은 다음 항목 경계에서 다른 미디어로 전환한다.
 - `mirror`·`canvas`의 URL도 모니터별 슬롯 안에서 각각 전체 `iframe`으로 표시하며, 하나의 웹 문서를 픽셀 단위로 이어 붙이는 보장은 하지 않는다.
 - 오프라인에서 현재 URL 항목은 콘텐츠 이름과 복구 안내가 있는 대체 카드로 표시한다. URL을 목록에서 조용히 제거하지 않으며, 연결이 돌아오면 다음 `renderWallFrame` 호출에서 `iframe`으로 복구한다.
+- HTTPS/localhost 재생기 셸은 `gugak-signage-shell-v4`로 버전을 올리고 HTML·JS·CSS를 network-first로 제공한다. `registration.update()`로 새 워커가 설치·활성화되면 이전 셸 캐시가 있던 클라이언트를 한 번 갱신해 새 player와 engine 자산을 적용한다.
 
 ## 6. 불변 게시
 
@@ -134,6 +135,7 @@ npm run verify:multimonitor
 - 항목 fit 미지정 + 화면 fit `cover` → RenderPlan `cover`, 항목 fit `contain` → RenderPlan `contain`
 - 샘플 이미지 3·동영상 1·URL 1이 공유 wall 입력에 모두 남고 URL이 40초 경계에서 `kind: "url"` RenderPlan이 되는지 확인
 - Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 PC·재생목록, URL 단독 `iframe`, 게시, 한 PC 4화면, 3초 전환, 오프라인 URL 대체 화면, 오프라인 재로드 offset, 한 화면 분리 창
+- 같은 persistent Edge profile에서 기준 `3556b02`의 v3 셸을 먼저 캐시하고, 같은 origin에 HEAD를 배포한 뒤 `registration.update()`가 v4 캐시·새 player.js·URL 지원 engine을 적용하는지 확인
 
 브라우저 스크린샷과 콘솔 로그는 `docs/verification/evidence/multimonitor-*.png`, `docs/verification/multimonitor-run.json`에 있다.
 

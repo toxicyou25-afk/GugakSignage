@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
 
+const PLAYER_SHELL_VERSION = 'v4';
+const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
 const STORAGE = {
   token: 'signage.player.token',
   hardwareId: 'signage.player.hardwareId',
@@ -69,6 +71,7 @@ const runtime = {
   pairing: false,
   lastAttemptCode: null,
   serverOffsetMs: 0,
+  shellVersion: PLAYER_SHELL_VERSION,
   clockSyncedAt: 0,
   clockTimer: null,
   wallTimer: null,
@@ -1214,6 +1217,7 @@ window.__signagePlayer = {
         nextChangeAtMs: plan.nextChangeAtMs,
       }])),
       serverOffsetMs: runtime.serverOffsetMs,
+      shellVersion: runtime.shellVersion,
     };
   },
 };
@@ -1245,7 +1249,11 @@ async function init() {
 }
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register('sw.js').catch(() => { /* optional offline shell */ });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((registration) => {
+    const update = () => registration.update().catch(() => {});
+    update();
+    setInterval(update, SERVICE_WORKER_UPDATE_MS);
+  }).catch(() => { /* optional offline shell */ });
 }
 
 init().catch((error) => {
