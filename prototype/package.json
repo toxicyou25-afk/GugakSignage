@@ -1,0 +1,14 @@
+{
+  "name": "gugak-signage-ui-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Static Korean signage admin UX prototype. The package file is only for the optional Playwright smoke test.",
+  "type": "module",
+  "scripts": {
+    "test:smoke": "node tests/smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.65.1"
+  }
+}
