@@ -1,7 +1,7 @@
 ﻿{
-  "checkedAt": "2026-11-24T11:45:43.004Z",
+  "checkedAt": "2026-11-24T12:34:48.095Z",
   "expected": "offline",
-  "url": "http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1",
+  "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
     "playerReady": true,
     "deviceId": "dev-sample-lobby",
@@ -13,6 +13,10 @@
     "offline": true,
     "lastError": "Failed to fetch",
     "lastHeartbeatAt": null,
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": -3,
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-offline-installed.png"

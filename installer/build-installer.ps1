@@ -54,7 +54,7 @@ if (Test-Path -LiteralPath $OutputDir) {
 }
 $payloadApp = Join-Path $OutputDir "payload\app"
 New-Item -ItemType Directory -Path $payloadApp -Force | Out-Null
-foreach ($directory in @("dist", "public", "seed")) {
+foreach ($directory in @("dist", "public", "poc\packages\engine", "seed")) {
     Copy-DirectoryContents -Source (Join-Path $repoRoot $directory) -Destination (Join-Path $payloadApp $directory)
 }
 foreach ($file in @("package.json", "package-lock.json", "LICENSE", "NOTICE")) {

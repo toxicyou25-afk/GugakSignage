@@ -438,6 +438,9 @@ async function startBrowser(reason) {
       '--remote-debugging-address=127.0.0.1',
       '--remote-debugging-port=' + config.debugPort,
     ];
+    if (config.browserHeadless === true) {
+      args.push('--headless=new', '--disable-gpu');
+    }
     if (isEdge) {
       args.push(
         '--app=' + config.playerUrl,
@@ -471,7 +474,13 @@ async function startBrowser(reason) {
       writeState();
       if (!child.__watchdogIntentionalStop) scheduleBrowserRestart('process-exit');
     });
-    writeLog('INFO', 'browser started', { pid: child.pid, reason, debugPort: config.debugPort, detached: true });
+    writeLog('INFO', 'browser started', {
+      pid: child.pid,
+      reason,
+      debugPort: config.debugPort,
+      detached: true,
+      headless: config.browserHeadless === true,
+    });
     writeState();
   } catch (error) {
     writeLog('ERROR', 'browser start failed', { message: error.message });

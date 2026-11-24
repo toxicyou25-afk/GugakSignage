@@ -40,8 +40,8 @@ Source: "set-autostart.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\docs\install\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}""{code:GetDataDirChangeFlag}{code:GetNoStartFlag}"; StatusMsg: "Configuring GugakSignage services..."; Flags: waituntilterminated; Tasks: not firewall
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}"" -OpenFirewall{code:GetDataDirChangeFlag}{code:GetNoStartFlag}"; StatusMsg: "Configuring GugakSignage services and firewall..."; Flags: waituntilterminated; Tasks: firewall
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}""{code:GetDataDirChangeFlag}{code:GetNoStartFlag}{code:GetHeadlessFlag}"; StatusMsg: "Configuring GugakSignage services..."; Flags: waituntilterminated; Tasks: not firewall
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}"" -OpenFirewall{code:GetDataDirChangeFlag}{code:GetNoStartFlag}{code:GetHeadlessFlag}"; StatusMsg: "Configuring GugakSignage services and firewall..."; Flags: waituntilterminated; Tasks: firewall
 
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\uninstall.ps1"" -InnoUninstall"; Flags: runhidden waituntilterminated; RunOnceId: "GugakSignageCleanup"
@@ -170,6 +170,14 @@ function GetNoStartFlag(Param: String): String;
 begin
   if ExpandConstant('{param:NOSTART|0}') = '1' then
     Result := ' -NoStart'
+  else
+    Result := '';
+end;
+
+function GetHeadlessFlag(Param: String): String;
+begin
+  if ExpandConstant('{param:HEADLESS|0}') = '1' then
+    Result := ' -HeadlessBrowser'
   else
     Result := '';
 end;

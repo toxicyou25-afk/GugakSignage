@@ -1,7 +1,7 @@
 ﻿{
-  "checkedAt": "2026-11-24T11:49:49.484Z",
+  "checkedAt": "2026-11-24T12:37:03.384Z",
   "expected": "online",
-  "url": "http://127.0.0.1:49291/player/?code=GUGAK1&reconnect=1",
+  "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
     "playerReady": true,
     "deviceId": "dev-sample-lobby",
@@ -12,7 +12,11 @@
     "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T11:49:48.822Z",
+    "lastHeartbeatAt": "2026-11-24T12:37:00.381Z",
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": 0.3333333333333333,
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-inno-installed.png"

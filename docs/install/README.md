@@ -69,7 +69,7 @@ Inno Setup 화면에서 설치 폴더, 데이터 폴더, 포트를 선택할 수
 
 ## 설치 결과
 
-- 서버 파일: 설치 폴더의 dist, public, seed, node_modules
+- 서버 파일: 설치 폴더의 dist, public, poc\packages\engine, seed, node_modules
 - 운영 도구: 설치 폴더의 ops, tools
 - 데이터: 기본 %ProgramData%\GugakSignage
 - SQLite 데이터베이스: 데이터 폴더의 signage.sqlite
@@ -84,12 +84,12 @@ Inno Setup 화면에서 설치 폴더, 데이터 폴더, 포트를 선택할 수
 
 ## 비밀번호와 세션 시크릿
 
-새 설치에서 다음 값을 암호학적 난수로 생성합니다.
+테스트 기간 새 설치에서 다음 값을 설정합니다.
 
-- ADMIN_PASSWORD: 관리자 로그인 비밀번호
-- SESSION_SECRET: 세션 쿠키 서명 키
+- ADMIN_PASSWORD: 테스트 기본 비밀번호 0000 — 실제 비밀값으로 취급하지 말고 설정에서 즉시 변경
+- SESSION_SECRET: 암호학적 난수로 생성하는 세션 쿠키 서명 키
 
-설치 로그에는 값을 출력하지 않습니다. 초기 비밀번호는 데이터 폴더의 .env에서 확인합니다.
+설치 로그에는 세션 시크릿을 출력하지 않습니다. 관리자 비밀번호가 0000이면 설치 로그에 경고를 남깁니다. 초기 값은 데이터 폴더의 .env에서 확인할 수 있습니다.
 
 ~~~powershell
 $envFile = Join-Path $env:ProgramData "GugakSignage\.env"
@@ -98,7 +98,7 @@ Get-Content $envFile | Select-String '^ADMIN_PASSWORD='
 
 환경 파일은 설치 시 ACL을 상속 해제하고 현재 사용자, SYSTEM, Administrators에만 권한을 줍니다. 설치 후 관리자 화면에서 비밀번호를 바꾸면 .env 값도 운영 절차에 맞춰 갱신해야 합니다. .env, 로그, 데이터베이스, 업로드 파일은 Git에 커밋하지 않습니다.
 
-기존 데이터 폴더의 .env가 있으면 재설치 시 덮어쓰지 않습니다. 기존 파일에 개발용 기본 비밀번호가 남아 있다면 운영 전에 반드시 교체합니다.
+기존 데이터 폴더의 .env가 있으면 재설치 시 덮어쓰지 않습니다. 기존 파일에 gugak1234 같은 개발용 기본 비밀번호가 남아 있다면 운영 전에 반드시 교체합니다. 새 설치의 0000도 현장 사용 전에 반드시 변경해야 합니다.
 
 ## 자동 실행 방식
 
@@ -241,3 +241,5 @@ Inno Setup 제거 관리자는 uninstall.ps1 -InnoUninstall을 호출해 작업�
 ## 검증 범위
 
 로컬 설치, 바로가기, 작업 스케줄러, 서버 기동, watchdog 복구, 제거 보존 검증 결과는 [검증 기록](verification.md)에 기록합니다. 실제 현장 물리 장비, 실제 재부팅, 실제 무인 로그인, 장시간 24시간 시험은 별도 승인과 장비에서 수행해야 합니다.
+
+자동 검증은 격리된 브라우저 프로필을 사용하고, 테스트 중에는 headless 모드를 선택해 운영자 데스크톱에 재생기 창을 남기지 않습니다. 운영 설치의 기본값은 실제 전체 화면 재생을 위해 headless가 아닙니다. 증적의 임시 localhost URL은 test-url 표식으로 치환합니다.

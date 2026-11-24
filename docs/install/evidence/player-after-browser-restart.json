@@ -1,7 +1,7 @@
 ﻿{
-  "checkedAt": "2026-11-24T11:45:32.368Z",
+  "checkedAt": "2026-11-24T12:34:32.331Z",
   "expected": "online",
-  "url": "http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1",
+  "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
     "playerReady": true,
     "deviceId": "dev-sample-lobby",
@@ -12,7 +12,11 @@
     "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T11:45:31.699Z",
+    "lastHeartbeatAt": "2026-11-24T12:34:31.668Z",
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": -0.8333333333333334,
     "visibility": "visible"
   },
   "screenshot": null

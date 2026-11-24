@@ -67,6 +67,7 @@ function Sanitize-File {
         $text = $text.Replace([string]$variant, "<repo>")
     }
     $text = $text.Replace("$env:USERDOMAIN\$env:USERNAME", "<user>").Replace($env:USERNAME, "<user>").Replace($env:COMPUTERNAME, "<computer>")
+    $text = [regex]::Replace($text, 'http://127\.0\.0\.1:\d+', "<test-url>")
     $text = [regex]::Replace($text, "[ \t]+\r?\n", [Environment]::NewLine).TrimEnd()
     Set-Content -LiteralPath $Destination -Value $text -Encoding utf8
 }
@@ -81,6 +82,7 @@ function Sanitize-InnoLog {
         $text = $text.Replace([string]$variant, "<repo>")
     }
     $text = $text.Replace("$env:USERDOMAIN\$env:USERNAME", "<user>").Replace($env:USERNAME, "<user>").Replace($env:COMPUTERNAME, "<computer>")
+    $text = [regex]::Replace($text, 'http://127\.0\.0\.1:\d+', "<test-url>")
     $lines = $text -split "\r?\n"
     $important = $lines | Where-Object {
         $_ -match "Setup command line|Run entry|Parameters:|Process exit code|InitializeWizard|PrepareToInstall|Installation process succeeded|Uninstallation process succeeded|Removed all\?|Need to restart Windows|Exception|Error|Dest filename: .*install\.json|DataDir|TaskName"
@@ -91,7 +93,8 @@ function Sanitize-InnoLog {
         $important
         $lines | Select-Object -Last 100
     ) | Select-Object -Unique
-    Set-Content -LiteralPath $Destination -Value ($excerpt -join [Environment]::NewLine) -Encoding utf8
+    $excerptText = [regex]::Replace(($excerpt -join [Environment]::NewLine), "[ \t]+\r?\n", [Environment]::NewLine).TrimEnd()
+    Set-Content -LiteralPath $Destination -Value $excerptText -Encoding utf8
 }
 
 function Get-ProductionPathSnapshot {
@@ -131,13 +134,13 @@ $report = [ordered]@{
     port = $port
     taskName = $taskName
     result = "running"
-    checks = [ordered]@{}
+    checks = [ordered]@{ evidenceUrlsSanitized = $true }
     productionPathsBefore = Get-ProductionPathSnapshot
 }
 
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 try {
-    $installArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="' + $installDir + '" /DATADIR="' + $dataDir + '" /PORT=' + $port + ' /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $installerLog + '"'
+    $installArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /HEADLESS=1 /DIR="' + $installDir + '" /DATADIR="' + $dataDir + '" /PORT=' + $port + ' /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $installerLog + '"'
     $installer = Start-Process -FilePath $SetupExe -ArgumentList $installArguments -Wait -PassThru -WindowStyle Hidden
     if ($installer.ExitCode -ne 0) { throw "Inno Setup 설치 실패: exit=$($installer.ExitCode), log=$installerLog" }
     Wait-Until -TimeoutSeconds 30 -Description "Inno 설치 파일" -Condition { Test-Path -LiteralPath (Join-Path $installDir "install.json") }
@@ -147,6 +150,7 @@ try {
     if ([string]$config.taskName -ne $taskName) { throw "EXE 작업 이름이 /WATCHDOGTASK와 다릅니다." }
     $report.checks.isolatedInstallDir = $true
     $report.checks.isolatedDataDir = $true
+    $report.checks.headlessTestBrowser = [bool]$config.browserHeadless
 
     $shortcuts = @(
         (Join-Path $desktopDir "GugakSignage.lnk"),
@@ -167,6 +171,15 @@ try {
     $report.checks.separateDataFolder = $true
 
     Wait-Until -TimeoutSeconds 90 -Description "EXE 설치 서버 health" -Condition { Test-ServerHealth -PortNumber $port }
+    $loginClient = [System.Net.Http.HttpClient]::new()
+    try {
+        $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+        $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
+        if (-not $loginResponse.IsSuccessStatusCode) { throw "Inno 설치의 테스트 관리자 비밀번호 0000 로그인이 실패했습니다." }
+    } finally {
+        $loginClient.Dispose()
+    }
+    $report.checks.testAdminPasswordLogin = $true
     $statePath = Join-Path $dataDir "logs\watchdog-state.json"
     Wait-Until -TimeoutSeconds 30 -Description "EXE 설치 watchdog 상태" -Condition { Test-Path -LiteralPath $statePath }
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
@@ -186,7 +199,7 @@ try {
         return (-not $currentState.serverPid -and -not $currentState.browserPid)
     }
     $databaseHashBeforeUpgrade = Get-StableFileHash -Path (Join-Path $dataDir "signage.sqlite")
-    $upgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $upgradeLog + '"'
+    $upgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $upgradeLog + '"'
     $upgrader = Start-Process -FilePath $SetupExe -ArgumentList $upgradeArguments -Wait -PassThru -WindowStyle Hidden
     if ($upgrader.ExitCode -ne 0) { throw "Inno Setup 업그레이드 실패: exit=$($upgrader.ExitCode), log=$upgradeLog" }
     $upgradedConfig = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json

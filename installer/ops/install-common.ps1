@@ -145,11 +145,18 @@ function Stop-VerifiedOwnedProcess {
         [string]$ExpectedStartTime = "",
         [string[]]$CommandLineContains = @()
     )
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-    if (-not $process) { return $false }
-    $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains
+    $deadline = [DateTime]::UtcNow.AddSeconds(3)
+    $process = $null
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        if (-not $process) { return $false }
+        $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains
+        if ($verified) { break }
+        Start-Sleep -Milliseconds 100
+    }
     if (-not $verified) {
-        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId"
+        $actualStart = if ($process.CreationDate) { ([DateTime]$process.CreationDate).ToUniversalTime().ToString("o") } else { "<unknown>" }
+        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart"
     }
     $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
     $exitCode = $LASTEXITCODE

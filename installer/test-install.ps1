@@ -106,6 +106,7 @@ function Sanitize-Evidence {
     foreach ($pair in $replacements) {
         if ($pair[0]) { $text = $text.Replace([string]$pair[0], [string]$pair[1]) }
     }
+    $text = [regex]::Replace($text, 'http://127\.0\.0\.1:\d+', "<test-url>")
     $text = [regex]::Replace($text, "[ \t]+\r?\n", [Environment]::NewLine).TrimEnd()
     Set-Content -LiteralPath $Destination -Value $text -Encoding utf8
 }
@@ -177,7 +178,7 @@ try {
     $report.checks.watchdogFailureLifecycle = $watchdogJson | ConvertFrom-Json
 
     Write-Host "[install-test] 임시 설치 시작: <test-root>"
-    $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir 2>&1 | Tee-Object -Variable installLines
+    $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir -HeadlessBrowser 2>&1 | Tee-Object -Variable installLines
     $installLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "설치 스크립트가 실패했습니다." }
 
@@ -186,26 +187,44 @@ try {
     Wait-Until -TimeoutSeconds 60 -Description "watchdog 상태" -Condition { Test-Path -LiteralPath $statePath }
     $report.checks.installed = $true
     $report.checks.serverHealthy = $true
+    $report.checks.headlessTestBrowser = $true
+    $report.checks.evidenceUrlsSanitized = $true
 
     $envFile = Join-Path $dataDir ".env"
     $envText = Get-Content -LiteralPath $envFile -Raw
     $adminMatch = [regex]::Match($envText, "(?m)^ADMIN_PASSWORD=(.+)$")
     $sessionMatch = [regex]::Match($envText, "(?m)^SESSION_SECRET=(.+)$")
     if (-not $adminMatch.Success -or -not $sessionMatch.Success) { throw "환경 비밀값이 없습니다." }
-    if ($adminMatch.Groups[1].Value -eq "gugak1234" -or $sessionMatch.Groups[1].Value -eq "change-this-to-a-long-random-string") {
+    $adminPasswordValue = $adminMatch.Groups[1].Value.Trim()
+    $sessionSecretValue = $sessionMatch.Groups[1].Value.Trim()
+    if ($adminPasswordValue -eq "gugak1234" -or $sessionSecretValue -eq "change-this-to-a-long-random-string") {
         throw "개발용 기본 비밀값이 설치되었습니다."
     }
-    if ($adminMatch.Groups[1].Value.Length -lt 20 -or $sessionMatch.Groups[1].Value.Length -lt 48) {
-        throw "생성된 비밀값 길이가 충분하지 않습니다."
+    if ($adminPasswordValue -ne "0000") {
+        throw "신규 설치의 테스트 관리자 비밀번호가 0000이 아닙니다."
+    }
+    if ($sessionSecretValue.Length -lt 48) {
+        throw "생성된 세션 시크릿 길이가 충분하지 않습니다."
     }
     if ($envText -notmatch "(?m)^SEED_SAMPLES=true\s*$") {
         throw "신규 설치가 샘플 시드를 활성화하지 않았습니다."
     }
     $acl = Get-Acl -LiteralPath $envFile
     if (-not $acl.AreAccessRulesProtected) { throw "환경 파일 ACL 상속이 차단되지 않았습니다." }
-    $report.checks.randomSecrets = $true
+    $report.checks.sessionSecretRandom = $true
+    $report.checks.testAdminPassword0000 = $true
     $report.checks.environmentAclProtected = $true
     $report.checks.newInstallSeedSamples = $true
+
+    $loginClient = [System.Net.Http.HttpClient]::new()
+    try {
+        $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+        $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
+        if (-not $loginResponse.IsSuccessStatusCode) { throw "테스트 관리자 비밀번호 0000 로그인이 실패했습니다: HTTP $([int]$loginResponse.StatusCode)" }
+    } finally {
+        $loginClient.Dispose()
+    }
+    $report.checks.testAdminPasswordLogin = $true
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcuts = @(
@@ -275,6 +294,12 @@ try {
     if ($envAfterUpgrade -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
         throw "기존 데이터 업그레이드에서 샘플 시드를 비활성화하지 않았습니다."
     }
+    if ($envAfterUpgrade -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") {
+        throw "업그레이드가 기존 .env의 관리자 비밀번호를 변경했습니다."
+    }
+    if ($configAfterUpgrade.browserHeadless -ne $true) {
+        throw "업그레이드가 테스트 headless 브라우저 설정을 보존하지 않았습니다."
+    }
     $databaseHashAfter = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
     if ($databaseHashAfter -ne $databaseHashBefore) {
         throw "업그레이드가 기존 데이터베이스를 변경했습니다."
@@ -283,6 +308,8 @@ try {
     $report.checks.upgradePreservesDatabase = $true
     $report.checks.upgradePreservesShortcutsAndTask = $true
     $report.checks.upgradeDisablesSeedSamples = $true
+    $report.checks.existingEnvPreserved = $true
+    $report.checks.headlessSettingPreservedOnUpgrade = $true
 
     $changedDataDir = Join-Path $testRoot "changed-data"
     $changeError = $null
@@ -361,8 +388,20 @@ try {
     }
     $report.checks.autostartCanBeReenabled = $true
 
+    & (Join-Path $installDir "tools\set-autostart.ps1") -Disable -KeepRunning | Out-Host
+    if ((Get-ScheduledTask -TaskName $taskName -ErrorAction Stop).State -ne "Disabled") {
+        throw "서버 단절 시험 전에 자동 재시작 작업을 비활성화하지 못했습니다."
+    }
     $enabledState = Read-WatchdogState -StatePath $statePath
-    Stop-Process -Id ([int]$enabledState.watchdogPid) -Force
+    $watchdogProcess = Get-VerifiedOwnedProcess -ProcessId ([int]$enabledState.watchdogPid) -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$enabledState.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+    if (-not $watchdogProcess) { throw "강제 종료 대상 watchdog의 소유권을 확인하지 못했습니다." }
+    & taskkill.exe /PID ([int]$enabledState.watchdogPid) /F *> $null
+    if ($LASTEXITCODE -ne 0 -and (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))) {
+        throw "watchdog 강제 종료에 실패했습니다."
+    }
+    Wait-Until -TimeoutSeconds 15 -Description "watchdog 프로세스 종료" -Condition {
+        return -not (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))
+    }
     Wait-Until -TimeoutSeconds 15 -Description "서버 단절" -Condition { -not (Test-ServerHealth -PortNumber $port) }
     Wait-Until -TimeoutSeconds 15 -Description "watchdog 강제 종료 시 서버 고아 정리" -Condition {
         return -not (Test-OwnedProcess -ProcessId ([int]$enabledState.serverPid))
@@ -385,7 +424,7 @@ try {
     $report.checks.offlineContentAfter = $offlineProgress.state.currentContentId
     $report.screenshots += "docs/install/evidence/player-offline-installed.png"
 
-    Start-ScheduledTask -TaskName $taskName
+    & (Join-Path $installDir "tools\set-autostart.ps1") -Enable | Out-Host
     Wait-Until -TimeoutSeconds 60 -Description "서버 연결 자동 복구" -Condition { Test-ServerHealth -PortNumber $port }
     $recoveryPath = Join-Path $evidenceDir "player-recovered-installed.json"
     $recovered = Invoke-PlayerCheck -Expect "online" -Screenshot "" -Output $recoveryPath

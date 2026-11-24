@@ -19,7 +19,8 @@ param(
     [switch]$NoAutoStart,
     [switch]$NoStart,
     [switch]$ConfigureOnly,
-    [switch]$AllowDataDirChange
+    [switch]$AllowDataDirChange,
+    [switch]$HeadlessBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -136,6 +137,7 @@ function Write-InstallConfig {
         taskName            = $TaskName
         firewallRuleName    = $FirewallRuleName
         debugPort           = $DebugPort
+        browserHeadless     = $useHeadlessBrowser
         shortcuts           = $Shortcuts
         autoStartRegistered = $AutoStartRegistered
         createdAt           = $createdAt
@@ -235,6 +237,13 @@ $previousConfig = if (Test-Path -LiteralPath $configPath) {
 }
 if ($previousConfig -and -not (Test-PathEqual -Left ([string]$previousConfig.installDir) -Right $InstallDir)) {
     throw "기존 install.json의 설치 경로가 현재 대상과 다릅니다. 다른 설치를 덮어쓰지 않습니다: $($previousConfig.installDir)"
+}
+$useHeadlessBrowser = if ($PSBoundParameters.ContainsKey("HeadlessBrowser")) {
+    [bool]$HeadlessBrowser
+} elseif ($previousConfig -and $previousConfig.browserHeadless -eq $true) {
+    $true
+} else {
+    $false
 }
 
 $defaultDataDir = if ($isAdmin) {
@@ -377,6 +386,7 @@ try {
             (Join-Path $SourceDir "dist\server.js"),
             (Join-Path $SourceDir "package.json"),
             (Join-Path $SourceDir "public"),
+            (Join-Path $SourceDir "poc\packages\engine\index.js"),
             (Join-Path $SourceDir "seed"),
             (Join-Path $SourceDir "node_modules")
         )
@@ -390,7 +400,7 @@ try {
         }
         Write-Step "서버 파일 복사"
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        foreach ($directory in @("dist", "public", "seed", "node_modules")) {
+        foreach ($directory in @("dist", "public", "poc\packages\engine", "seed", "node_modules")) {
             Copy-DirectoryContents -Source (Join-Path $SourceDir $directory) -Destination (Join-Path $InstallDir $directory)
         }
         foreach ($file in @("package.json", "package-lock.json", "LICENSE", "NOTICE")) {
@@ -417,7 +427,7 @@ try {
     $envFile = Join-Path $DataDir ".env"
     if (-not (Test-Path -LiteralPath $envFile)) {
         Write-Step "환경 설정과 임의 비밀번호 생성"
-        $adminPassword = New-RandomSecret -ByteCount 18
+        $adminPassword = "0000"
         $sessionSecret = New-RandomSecret -ByteCount 48
         $dataDirEnv = $DataDir.Replace('"', '\"')
         $seedSamples = if ($existingDataDetected) { "false" } else { "true" }
@@ -435,6 +445,7 @@ try {
         )
         [IO.File]::WriteAllLines($envFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
         Protect-EnvironmentFile -Path $envFile
+        Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
     } else {
         $existingEnv = Get-Content -LiteralPath $envFile -Raw
         if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
@@ -541,6 +552,7 @@ try {
     }
 
     Write-Step "설치 완료"
+    Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
     Write-Step "관리자 화면: http://127.0.0.1:$Port/admin/"
     Write-Step "초기 비밀번호: $envFile 의 ADMIN_PASSWORD (로그에는 기록하지 않음)"
     Write-Step "설치 로그: $script:InstallLogPath"
