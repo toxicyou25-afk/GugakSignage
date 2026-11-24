@@ -261,6 +261,7 @@ function renderSettings() {
       <p class="eyebrow">SECURITY</p>
       <h2 id="password-settings-title">관리자 비밀번호</h2>
       <p class="page-intro">현재 비밀번호를 확인한 뒤 새 비밀번호를 설정합니다. 저장하면 모든 관리자 세션이 종료되며, 새 비밀번호로 다시 로그인해야 합니다.</p>
+      ${!el.defaultPasswordWarning.hidden ? '<p class="security-warning">비밀번호를 변경하면 서버가 LAN 관리 요청을 허용합니다. 다만 HOST=127.0.0.1이나 Docker 로컬 전용 Compose처럼 네트워크 공개가 막힌 설정은 별도로 바꿔야 합니다.</p>' : ''}
       <form id="change-password-form" class="card card-pad form-grid password-form" novalidate>
         <div class="field">
           <label for="current-password">현재 비밀번호</label>
@@ -1188,7 +1189,7 @@ document.addEventListener('submit', async (event) => {
           form.reset();
           el.loginDemoHint.hidden = true;
           el.defaultPasswordWarning.hidden = true;
-          showLogin('비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인하세요.');
+          showLogin('비밀번호가 변경되었습니다. 모든 세션이 종료되었습니다. LAN 관리가 필요하면 서버의 HOST·포트 공개와 방화벽을 확인한 뒤 새 비밀번호로 로그인하세요.');
         } catch (errorValue) {
           error.textContent = errorValue.message;
           error.hidden = false;
