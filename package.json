@@ -19,7 +19,8 @@
     "verify:api": "node scripts/verify-api.mjs",
     "verify:first-run": "node scripts/verify-first-run.mjs",
     "verify:schedule": "node scripts/verify-schedule.mjs",
-    "verify:multimonitor": "node scripts/verify-multimonitor.mjs"
+    "verify:multimonitor": "node scripts/verify-multimonitor.mjs",
+    "verify:sw-update": "node scripts/verify-sw-update.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

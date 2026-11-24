@@ -356,12 +356,20 @@ export function configureGroupDisplays(
 
   transaction(db, () => {
     const now = nowIso();
-    linkDeviceToGroup(db, input.deviceId, group.site_id, group.id);
     const existing = all<DisplayRow>(
       db,
       'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, rowid',
       group.id,
     );
+    const addedCount = Math.max(0, input.displayCount - existing.length);
+    const fillsUnassignedScreen = existing
+      .slice(0, input.displayCount)
+      .some((display) => display.device_id === null);
+    if (addedCount > 0 || fillsUnassignedScreen) {
+      // A group-level PC fills new or never-assigned screens. Existing
+      // screen-to-PC assignments change through the explicit display endpoint.
+      linkDeviceToGroup(db, input.deviceId, group.site_id, group.id);
+    }
     if (existing.length > input.displayCount) {
       for (const display of existing.slice(input.displayCount)) {
         run(db, 'DELETE FROM displays WHERE id = ?', display.id);
@@ -424,7 +432,7 @@ export function configureGroupDisplays(
       run(
         db,
         `UPDATE displays SET width = ?, height = ?, orientation = ?, rotation = ?, fit_mode = ?,
-                              device_id = ?, playlist_id = ?, name = ?, slot_id = ?, start_index = ?,
+                              device_id = COALESCE(device_id, ?), playlist_id = ?, name = ?, slot_id = ?, start_index = ?,
                               updated_at = ? WHERE id = ?`,
         input.width,
         input.height,
@@ -542,6 +550,12 @@ export function siteSummary(db: DB) {
 export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
   const site = get<SiteRow>(db, 'SELECT * FROM sites WHERE id = ?', siteId);
   if (!site) return null;
+  const deviceDto = (device: DeviceRow) => ({
+    id: device.id,
+    name: device.name,
+    status: deviceStatus(device, heartbeatOnlineMs),
+    displayCount: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?', device.id)?.n ?? 0),
+  });
   const groups = all<DisplayGroupRow>(
     db,
     'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid',
@@ -565,22 +579,30 @@ export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
           : null,
       };
     });
+    const availableDevices = all<DeviceRow>(
+      db,
+      `SELECT * FROM devices d
+        WHERE (d.site_id = ? OR d.site_id IS NULL)
+          AND (
+            NOT EXISTS (SELECT 1 FROM displays assigned WHERE assigned.device_id = d.id)
+            OR EXISTS (SELECT 1 FROM displays own WHERE own.device_id = d.id AND own.group_id = ?)
+          )
+        ORDER BY d.created_at, d.rowid`,
+      siteId,
+      group.id,
+    );
     return {
       ...group,
       layout: layout ? layoutFromRow(layout) : null,
       displays,
+      devices: availableDevices.map(deviceDto),
     };
   });
   const devices = all<DeviceRow>(
     db,
     'SELECT * FROM devices WHERE site_id = ? OR site_id IS NULL ORDER BY created_at, rowid',
     siteId,
-  ).map((device) => ({
-    id: device.id,
-    name: device.name,
-    status: deviceStatus(device, heartbeatOnlineMs),
-    displayCount: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?', device.id)?.n ?? 0),
-  }));
+  ).map(deviceDto);
   return { site, groups, devices };
 }
 

@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -33,6 +35,8 @@ jobs:
         run: npm run build
       - name: Unit and API tests
         run: npm test
+      - name: PoC engine tests
+        run: npm test --prefix poc
       - name: Verify first-run flow
         run: npm run verify:first-run
       - name: Verify schedule and offline playback
@@ -41,6 +45,9 @@ jobs:
       - name: Verify multimonitor administration and playback
         if: ${{ !cancelled() }}
         run: npm run verify:multimonitor
+      - name: Verify persistent profile service worker update
+        if: ${{ !cancelled() }}
+        run: npm run verify:sw-update
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

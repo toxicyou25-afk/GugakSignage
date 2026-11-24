@@ -13,15 +13,26 @@ export function wallScreenInput(wall, displayId) {
     description: null,
     items: [],
   };
-  const playable = source.items.filter(
-    (item) =>
-      item.enabled &&
-      item.content?.url &&
-      Number.isFinite(item.content.width) &&
-      item.content.width > 0 &&
-      Number.isFinite(item.content.height) &&
-      item.content.height > 0,
-  );
+  const playable = source.items.filter((item) => {
+    const content = item.enabled ? item.content : null;
+    if (!content?.url) return false;
+    if (content.kind === 'url') return true;
+    return (
+      Number.isFinite(content.width) &&
+      content.width > 0 &&
+      Number.isFinite(content.height) &&
+      content.height > 0
+    );
+  });
+  const contents = playable.map((item) => ({
+    id: item.content.id,
+    name: item.content.name,
+    kind: item.content.kind ?? 'image',
+    mime: item.content.mime || null,
+    url: item.content.url,
+    width: item.content.width,
+    height: item.content.height,
+  }));
   return {
     site: {
       id: wall.site.id,
@@ -47,20 +58,23 @@ export function wallScreenInput(wall, displayId) {
       items: playable.map((item) => ({
         id: item.id,
         imageId: item.content.id,
+        contentId: item.content.id,
+        kind: item.content.kind ?? 'image',
+        contentUrl: item.content.url,
         durationMs: Math.max(1, item.durationSeconds) * 1000,
         ...(item.fitMode ? { fitMode: item.fitMode } : {}),
         transitionMs: item.transitionMs,
         enabled: item.enabled,
       })),
     },
-    images: playable.map((item) => ({
-      id: item.content.id,
-      filename: item.content.name,
-      width: item.content.width,
-      height: item.content.height,
-      mime: item.content.mime || 'application/octet-stream',
-      displayUrl: item.content.url,
-    })),
+    contents,
+    images: contents
+      .filter((content) => content.kind !== 'url')
+      .map((content) => ({
+        ...content,
+        filename: content.name,
+        displayUrl: content.url,
+      })),
     displays: wall.displays,
     mode: wall.group.playbackMode,
     epoch: wall.group.epoch,

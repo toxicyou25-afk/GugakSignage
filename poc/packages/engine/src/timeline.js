@@ -51,8 +51,13 @@ function displayAt(snapshot, displayId) {
   return { display: displays[index], displayIndex: index, displayCount: displays.length };
 }
 
-function imageForItem(snapshot, item) {
-  return (snapshot.images ?? []).find((image) => image.id === item?.imageId) ?? null;
+function contentForItem(snapshot, item) {
+  const contentId = item?.contentId ?? item?.imageId;
+  return (
+    (snapshot.contents ?? []).find((content) => content.id === contentId) ??
+    (snapshot.images ?? []).find((image) => image.id === contentId) ??
+    null
+  );
 }
 
 function baseTimeline(snapshot, displayId, atMs) {
@@ -68,13 +73,26 @@ function baseTimeline(snapshot, displayId, atMs) {
 function finish(base, extra) {
   const timeline = { ...base, ...extra };
   timeline.static = timeline.imageCount <= 1 || timeline.nextChangeAtMs === null;
-  timeline.image = timeline.item ? imageForItem({ images: base.images ?? [], playlist: { items: base.items } }, timeline.item) : null;
-  timeline.imageId = timeline.item?.imageId ?? null;
+  timeline.content = timeline.item
+    ? contentForItem({ contents: base.contents, images: base.images ?? [], playlist: { items: base.items } }, timeline.item)
+    : null;
+  timeline.kind = timeline.item?.kind ?? timeline.content?.kind ?? 'image';
+  timeline.contentId = timeline.item?.contentId ?? timeline.content?.id ?? timeline.item?.imageId ?? null;
+  timeline.contentUrl = timeline.item?.contentUrl ?? timeline.content?.url ?? timeline.content?.displayUrl ?? null;
+  timeline.image = timeline.kind === 'url' || !timeline.content
+    ? null
+    : {
+        ...timeline.content,
+        filename: timeline.content.filename ?? timeline.content.name,
+        displayUrl: timeline.content.displayUrl ?? timeline.content.url,
+      };
+  timeline.imageId = timeline.contentId;
   return timeline;
 }
 
 function synchronizedTimeline(snapshot, displayId, atMs) {
   const base = baseTimeline(snapshot, displayId, atMs);
+  base.contents = snapshot.contents;
   base.images = snapshot.images;
   const { mode, display, displayIndex, imageCount, epochMs, dwellMs } = base;
   if (imageCount === 0) {
@@ -126,6 +144,7 @@ function synchronizedTimeline(snapshot, displayId, atMs) {
 
 function individualTimeline(snapshot, displayId, atMs) {
   const base = baseTimeline(snapshot, displayId, atMs);
+  base.contents = snapshot.contents;
   base.images = snapshot.images;
   const { display, imageCount, epochMs, items } = base;
   if (imageCount === 0) {

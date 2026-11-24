@@ -107,7 +107,8 @@
     }
     const first = group.displays[0] || { width: 1920, height: 1080, rotation: 0, fit_mode: 'contain' };
     const playlistOptions = (selected, noneLabel) => `<option value="">${page(noneLabel)}</option>${playlists.playlists.map((playlist) => `<option value="${page(playlist.id)}" ${playlist.id === selected ? 'selected' : ''}>${page(playlist.name)}</option>`).join('')}`;
-    const deviceOptions = (selected) => `<option value="">PC 연결 안 함</option>${detail.devices.map((device) => `<option value="${page(device.id)}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`).join('')}`;
+    const deviceOptions = (selected, devices = detail.devices) => `<option value="">PC 연결 안 함</option>${devices.map((device) => `<option value="${page(device.id)}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`).join('')}`;
+    const groupDevices = group.devices || detail.devices;
     const assignedDevice = group.displays.find((display) => display.device_id)?.device_id || '';
 
     view.innerHTML = `
@@ -121,7 +122,7 @@
           <section class="card card-pad">
             <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">1. MONITORS & LAYOUT</p><h3>모니터와 배치</h3><span class="tiny muted">화면 수는 1~256개 범위에서 자유롭게 정할 수 있습니다. 저장 전에는 실제 송출이 바뀌지 않습니다.</span></div><span class="tag">${page(modeLabel(group.playback_mode))}</span></div>
             <form class="form-grid topology-config" data-topology-form="configure-group" data-group-id="${page(group.id)}">
-              <label class="field"><span>PC 기기</span><select name="deviceId">${deviceOptions(assignedDevice)}</select><span class="help">같은 PC의 여러 모니터는 한 창의 캔버스로 표시됩니다.</span></label>
+              <label class="field"><span>PC 기본 배정</span><select name="deviceId">${deviceOptions(assignedDevice, groupDevices)}</select><span class="help">새 화면과 아직 연결되지 않은 화면에만 적용됩니다. 연결된 화면의 PC는 아래에서 각각 바꿉니다.</span></label>
               <label class="field"><span>모니터 수</span><input name="displayCount" type="number" min="1" max="256" value="${group.displays.length}" required /></label>
               <label class="field"><span>해상도</span><div class="resolution-fields"><input name="width" type="number" min="320" max="16384" value="${first.width}" aria-label="가로 픽셀" /><span>×</span><input name="height" type="number" min="320" max="16384" value="${first.height}" aria-label="세로 픽셀" /></div></label>
               <label class="field"><span>화면 방향</span><select name="orientation"><option value="landscape" ${first.orientation !== 'portrait' ? 'selected' : ''}>가로</option><option value="portrait" ${first.orientation === 'portrait' ? 'selected' : ''}>세로</option></select></label>
@@ -140,11 +141,12 @@
           </section>
 
           <section class="card card-pad">
-            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">2. SCREEN ASSIGNMENT</p><h3>화면별 이미지 배정</h3><span class="tiny muted">재생목록을 화면마다 지정합니다. 비워 두면 그룹 기본 재생목록을 씁니다.</span></div></div>
+            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">2. SCREEN ASSIGNMENT</p><h3>화면별 콘텐츠·PC 배정</h3><span class="tiny muted">재생목록과 실행 PC를 화면마다 지정합니다. 재생목록을 비워 두면 그룹 기본을 씁니다.</span></div></div>
             <div class="screen-assignment-list">
               ${group.displays.map((display, index) => `
                 <div class="screen-assignment" data-display-id="${page(display.id)}">
                   <div class="screen-assignment-name"><span>${index + 1}</span><div><strong>${page(display.name)}</strong><small>${display.width}×${display.height} · ${page(display.deviceName || 'PC 미연결')}</small></div></div>
+                  <label><span>PC 기기</span><select data-screen-device>${deviceOptions(display.device_id, groupDevices)}</select></label>
                   <label><span>재생목록</span><select data-screen-playlist>${playlistOptions(display.playlist_id, '그룹 기본 사용')}</select></label>
                   <label><span>회전</span><select data-screen-rotation>${[0,90,180,270].map((rotation) => `<option value="${rotation}" ${display.rotation === rotation ? 'selected' : ''}>${rotation}°</option>`).join('')}</select></label>
                   <label><span>맞춤</span><select data-screen-fit><option value="contain" ${display.fit_mode === 'contain' ? 'selected' : ''}>전체</option><option value="cover" ${display.fit_mode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${display.fit_mode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
@@ -186,9 +188,17 @@
       ? `left:${(destination.w - destination.h) / 2 / destination.w * 100}%;top:${(destination.h - destination.w) / 2 / destination.h * 100}%;width:${destination.h / destination.w * 100}%;height:${destination.w / destination.h * 100}%;transform:rotate(${plan.rotation}deg)`
       : `inset:0;transform:${plan.rotation ? `rotate(${plan.rotation}deg)` : 'none'}`;
     const mediaStyle = `left:${-source.x / source.w * 100}%;top:${-source.y / source.h * 100}%;width:${imageWidth / source.w * 100}%;height:${imageHeight / source.h * 100}%`;
+    let media = '';
+    if (plan.kind === 'url') {
+      media = `<iframe src="${page(plan.contentUrl)}" title="${page(plan.content?.name || 'URL 콘텐츠')}" loading="eager" referrerpolicy="no-referrer" sandbox="allow-scripts allow-forms allow-popups"></iframe>`;
+    } else if (plan.kind === 'video') {
+      media = `<video src="${page(plan.imageUrl)}" muted loop autoplay playsinline style="${mediaStyle}"></video>`;
+    } else {
+      media = `<img src="${page(plan.imageUrl)}" alt="" style="${mediaStyle}" />`;
+    }
     const body = plan.placeholder
-      ? '<div class="preview-placeholder">배정된 이미지 없음</div>'
-      : `<div class="preview-media-clip" style="left:${destination.x / plan.viewport.width * 100}%;top:${destination.y / plan.viewport.height * 100}%;width:${destination.w / plan.viewport.width * 100}%;height:${destination.h / plan.viewport.height * 100}%"><div class="preview-rotation-layer" style="${layerStyle}"><img src="${page(plan.imageUrl)}" alt="" style="${mediaStyle}" /></div></div>`;
+      ? '<div class="preview-placeholder">배정된 콘텐츠 없음</div>'
+      : `<div class="preview-media-clip" style="left:${destination.x / plan.viewport.width * 100}%;top:${destination.y / plan.viewport.height * 100}%;width:${destination.w / plan.viewport.width * 100}%;height:${destination.h / plan.viewport.height * 100}%"><div class="preview-rotation-layer" style="${layerStyle}">${media}</div></div>`;
     const style = slot
       ? `left:${slot.x * 100}%;top:${slot.y * 100}%;width:${slot.w * 100}%;height:${slot.h * 100}%`
       : 'inset:0';
@@ -211,7 +221,7 @@
         <div class="preview-canvas" style="--preview-aspect:${wall.layout.canvasWidth / Math.max(1, wall.layout.canvasHeight)}">
           ${preview.plans.map((plan) => planCard(plan, displays.get(plan.displayId), slots.get(plan.slotId))).join('')}
         </div>
-        <div class="preview-plans">${preview.plans.map((plan) => `<div><span>${page(plan.displayName)}</span><strong>${plan.placeholder ? '대기' : `이미지 ${plan.imageIndex + 1}/${plan.imageCount}`}</strong><small>다음 전환 ${plan.nextChangeAt ? dateTime(plan.nextChangeAt) : '고정'}</small></div>`).join('')}</div>`;
+        <div class="preview-plans">${preview.plans.map((plan) => `<div><span>${page(plan.displayName)}</span><strong>${plan.placeholder ? '대기' : `${plan.kind === 'url' ? 'URL' : plan.kind === 'video' ? '동영상' : '이미지'} ${plan.imageIndex + 1}/${plan.itemCount ?? plan.imageCount}`}</strong><small>다음 전환 ${plan.nextChangeAt ? dateTime(plan.nextChangeAt) : '고정'}</small></div>`).join('')}</div>`;
     } catch (error) {
       target.innerHTML = `<p class="form-error">${page(error.message)}</p>`;
     }
@@ -263,6 +273,7 @@
     await request(`/api/displays/${encodeURIComponent(displayId)}`, {
       method: 'PUT',
       body: {
+        deviceId: row.querySelector('[data-screen-device]').value || null,
         playlistId: row.querySelector('[data-screen-playlist]').value || null,
         rotation: Number(row.querySelector('[data-screen-rotation]').value),
         fitMode: row.querySelector('[data-screen-fit]').value,

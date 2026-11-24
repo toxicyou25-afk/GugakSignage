@@ -11,7 +11,8 @@ import test from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { all, get, openDatabase, run, type DB } from '../src/db.js';
-import { buildWallPlans, engineSnapshotForWall } from '../src/topology.js';
+import { seedDatabase } from '../src/seed.js';
+import { buildWallPlans, buildWallSnapshot, engineSnapshotForWall } from '../src/topology.js';
 import { ensureDeviceTopology } from '../src/topology-migration.js';
 
 const require = createRequire(import.meta.url);
@@ -166,6 +167,41 @@ test('게시 스냅샷과 미리보기는 같은 wall 입력에서 같은 Render
   );
   assert.equal(new Set(publishedPlans.map((plan) => plan.imageId)).size, 1);
   assert.equal(new Set(publishedPlans.map((plan) => plan.slotId)).size, 4);
+});
+
+test('샘플 재생목록의 이미지·영상·URL 5개가 모두 wall 입력과 RenderPlan에 남는다', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-wall-url-'));
+  const config = loadConfig({
+    rootDir: path.resolve(import.meta.dirname, '..'),
+    dataDir: tempDir,
+    dbPath: path.join(tempDir, 'test.sqlite'),
+    uploadDir: path.join(tempDir, 'uploads'),
+    seedSamples: true,
+    adminPassword: 'wall-url-password',
+    sessionSecret: 'wall-url-test-session-secret',
+  });
+  const db = openDatabase(config.dbPath);
+  try {
+    const seeded = seedDatabase(db, config);
+    assert(seeded.deviceId);
+    ensureDeviceTopology(db, seeded.deviceId);
+    const group = get<{ id: string }>(db, 'SELECT group_id AS id FROM displays WHERE device_id = ?', seeded.deviceId)!;
+    const wall = buildWallSnapshot(db, group.id, { heartbeatOnlineMs: 45_000 });
+    const input = engine.wallScreenInput(wall as any, wall.displays[0].id) as any;
+    assert.equal(input.playlist.items.length, 5);
+    assert.deepEqual(input.playlist.items.map((item: any) => item.kind), ['image', 'image', 'video', 'image', 'url']);
+    assert(input.contents.some((content: any) => content.kind === 'url' && content.name.includes('오늘의 안내')));
+
+    const urlAt = Date.parse(wall.group.epoch) + 40_500;
+    const urlPlan = buildWallPlans(wall, urlAt).find((plan) => plan.kind === 'url');
+    assert(urlPlan);
+    assert.equal(urlPlan.contentUrl, '/sample/notice.html');
+    assert.equal(urlPlan.placeholder, false);
+    assert.equal(urlPlan.nextChangeAtMs, Date.parse(wall.group.epoch) + 50_000);
+  } finally {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('5기기 마이그레이션은 20회 실행해도 같은 장치→슬롯을 만들고 새 기기는 기존 배정을 보존한다', () => {
@@ -468,6 +504,54 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const unchangedManifest = await request('/api/player/manifest', { token: registration.body.token });
     assert.equal(unchangedManifest.body.manifest.version, 1);
     assert.equal(unchangedManifest.body.manifest.wall.displays.length, 4);
+
+    const explicitSecondPc = await request(`/api/displays/${displays[1].id}`, {
+      method: 'PUT',
+      body: { deviceId: secondDevice.body.device.id },
+    });
+    assert.equal(explicitSecondPc.status, 200, JSON.stringify(explicitSecondPc.body));
+    const mappingBeforeGroupSave = all<{ id: string; device_id: string | null }>(
+      db,
+      'SELECT id, device_id FROM displays WHERE group_id = ? ORDER BY start_index, rowid',
+      groupId,
+    );
+    assert.deepEqual(
+      mappingBeforeGroupSave.map((display) => display.device_id),
+      [device.body.device.id, secondDevice.body.device.id],
+    );
+    const availableDetail = await request(`/api/sites/${site.body.site.id}`);
+    assert.deepEqual(
+      availableDetail.body.groups[0].devices.map((entry: any) => entry.id).sort(),
+      [device.body.device.id, secondDevice.body.device.id].sort(),
+    );
+
+    const resolutionOnlySave = await request(`/api/groups/${groupId}/configuration`, {
+      method: 'PUT',
+      body: {
+        displayCount: 2,
+        width: 1080,
+        height: 1920,
+        orientation: 'portrait',
+        rotation: 270,
+        layoutType: 'column',
+        gap: 0.01,
+        deviceId: device.body.device.id,
+        playlistId: 'playlist-1',
+        playbackMode: 'individual',
+        dwellMs: 7_000,
+        fitMode: 'contain',
+        resetEpoch: false,
+      },
+    });
+    assert.equal(resolutionOnlySave.status, 200, JSON.stringify(resolutionOnlySave.body));
+    assert.deepEqual(
+      all<{ id: string; device_id: string | null }>(
+        db,
+        'SELECT id, device_id FROM displays WHERE group_id = ? ORDER BY start_index, rowid',
+        groupId,
+      ).map((display) => display.device_id),
+      mappingBeforeGroupSave.map((display) => display.device_id),
+    );
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     db.close();
