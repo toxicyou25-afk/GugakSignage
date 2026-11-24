@@ -2,6 +2,7 @@
 
 - 작성일: 2026-11-24 (KST)
 - 대상: Xibo, Yodeck, ScreenCloud, OptiSigns, Play Digital Signage, Anthias
+- 2라운드 추가: NoviSign, Mvix, ScreenTinker, Concerto; Reach Media는 공개 제품 확인 실패
 - 보조 확인: Screenly, Signagelive (공개 문서만)
 - 목적: 국립부산국악원 이미지 송출 시스템의 화면 구조·용어·피드백 패턴을 검증한다. 제품의 화면·아이콘·로고·독창적 디자인을 복제하지 않는다.
 
@@ -12,6 +13,8 @@
 3. **이미지 규격 검사는 대부분 “안내”에 그친다.** 화면 비율이 맞지 않으면 검정 여백·왜곡이 생긴다고 FAQ에서 설명하지만, 업로드 시 대상 모니터별로 “이 이미지가 이 화면에 맞는가”를 자동 검사하는 제품은 확인하지 못했다. Xibo·Yodeck·OptiSigns·Play는 Fit/Fill/Stretch 선택과 수동 점검에 의존한다. 이 프로젝트의 “업로드 즉시 규격 검사 + 화면별 안전 영역”은 차별화 지점이다.
 4. **미리보기와 상태는 별개다.** ScreenCloud의 채널 미리보기, Yodeck의 레이아웃·플레이리스트 미리보기가 가장 쓸 만하지만, 여러 모니터의 시간축을 함께 돌리는 사이트 단위 시뮬레이션은 없다. 상태 화면은 온라인·오프라인·마지막 접속·저장 공간을 보여주는 수준이다. “가상 모니터 + 시간 이동 + 경고 + 게시 요약”은 직접 설계할 가치가 있다.
 5. **초보자의 진짜 장벽은 기능 수가 아니라 용어와 숨은 규칙이다.** Channel/Playlist/Zone/Space/Workspace/Layout/Display Group이 서로 다른 뜻으로 쓰이고, “일정이 없으면 검은 화면”, “플레이리스트가 스케줄을 들고 있음”, “무료 플랜에서는 분할 화면을 저장만 하고 재생 불가” 같은 규칙이 문서 곳곳에 흩어져 있다. 한국어 과업 중심 문구와 “다음 할 일”을 화면에 고정하는 접근이 필요하다.
+
+2라운드에서 ScreenTinker가 비디오월 캔버스·Playlist 수준 Layout·시간 지정 미리보기로 가장 가까운 참조 구현임을 확인했고, Concerto의 콘텐츠 fit score는 이미지 비율 처리에 참고할 만한 새 패턴을 제공했다. 자세한 내용과 증거 신뢰도는 §9에 정리했다.
 
 ## 1. 조사 방법과 한계
 
@@ -511,10 +514,14 @@
 
 ## 6. 라이선스 노트(오픈소스 제품만)
 
+이 보고서 자체는 저장소의 Apache-2.0 라이선스로 배포된다. 인용한 제품명·문서 URL·화면은 각 권리자에게 귀속되며, 제3자 스크린샷·로고·아이콘은 Apache-2.0 배포물에 포함하지 않고 `artifacts/`에만 보관한다. 인용 출처와 제품별 라이선스 표기는 유지한다.
+
 이 절은 UI 조사에서 확인한 범위의 요약이다. 최종 법적 판단은 기관의 라이선스 검토가 필요하며, 별도 `docs/research/licenses.md`(KR 담당)와 충돌하지 않도록 이 문서에서는 수정하지 않는다.
 
 - **Xibo Community Edition**: CMS 코어와 Windows/Linux 플레이어가 AGPL-3.0으로 공개되어 있다. AGPL은 네트워크를 통해 수정본을 제공할 때 소스 공개 의무가 발생할 수 있으므로, 우리가 CMS를 수정해 원내 웹 서비스로 제공하는 경우 검토가 필요하다. Xibo Pro/Cloud, 상용 Android/webOS/Tizen 플레이어는 별도 라이선스다. 화면·아이콘·로고를 복제하지 않는다.
 - **Anthias**: GPLv2 + Commercial dual license. 수정본을 배포하거나 기기 이미지로 제공할 때 GPLv2 소스 제공 의무가 문제될 수 있다. 내부 사용과 배포의 경계, 번들된 서드파티 구성요소의 라이선스는 별도 확인이 필요하다. Anthias의 화면 캡처·로고도 우리 제품 자산으로 재사용하지 않는다.
+- **ScreenTinker**: MIT. 셀프 호스팅과 수정·재배포가 허용된다. 저장소 문서는 프로덕션 의존성에 GPL/AGPL이 없고 SBOM을 배포한다고 밝히지만, 호스팅 서비스 약관·서드파티 템플릿·플러그인은 별도다. MIT 고지와 원저작자 표시를 유지한다.
+- **Concerto**: Apache-2.0. 특허 허여·고지 유지 의무가 있으며, 3.0은 RC이므로 안정판 2.x와 라이선스 파일·의존성이 다를 수 있다. Docker 이미지에 포함된 서드파티 라이선스는 별도 확인한다.
 - **공통**: 오픈소스 제품의 UI 패턴을 참고하는 것과 코드/화면/아이콘을 복제하는 것은 다르다. 이 보고서는 정보 구조·흐름·피드백 문구 수준의 추상화만 제안한다.
 
 ## 7. 스크린샷 증거 목록
@@ -587,6 +594,7 @@
 - Video Wall: <https://help.yodeck.com/en/articles/601510-creating-a-video-wall-with-yodeck>
 - Workspaces: <https://help.yodeck.com/en/articles/669486-workspaces-introduction>
 - Playlists Docs: <https://www.yodeck.com/docs/user-manual/playlists-introduction/>
+- 공식 YouTube “How To Create A Classic Playlist”: <https://www.youtube.com/watch?v=PNGI6D62dUw>
 
 ### ScreenCloud
 
@@ -598,6 +606,7 @@
 - Sync/Unsync/Device Time: <https://help.screencloud.com/en/articles/10119801-synchronizing-screens-with-playback-modes-sync-unsync-and-device-time>
 - Custom Resolutions: <https://help.screencloud.com/en/articles/10115219-custom-resolutions-and-image-dimensions-using-channels-in-screencloud>
 - Add/Set Up/Delete Screen: <https://help.screencloud.com/en/articles/10097048-how-do-i-add-set-up-or-delete-a-screen-in-screencloud>
+- 공식 Canvas Wistia: <https://fast.wistia.net/embed/iframe/rm34ffgow3>
 
 ### OptiSigns
 
@@ -613,6 +622,8 @@
 - Offline status: <https://support.optisigns.com/hc/en-us/articles/360016484473-Why-Does-My-Screen-Show-as-Offline-on-the-Web-Portal>
 - Free Plan: <https://support.optisigns.com/hc/en-us/articles/33940834613139-What-Do-I-Get-With-an-OptiSigns-Free-Plan>
 - Teams: <https://support.optisigns.com/hc/en-us/articles/360034883113-Working-with-Teams-and-Security-Levels>
+- 공식 YouTube “Managing Your Screens”: <https://www.youtube.com/watch?v=iP9DDMkRry8>
+- 공식 YouTube “Creating & Managing Assets”: <https://www.youtube.com/watch?v=oPO9ksZnSdY>
 
 ### Play Digital Signage
 
@@ -629,6 +640,7 @@
 - Scheduling: <https://playsignage.com/support/scheduling/>
 - Alerts: <https://playsignage.com/support/alerts/>
 - How it works: <https://playsignage.com/how-it-works/>
+- 공식 Google Play 앱: <https://play.google.com/store/apps/details?id=com.playsignage.app>
 
 ### Anthias
 
@@ -644,6 +656,59 @@
 - Controller screens: <https://github.com/Screenly/Anthias/blob/master/src/anthias_server/controller/templates/controller/screens.html>
 - Screenshot slider data: <https://github.com/Screenly/Anthias/blob/master/website/data/screenshots.yaml>
 
+### NoviSign(2라운드)
+
+- 공식 사이트(2026-11-24 현재 이 네트워크에서 연결 재설정): <https://www.novisign.com/>
+- Wayback 공식 홈페이지 캡처(2026-10-05): <https://web.archive.org/web/20261005154938/https://www.novisign.com/>
+- Help Center(2026-10-05 캡처): <https://web.archive.org/web/20261005155040/https://www.novisign.com/help-center/>
+- Screens Management: <https://www.novisign.com/help-center/studio/screen/introduction/>
+- Playlists Management: <https://www.novisign.com/help-center/studio/playlist/over-view/>
+- Creatives Management: <https://www.novisign.com/help-center/studio/creative/overview/>
+- Quick Start: <https://www.novisign.com/help-center/getting-started/quick-start-digital-signage/>
+- Best Practice for Media: <https://www.novisign.com/help-center/troubleshooting/best-practice-media/>
+- Black Screen Troubleshooting: <https://www.novisign.com/help-center/troubleshooting/black-screen/>
+- Pricing: <https://www.novisign.com/pricing/>
+- 공식 YouTube “How to Create a Slideshow”: <https://www.youtube.com/watch?v=MszYkhhjdIY>
+
+### Mvix(2라운드)
+
+- Software: <https://www.mvix.com/digital-signage-software>
+- Knowledgebase: <https://www.mvix.com/knowledgebase>
+- Device Library: <https://www.mvix.com/knowledgebase/what-is-the-device-library>
+- Device/Player Groups: <https://www.mvix.com/knowledgebase/device-groups>
+- Create Playlist: <https://www.mvix.com/knowledgebase/how-do-i-create-a-playlist-faq>
+- Device Preview: <https://www.mvix.com/knowledgebase/screen-preview>
+- Video Wall: <https://www.mvix.com/knowledgebase/how-do-i-set-up-my-video-wall>
+- Device Health: <https://www.mvix.com/knowledgebase/how-to-use-device-health>
+- Upload Media: <https://www.mvix.com/knowledgebase/how-do-i-upload-media-faq>
+- Supported Media Types: <https://www.mvix.com/knowledgebase/what-media-types-are-supported-by-mvix-cms-v3>
+- Pricing: <https://www.mvix.com/pricing>
+
+### ScreenTinker(2라운드)
+
+- Hosted site: <https://screentinker.com/>
+- GitHub(MIT): <https://github.com/screentinker/screentinker>
+- Video walls: <https://github.com/screentinker/screentinker/blob/main/docs/video-walls.md>
+- Layouts/campaigns: <https://github.com/screentinker/screentinker/blob/main/docs/layouts-and-campaigns.md>
+- Preview at time: <https://github.com/screentinker/screentinker/blob/main/docs/preview-at-time.md>
+- Web player pairing/link: <https://github.com/screentinker/screentinker/blob/main/docs/web-player.md>
+- Licensing: <https://github.com/screentinker/screentinker/blob/main/docs/licensing.md>
+
+### Concerto(2라운드)
+
+- Public demo(읽기 전용 라이브): <https://demo.concerto-signage.org/>
+- GitHub: <https://github.com/concerto/concerto>
+- README: <https://github.com/concerto/concerto/blob/main/README.md>
+- Content fit design: <https://github.com/concerto/concerto/blob/main/docs/content_fit_design.md>
+- UI style guide: <https://github.com/concerto/concerto/blob/main/docs/concerto-style-guide.md>
+- Version: 3.0.0.rc3(데모 푸터)
+
+### Reach Media 확인 시도(2라운드)
+
+- `reachmedia.co.nz`는 `reach.nz`(뉴질랜드 마케팅/레터박스 대행사)로 리다이렉트됨.
+- `reachmedia.com.au`는 커피컵 광고 회사, `reachmedia.tv`는 영상 제작, `reachmedia.io`는 주차 도메인으로 확인됨.
+- 이 이름으로 공개된 디지털 사이니지 관리자 제품을 확인하지 못해 비교표에서 제외했다. 동명의 다른 제품이 있다면 정확한 공식 도메인이 필요하다.
+
 ### 보조 확인
 
 - Screenly Docs: <https://www.screenly.io/docs/>
@@ -653,18 +718,349 @@
 - Signagelive Help Center: <https://support.signagelive.com/en/>
 - Signagelive Network creation: <https://support.signagelive.com/en/articles/137678-how-to-create-a-signagelive-by-navori-network>
 
-## 9. 확인하지 못한 것 / 후속 조사
+## 9. 2라운드: 공개 화면 교차 검증과 추가 제품
+
+### 9.1 증거 등급과 방법
+
+- **A — 라이브**: 공개 데모 인스턴스를 계정 없이 직접 열어 화면과 상태를 확인했다. 조작은 읽기 전용 범위다.
+- **B — 공식 캡처**: 제품이 공개한 도움말 스크린샷, 공식 데모 영상의 프레임, 공식 앱 스토어 스크린샷, 공식 저장소의 UI 캡처/템플릿을 확인했다. 영상은 제품이 공개한 공식 채널의 것만 사용했다.
+- **C — 문서만**: 공식 문서의 텍스트·절차만 확인했고 현재 UI 캡처는 확보하지 못했다.
+
+이번 라운드에서는 계정을 만들지 않았다. Yodeck·ScreenCloud·OptiSigns·Play는 공개 영상/스토어/도움말 캡처로 교차 검증했고, NoviSign은 공식 사이트가 이 네트워크에서 차단되어 Wayback 공식 캡처와 공식 YouTube로 보완했다. Mvix·ScreenTinker·Concerto는 공식 사이트/저장소/공개 데모를 사용했다.
+
+| 제품 | A 라이브 | B 공식 캡처/영상 | C 문서만 | 종합 신뢰도 |
+|---|---|---|---|---|
+| Xibo | 없음 | 공식 매뉴얼 화면 3종 | CMS 대시보드·등록 모달 | B- |
+| Yodeck | 없음 | 대시보드/등록/Layout 도움말 캡처, 공식 플레이리스트 영상(00:20, 00:45) | 일부 오류 문구·현재 대시보드 | B |
+| ScreenCloud | 없음 | 공식 도움말 화면 5종, 공식 Canvas Wistia(00:15) | Channels·실시간 화면 흐름 | B |
+| OptiSigns | 없음 | 공식 101 영상(스크린 목록·Add/Edit Screen·Push·Schedule), 도움말 화면 | Teams·일부 상태 | B |
+| Play | 없음(데스크톱 관리자) | 공식 Google Play 앱 스크린샷 4장, 마케팅 UI 3장 | 데스크톱 관리자·알림 세부 | B- |
+| Anthias | 없음 | 공식 사이트 4화면, 저장소 템플릿 | 실제 승인 조작 | B |
+| NoviSign | 없음(사이트 차단) | Wayback 공식 Help Center 캡처 6장, 공식 YouTube(00:15) | Monitoring/Reports 세부 | B- |
+| Mvix | 없음 | 공식 사이트 UI 5장 | 등록 코드·현재 CMS 일부 | B- |
+| ScreenTinker | 없음(공개 데모 미로그인) | 공식 저장소 UI 10장, 문서/소스 | 일부 플레이어 실기 검증 | B |
+| Concerto | 공개 데모 읽기 전용 | 공식 저장소·문서 | 편집/등록(로그인 필요) | A- |
+| Reach Media | 없음 | 없음 | 동명 제품 확인 실패 | 확인 불가 |
+
+### 9.2 4개 핵심 제품 실제 화면 교차 검증
+
+| 제품 | 실제로 확인한 화면 | 1라운드 주장과 비교 | 남은 한계 |
+|---|---|---|---|
+| Yodeck | 공식 YouTube `PNGI6D62dUw`의 00:20 프레임에서 플레이리스트 필름스트립·미디어 탭·10초 길이 조절, 00:45 프레임에서 Transition/Playback Options와 `Sync Playback`·`Random Playback` 토글을 확인했다. | 1라운드의 “플레이리스트 편집·전체 시간·동기화 옵션” 주장과 모순 없음. 영상 UI는 도움말 캡처보다 헤더가 단순한 이전 버전이다. | 대시보드·화면 등록은 공식 도움말 캡처로만 확인했고, 영상에서는 재현하지 않았다. |
+| ScreenCloud | 공식 Wistia `Canvas App - ScreenCloud`의 00:15 프레임에서 좌측 요소/템플릿 패널, 중앙 캔버스, 우측 속성 패널을 확인했다. | “Canvas가 별도 디자인 도구”라는 1라운드 설명과 일치. | 영상은 Canvas만 다룬다. Channels·Media·Preview는 공식 도움말 캡처로만 확인했다. |
+| OptiSigns | 공식 “2: Managing Your Screens” 영상 00:45의 Screens 목록과 Add Folder/Add Screen, 01:15의 Edit Screen(Device Name/Tags/Type/Orientation/Operational Schedule), 02:00의 Add Screen·Pair code, 07:00의 Push To Screens·Schedule·Preview를 확인했다. “3: Creating & Managing Assets” 01:00의 Files/Assets도 확인했다. | 6자리 Pair code, Edit Screen, Push/Schedule, Preview라는 1라운드 설명과 일치. | 영상은 2022~2023년 UI로 보이며, 현재 Teams/Video Wall UI는 도움말 캡처로 보완했다. |
+| Play | 공개 Google Play 앱 화면 4장에서 “Offline 0 of 2 / Needs publish 0”, QR과 `Enter pairing code`, 화면별 상태와 하단 내비게이션, 편집기의 좌표/애니메이션 패널, Group의 Base playlist·Synchronized·Schedule 타임라인을 확인했다. | “6자리 코드, 화면 상태, 그룹 기본 플레이리스트+스케줄, 동기화 토글” 주장과 일치한다. 스토어 화면은 `Enter pairing code`까지 보여 주고, 6자리 숫자 자체는 공식 문서·마케팅 캡처에서 확인했다. | 모바일 관리 앱의 공개 화면이며 데스크톱 관리자 전체 화면은 확인하지 못했다. |
+
+**교차 검증 결론**: 네 제품의 핵심 주장은 뒤집히지 않았다. 다만 Yodeck·OptiSigns 영상은 현재 문서 캡처보다 오래된 UI이고, ScreenCloud 영상은 Canvas만, Play 스토어는 모바일 앱만 보여 준다. 따라서 “현재 데스크톱 UI 전체를 라이브로 검증했다”고 주장하지 않고, 위 표의 범위만 근거로 삼는다.
+
+### 9.3 NoviSign
+
+**사업·라이선스와 공식 URL**
+
+- 호스팅 SaaS. 무료 평가판은 30일·카드 불필요로 안내된다. Business는 연간 결제 기준 $14/화면/월, Business Plus $17, Premium $25로 공개되어 있다. 플레이어 라이선스는 디스플레이마다 1개가 필요하다.
+- 공식: <https://www.novisign.com/>, Help Center: <https://www.novisign.com/help-center/>, Pricing: <https://www.novisign.com/pricing/>
+- 2026-11-24 현재 이 네트워크에서는 `www.novisign.com` 연결이 재설정되었다. Wayback의 2026-10-05 공식 캡처와 공식 YouTube, 이미지 프록시로 확보한 공식 스크린샷을 사용했다.
+
+**확인한 화면·흐름**
+
+| 영역 | 확인 내용 |
+|---|---|
+| 대시보드 | Studio 상단 내비게이션은 Creatives / Playlists / Screens. Screens 탭은 “Manage, schedule, and organize all your content”, 총 화면 수, 검색·내보내기·정렬·List/Tile 전환·Create를 제공한다. |
+| 장소·그룹 | Advanced Settings > Groups에서 New Group을 만들고 Screens와 Playlists를 추가한다. 화면이 그룹에 들어가면 개별 플레이리스트 대신 그룹 콘텐츠만 재생한다. 장소(사이트) 계층은 별도로 확인하지 못했다. |
+| 화면 등록 | Studio에서 화면을 먼저 만들고 이름·설명·플레이리스트를 지정한다. 플레이어 앱에서 계정으로 로그인한 뒤 Player Key를 직접 입력하거나, 확대경으로 계정의 화면 목록에서 선택하고 Go!를 누른다. 6자리 페어링 코드 방식은 사용하지 않는다. |
+| 다중 모니터 | 플레이어 1개가 여러 화면에 같은 콘텐츠를 보낼 수 있다고 FAQ에 명시된다. 서로 다른 콘텐츠는 화면/플레이어별 라이선스가 필요하다. Business Plus의 Video Wall Editor가 Rows/Columns 기반 월을 제공하지만, 공개 화면으로 세부 조작을 확인하지 못했다. |
+| 이미지 | Media Library에 업로드하고 Creative에서 사용한다. 공식 Best Practice는 대상 화면과 같은 픽셀 크기(예: 1920×1080), 화면 비율, 파일 2~3MB 이하, 과대 해상도 회피를 권한다. 업로드 시 자동 비율 검사는 확인하지 못했다. |
+| 구성 | Creative Composer는 Widget Panel(20+ 위젯), Canvas, Properties, Preview의 4영역이다. Simple Creative(단일 이미지/영상)와 Composed Creative(Zone+Widget)를 구분한다. 템플릿·레이어·정렬·터치 버튼·외부 데이터·공유를 지원한다. |
+| 재생·스케줄 | Creative를 Playlist에 넣고 순서·길이·Loop·일정을 정한다. 플레이리스트 Preview가 있고, Playlist 스케줄이 Creative 스케줄보다 우선한다. New Scheduling UI와 공유 기능이 별도 문서로 안내된다. |
+| 미리보기 | Playlist Preview와 Template/Screen Preview, 실제 Player 화면이 있다. 1라운드 다른 제품처럼 시간축 스크럽이나 사이트 단위 시뮬레이션은 확인하지 못했다. |
+| 상태·오류 | Monitoring & Reports의 Device Monitor가 Download Status를 보여준다. Black Screen 문서는 10단계(슬라이드 다운로드, Skip incomplete slides, 캐시, Display notifications, 기기/앱 정지, TV 절전, 코덱)를 제시한다. 단일 슬라이드 플레이리스트가 불완전 슬라이드를 건너뛰어 검은 화면이 되는 사례가 특히 유용하다. |
+
+**UX 강점**
+
+- Screens 표가 이름·플레이리스트 수·Screen Key·Config·Group을 한 행에 보여 주고, Preview/Copy Key/Set Configuration/Set Location/Export/Delete를 행 메뉴에 모은다. 운영자가 “이 화면이 무엇을 재생하고 어디에 있는가”를 빠르게 찾기 좋다.
+- Simple Creative와 Composed Creative를 분리해, 이미지 한 장만 올리는 사용자와 Zone 디자인을 하는 사용자를 구분한다.
+- Best Practice 문서가 “화면에서 실제로 차지할 픽셀 크기”를 기준으로 이미지를 준비하라고 설명한다. 업로드 검사는 없지만 원인 설명은 구체적이다.
+- Black Screen 문서가 “단일 슬라이드 + Skip incomplete slides = 검은 화면”처럼 실제 초보자 오해를 집어낸다.
+
+**초보자 마찰**
+
+- 플레이어 앱에서 계정 아이디·비밀번호로 로그인하고 Player Key를 고르는 방식은 키오스크 설치 직원에게 부담이 된다. 코드/QR만으로 등록하는 제품과 비교되는 지점이다.
+- Creative, Playlist, Screen, Player, Screen Key, Config, Group이 서로 다른 계층이다. “화면에 이미지를 띄운다”는 목표보다 “플레이어를 화면에 연결한다”는 기기 중심 언어가 먼저 보인다.
+- 이미지 규격을 문서의 권장값에 맡기고, 대상 화면별 자동 검사·안전 영역을 제공하지 않는다.
+- 공식 사이트가 지역/네트워크에 따라 차단되어 최신 UI를 직접 볼 수 없다. 이 보고서의 NoviSign 판단은 2026-10-05 캡처 기준이다.
+
+**참고할 패턴**
+
+- Screens 표의 **이름·플레이리스트 수·Screen Key·Config·Group** 열과 행 메뉴.
+- **Copy Key / Preview / Set Configuration / Set Location**을 한 곳에 모은 운영 도구.
+- Simple/Composed Creative 구분과 4영역 Creative Composer.
+- Black Screen 문서의 **원인→확인→복구** 10단계.
+
+**피할 패턴**
+
+- 플레이어에 관리자 계정 자격 증명을 입력하게 하는 등록.
+- “플레이어 1대가 여러 화면에 같은 콘텐츠”라는 설명을 다중 모니터 지원으로 오해하게 만드는 표현.
+- 미디어 규격을 문서 권장값에만 맡기는 것.
+- 단일 슬라이드에서 불완전 콘텐츠를 건너뛰어 검은 화면이 되는 기본값.
+
+**증거 파일**
+
+- `novisign/screens-tab.png` — Screens 표·Screen Key·Config·Group
+- `novisign/screen-options.png` — 화면 행과 Preview/설정 진입
+- `novisign/screen-popup-menu.png` — Edit/Preview/Copy Key/Set Configuration/Set Location/Export/Delete
+- `novisign/screen-creation-select-playlist.png` — 화면 생성 시 플레이리스트 선택
+- `novisign/screen-advanced-menu.png` — Advanced Settings/Groups 진입
+- `novisign/demo-slideshow-editor.png` — 공식 YouTube의 Creative Composer
+
+### 9.4 Mvix
+
+**사업·라이선스와 공식 URL**
+
+- SaaS CMS + 일회성 구매 하드웨어 모델. Core/Standard/Pro 플레이어가 각각 $500/$600/$750이고, 클라우드 CMS 라이선스는 플레이어에 포함된다. 월 구독이 없다. CMS는 50+ 언어를 지원한다고 안내한다.
+- Software: <https://www.mvix.com/digital-signage-software>, Knowledgebase: <https://www.mvix.com/knowledgebase>, Pricing: <https://www.mvix.com/pricing>
+- 공개 관리자 데모는 확인하지 못했다. 공식 사이트의 제품 UI 이미지와 Knowledgebase 절차를 대조했다.
+
+**확인한 화면·흐름**
+
+| 영역 | 확인 내용 |
+|---|---|
+| 대시보드 | CMS 대시보드는 Device Preview 블록(화면 미리보기 슬라이드쇼), 기기·콘텐츠 요약, 사용자 정의 대시보드로 구성된다. 공식 UI 이미지에서 Media/Playlist/Template/Content Deployment 화면을 확인했다. |
+| 장소·그룹 | Device/Player Groups, Locations, Tags, User Groups를 별도로 제공한다. Device Library의 Location View는 위치별 묶음과 상태를 보여준다. |
+| 화면 등록 | 플레이어의 HDMI·네트워크·전원을 연결한 뒤 CMS Device Library에서 관리한다. 공개 문서에서는 6자리 코드 등 셀프서비스 페어링 화면을 확인하지 못했다. Device Library는 Alias/System name, App/OS/Browser 버전, Package, Status를 보여준다. |
+| 다중 모니터 | Template을 Video Wall 모드로 전환하고 Rows/Columns로 Zone 수를 정한다. 각 Zone은 모니터에 대응하며, 한 개의 큰 미디어를 모든 Zone에 걸치거나 Zone별 다른 미디어를 넣을 수 있다. 월은 한 방향(가로/세로)만 지원한다. 비디오월 플레이어가 여러 HDMI 출력을 구동하는 구성이 전제로 읽힌다. |
+| 이미지 | Media Library에서 10개 파일, 총 1GB까지 업로드한다. JPEG는 1920×1080 권장, 더 큰 이미지는 화면에 맞게 축소된다. BMP/PNG/JPG/GIF, MP4(H.264), PDF, Office 등을 지원한다. 자동 비율 경고는 확인하지 못했다. |
+| 구성 | Layout Designer/Template Canvas에서 Zone을 배치하고, Playlist Builder에서 미디어를 드래그·정렬한다. Template은 플랜별 2/6/10 Zone을 제공한다. |
+| 재생·스케줄 | Playlist는 최대 250개 항목(권장 100개), 미디어별 재생 시간·유효 시간·순서·그룹을 지원한다. Schedule/Publish는 별도 모듈이며 Failover Content로 화면이 비지 않게 한다. |
+| 미리보기 | Device Preview가 대시보드·Device Preview 페이지·Device Library에서 실제 화면 스크린샷을 보여준다. 전체 새로고침은 5분에 한 번으로 제한된다. 콘텐츠 시간축 시뮬레이션은 아니다. |
+| 상태·오류 | Device Library 상태는 Active/Inactive/Dormant/Disabled. Dormant는 120일 이상 비활성, Disabled는 인증 실패다. OS가 오래되면 빨간 느낌표, Device Health는 연결/네트워크 속도, CPU 온도, 저장 공간, RAM을 보여준다. 오프라인 알림과 그룹/위치/태그가 있다. |
+
+**UX 강점**
+
+- Device Preview가 “지금 화면에 무엇이 보이는가”를 실제 스크린샷으로 보여 주고, 대시보드·전용 페이지·Device Library 세 곳에서 접근된다. 초보자가 “송출됐는지” 확인하기 쉽다.
+- Device Health가 CPU 온도·저장 공간·RAM·Wi-Fi를 한 화면에 모아, 화면이 꺼진 이유를 콘텐츠와 분리해 진단하게 한다.
+- Video Wall Template이 Rows/Columns와 Zone 번호를 화면에 직접 대응시켜, 복잡한 크롭 계산 없이 기본 월을 만들 수 있다.
+- Failover Content와 Offline Playback을 기본 기능으로 안내해 검은 화면 위험을 줄인다.
+
+**초보자 마찰**
+
+- Active/Inactive/Dormant/Disabled의 의미가 많고, Dormant는 120일, Disabled는 인증 실패라는 별도 규칙이다. “오프라인” 하나로 이해하기 어렵다.
+- Device, Player, Screen, Template, Zone, Playlist, Schedule, Publish가 문서마다 다른 문맥으로 쓰인다. Knowledgebase가 200개 이상이라 검색 없이 전체 구조를 파악하기 어렵다.
+- 일회성 하드웨어 구매($500~$750)와 CMS 무료 모델은 매력적이지만, 기존 PC·모니터를 재사용하려는 현장에는 맞지 않는다.
+- 이미지 규격을 “권장 1920×1080, 큰 이미지는 축소”로 처리해, 세로 모니터·비율 불일치에 대한 사전 경고가 약하다.
+- 공개 관리자 데모가 없어 실제 버튼 위치·빈 상태·오류 문구를 확인하지 못했다.
+
+**참고할 패턴**
+
+- **Device Preview**를 대시보드·목록·상세에 중복 배치해 “실제 화면 확인”을 어디서든 가능하게 한 점.
+- **Device Health**를 상태와 분리한 점.
+- Video Wall의 Rows/Columns와 Zone 번호.
+- Failover Content·Offline Playback을 기본값으로 안내하는 점.
+
+**피할 패턴**
+
+- Active/Inactive/Dormant/Disabled를 색과 문서로만 구분하는 상태 모델.
+- 하드웨어 일회성 구매를 전제로 한 배포.
+- 이미지 비율 문제를 “축소된다”는 설명으로 끝내는 것.
+- 200개 문서를 기능별로 흩어 놓고 “초보자용 시작 경로”를 별도로 강하게 제시하지 않는 구조.
+
+**증거 파일**
+
+- `mvix/device-management.webp` — Device Management/상태 카드
+- `mvix/media-library.webp` — Media Library
+- `mvix/playlist-builder.webp` — Playlist Builder
+- `mvix/layout-designer.webp` — Layout/Template Designer
+- `mvix/content-deployment.webp` — Content Deployment
+
+### 9.5 ScreenTinker
+
+**사업·라이선스와 공식 URL**
+
+- MIT 오픈소스. 셀프 호스팅은 무료·기기 수 제한 없음, 호스팅은 Free 1대, Home $9.99/월, Starter $39, Pro $99, Business $199. 14일 Pro 체험(15대, 카드 불필요).
+- 공식: <https://screentinker.com/>, GitHub: <https://github.com/screentinker/screentinker>
+- 공개 사이트에서 로그인 없이 관리자 전체를 조작하지는 못했고, 공식 저장소의 실제 UI 캡처와 공식 문서를 근거로 삼았다.
+
+**확인한 화면·흐름**
+
+| 영역 | 확인 내용 |
+|---|---|
+| 대시보드 | 좌측 내비게이션과 화면 카드/상태, 첫 사용 체크리스트(화면 연결, 콘텐츠 추가, 그룹 만들기, 일정 만들기 등)를 확인했다. |
+| 장소·그룹 | Devices/Groups/Workspaces 구조. Group header에서 화면 수·온라인·재생 상태를 보여주고, 그룹에 플레이리스트·일정·명령을 적용한다. Workspace는 사이트/조직 경계다. |
+| 화면 등록 | 플레이어 `/player`가 6자리 코드를 표시하고 대시보드에서 페어링한다. 브라우저 저장소가 지워지는 환경을 위해 `?k=` 디스플레이 링크도 제공한다. 링크가 유효하지 않고 저장된 신원도 없으면 페어링 코드로 돌아간다. |
+| 다중 모니터 | Video Wall이 **하나의 화면**처럼 동작한다. Available displays를 캔버스에 드래그하고, 화면 가장자리·중심선·베젤 간격에 스냅하며, Alt로 자유 배치, 화살표로 1px/10px 이동. 패널별 장착 방향(가로/세로)을 지정하면 콘텐츠를 회전해 준다. |
+| 이미지 | 미디어 업로드·썸네일·영상 길이 ffprobe·PDF 페이지→슬라이드·URL 콘텐츠를 지원한다. 화면 비율은 레이아웃 Zone %와 Portrait/4:3 버전으로 처리한다. 업로드 시 대상 모니터별 자동 규격 검사는 문서에서 확인하지 못했다. 텍스트 가독성 검사는 별도로 강하다. |
+| 구성 | Layout Editor에서 Zone을 %로 배치. Playlist에 Layout을 지정하면 같은 플레이리스트를 재생하는 모든 화면이 그 Layout을 쓴다. Layout별 Portrait/4:3 버전, Campaign(전체 Layout을 Playlist 항목으로 재생), Zone별 Playlist를 지원한다. |
+| 재생·스케줄 | Draft/Publish/Revert, 기기·그룹별 Schedule, 기기 일정이 그룹 일정을 이김, 우선순위 충돌 해결, 주간 캘린더·반복. |
+| 미리보기 | “What will this screen show?”가 특정 날짜·시간의 재생 항목, 선택된 Schedule, 탈락 이유, 그룹 전체 비교, 7일 타임라인, 실제 Player 프레임을 보여준다. 로직은 실제 스케줄러와 같은 함수를 재사용한다. |
+| 상태·오류 | Offline 카드, 마지막 접속, 원격 제어/스크린샷, 배터리·저장 공간·RAM·CPU·Wi-Fi·업타임 telemetry, 오프라인 알림, 복구 가이드. |
+
+**UX 강점**
+
+- 비디오월 캔버스가 “화면을 붙이는 행위”를 시각적으로 만들고, 베젤·회전·플레이어 박스·공유 시계까지 한 흐름에 둔다. 이번 조사에서 N대·가변 배치에 가장 가까운 구현이다.
+- “What will this screen show?”가 결과뿐 아니라 **왜 그 Schedule이 이겼는지/왜 항목이 빠졌는지**를 설명한다. 초보자에게 가장 필요한 피드백이다.
+- Layout의 Portrait/4:3 버전은 같은 Zone ID를 유지해, 한 플레이리스트를 가로·세로 화면에 함께 쓸 수 있다.
+- 페어링 코드와 디스플레이 링크를 모두 제공해, 브라우저 저장소가 초기화되는 키오스크 환경까지 고려한다.
+
+**초보자 마찰**
+
+- 기능 표면이 매우 넓다. Workspace, Group, Wall, Layout, Playlist, Campaign, Trigger, Mesh, Node, E-paper, Plugin이 한 제품에 있다. 첫 화면 체크리스트가 이를 완화하지만, 메뉴 자체는 무겁다.
+- Layout 결정 우선순위(본사 강제 → Schedule → Playlist → Screen → Full screen)가 강력하지만, 초보자가 “왜 이 Layout이 나오지?”를 이해하려면 미리보기의 설명을 읽어야 한다.
+- Video Wall 문서는 일부 플랫폼에서 아직 실기 검증이 안 됐다고 명시한다(문서 기준 Samsung/BrightSign/Pi/Windows 미검증, Android 에뮬레이터 확인). “지원”과 “검증”을 구분해야 한다.
+- 단일 개발자 유지보수라는 위험이 README에 명시되어 있다.
+
+**참고할 패턴**
+
+- **비디오월 캔버스 + 베젤 스냅 + 패널별 장착 방향 + 공유 시계**.
+- **Playlist 수준 Layout**과 Portrait/4:3 버전.
+- **Preview at time + Why + 그룹 전체 비교 + 타임라인**.
+- **6자리 코드 + 대체 디스플레이 링크**.
+- Draft/Publish/Revert와 “미리보기는 실제 스케줄러 함수를 재사용” 원칙.
+
+**피할 패턴**
+
+- 기능을 모두 첫 화면에 노출해 “이 제품은 무엇부터 해야 하나”를 다시 묻게 만드는 구성.
+- Layout 우선순위를 문서로만 설명하고 화면에서 근거를 보여 주지 않는 것.
+- 검증되지 않은 플랫폼을 “지원”과 동일하게 표시하는 것.
+
+**증거 파일**
+
+- `screentinker/dashboard.png` — 대시보드
+- `screentinker/getting-started.webp` — 첫 사용 체크리스트
+- `screentinker/player-pairing.webp` — 6자리 페어링 코드
+- `screentinker/video-wall-canvas.webp` — 비디오월 캔버스
+- `screentinker/video-wall-live.webp` — 월 전체 라이브 미리보기
+- `screentinker/group-header.webp` — 그룹 상태 헤더
+- `screentinker/layout-editor.webp` — Zone/Layout 편집
+- `screentinker/preview-at.webp` — 시간 지정 미리보기
+- `screentinker/offline-card.webp` — 오프라인 상태 카드
+- `screentinker/verify.webp` — 화면 검증/상태
+
+### 9.6 Concerto
+
+**사업·라이선스와 공식 URL**
+
+- Apache-2.0 오픈소스. Rails 기반, Docker 실행, SQLite 저장. 공개 데모는 읽기 전용으로 열려 있고 3.0.0.rc3이다.
+- 공식 데모: <https://demo.concerto-signage.org/>, GitHub: <https://github.com/concerto/concerto>
+- 데모는 공개 데이터(뉴스 피드, 샘플 콘텐츠)이며 로그인하지 않으면 생성·편집은 할 수 없다.
+
+**확인한 화면·흐름**
+
+| 영역 | 확인 내용 |
+|---|---|
+| 대시보드 | Content / Dashboard, Add Content, Browse Content, Feeds, Screens의 좌측 내비게이션. Active 30 / Upcoming 1 / Expired 8 카드와 콘텐츠 카드 그리드, 검색. |
+| 장소·그룹 | Group이 화면·피드·사용자 권한의 단위다. 공개 데모에서는 사이트 계층을 노출하지 않는다. 화면은 하나의 Group에 속한다. |
+| 화면 등록 | 화면은 Template과 Group을 선택해 만들고, 각 Position(Field)에 Feed를 구독시킨다. 공개/비공개 화면은 URL/토큰으로 접근한다. 공개 데모의 두 화면은 모두 Offline·마지막 접속 시각 표시다. |
+| 다중 모니터 | 화면별 Template/Player 구조이며, 여러 모니터를 한 캔버스로 묶는 기능이나 재생 동기화는 공개 UI·문서에서 확인하지 못했다. |
+| 이미지 | Graphic은 Player에서 `object-fit: contain`으로 letterbox된다. Content Fit 설계는 이미지 비율과 Position 비율의 fit score를 계산해 가장 잘 맞는 Position에 배치하고, 최소 점수 미만이면 해당 Position을 탈락시킨다. 업로드 시 사용자에게 “이 화면에서 잘린다”고 경고하는 UI는 확인하지 못했다. |
+| 구성 | Template Canvas에서 Position/Field와 배경 이미지·CSS를 정의한다. 화면 상세의 Template Preview가 Main/Ticker/Sidebar/Time Zone을 시각화하고, 각 Zone의 Feed Subscription을 오른쪽 패널에 보여준다. |
+| 재생·스케줄 | 전통적 Playlist보다 Feed/Subscription 모델이다. 콘텐츠 Start/End, Feed 순서·가중치·Random/Weighted/Strict Priority, 승인 워크플로를 지원한다. |
+| 미리보기 | “View in Player”가 실제 Player 화면을 새 탭으로 열어 Template+Feed 결과를 보여준다. 시간 이동·사이트 단위 시뮬레이션은 확인하지 못했다. |
+| 상태·오류 | Screens 카드에 Offline과 “Last seen about 16 hours ago”가 표시된다. 데모는 두 화면 모두 Offline이라 정상 재생 상태·오류 복구 UI를 관찰하지 못했다. |
+
+**UX 강점**
+
+- 화면 상세가 **Template Preview(공간 구조)**와 **Feed Subscriptions(데이터 연결)**를 나란히 보여 준다. “이 구역에 어떤 피드가 들어가는가”가 한눈에 보인다.
+- Content Fit은 단순 중앙 정렬이 아니라 콘텐츠 비율과 Position 비율을 점수화해 가장 읽기 좋은 구역을 고른다. 잘못 맞는 콘텐츠를 조용히 버리지 않고 “가장 덜 나쁜 위치”에 두는 원칙도 좋다.
+- 공개 데모가 로그인 없이 콘텐츠·화면·플레이어를 읽기 전용으로 보여 줘, 제품의 결과물을 바로 평가할 수 있다.
+- 콘텐츠 승인과 Feed 권한이 분리되어 공공기관의 “담당자 제출 → 관리자 승인” 흐름에 참고할 만하다.
+
+**초보자 마찰**
+
+- Feed, Template, Position, Field, Subscription, Group, Content라는 용어가 이미지 중심 관리자에게 낯설다. “이미지 순서”나 “재생목록”이 전면에 없다.
+- 화면을 등록하려면 Template과 Group, 각 Position의 Feed를 먼저 이해해야 한다. 등록 코드/QR로 바로 시작하는 제품과 진입 장벽이 다르다.
+- 다중 모니터 동기화, 화면별 해상도/방향, 시간축 미리보기가 없다. 이 프로젝트의 핵심 요구에는 직접 맞지 않는다.
+- 3.0 RC라 안정판 2.x와 기능·UI가 다를 수 있고, 공개 데모는 편집 권한이 없어 생성 흐름을 검증하지 못했다.
+
+**참고할 패턴**
+
+- **Template Preview + Zone별 Feed Subscription** 매트릭스.
+- **Fit score**로 콘텐츠와 구역의 비율을 비교하고, 최소 점수·탈락 이유를 계산하는 방식.
+- 콘텐츠 승인·Feed 권한 분리.
+- 로그인 없는 **공개 상태/결과 대시보드**.
+
+**피할 패턴**
+
+- 이미지 중심 운영에 Feed/Template/Subscription을 먼저 배우게 하는 정보 구조.
+- 화면 등록에 여러 객체를 선행 요구하는 흐름.
+- 동기화·가변 배치가 없는 구조를 “다중 화면” 요구에 그대로 쓰는 것.
+- RC 버전을 검증 없이 운영에 투입하는 것.
+
+**증거 파일**
+
+- `concerto/dashboard-live.png` — 공개 데모 Content 대시보드
+- `concerto/screens-live.png` — 화면 카드와 Offline/Last seen
+- `concerto/feeds-live.png` — Feed 목록
+- `concerto/screen-detail-live.png` — Template Preview + Feed Subscriptions
+- `concerto/player-live.png` — 실제 Player 결과
+
+### 9.7 Reach Media
+
+이 이름으로 공개된 **디지털 사이니지 관리자 제품**을 확인하지 못했다. `reachmedia.co.nz`는 뉴질랜드 마케팅/레터박스 대행사 `reach.nz`로 리다이렉트되고, `reachmedia.com.au`는 커피컵 광고, `reachmedia.tv`는 영상 제작, `reachmedia.io`는 주차 도메인이었다. 동명의 다른 제품이 있다면 정확한 공식 URL 확인이 필요하다. 따라서 화면·기능·스크린샷을 만들지 않고 비교에서 제외했다.
+
+### 9.8 2라운드가 바꾼 판단
+
+1. **ScreenTinker가 우리 요구에 가장 가까운 참조 구현으로 올라왔다.** 비디오월 캔버스, 베젤/방향, Playlist 수준 Layout, Portrait/4:3 버전, 시간 지정 미리보기와 “왜” 설명은 1라운드의 빈틈을 직접 메운다. 단, 기능 표면과 플랫폼 검증 한계는 그대로 경계해야 한다.
+2. **Concerto의 fit score는 이미지 규격 검사에 새로운 선택지를 준다.** “대상 모니터별로 잘림/여백을 경고”하는 대신, “이 이미지가 가장 잘 맞는 구역은 어디인가”를 점수로 보여 줄 수 있다. 다만 자동 배치가 사용자의 의도를 덮지 않도록 “추천 + 이유 + 직접 선택”으로 설계해야 한다.
+3. **NoviSign/Mvix는 “운영 콘솔의 완성도”는 높지만 초보자용 제품은 아니다.** NoviSign은 Creative/Playlist/Screen/Player Key, Mvix는 Device/Template/Zone/Health가 계층을 이루고, 둘 다 이미지 규격을 문서 권장값에 맡긴다. 우리 제품은 이 두 제품의 운영 정보 밀도를 그대로 가져오면 안 된다.
+4. **Play의 공개 모바일 화면은 “현장에서 상태를 보는 관리자” 요구를 잘 보여 준다.** 데스크톱 전체를 검증하지 못했지만, Offline/Needs publish/QR/Enter pairing code/Group Schedule이 모바일에서 어떻게 요약되는지는 참고할 만하다.
+5. **1라운드의 “다중 모니터 자유 배치 공백” 결론은 유지된다.** ScreenTinker가 가장 가깝지만, 여전히 비디오월은 “한 화면으로 취급”하는 모델이고, 서로 다른 해상도·방향의 독립 모니터를 한 사이트 캔버스에서 자유 배치하는 제품은 확인하지 못했다.
+
+### 9.9 2라운드 스크린샷 증거
+
+| 제품 | 파일 | 보여주는 화면 | 출처 |
+|---|---|---|---|
+| Yodeck | `yodeck/demo-playlist-editor.png` | 플레이리스트 필름스트립·미디어 탭·길이 | 공식 YouTube 00:20 프레임 |
+| Yodeck | `yodeck/demo-playlist-options.png` | Transition/Playback/Sync/Random 옵션 | 공식 YouTube 00:45 프레임 |
+| ScreenCloud | `screencloud/demo-canvas-editor.png` | Canvas 편집기 | 공식 Wistia 00:15 프레임 |
+| OptiSigns | `optisigns/demo-screens-list.png` | Screens 목록·Add Screen | 공식 “Managing Your Screens” 00:45 프레임 |
+| OptiSigns | `optisigns/demo-edit-screen.png` | Edit Screen·방향/운영 스케줄 | 같은 영상 01:15 프레임 |
+| OptiSigns | `optisigns/demo-add-screen.png` | Add Screen·Pair code | 같은 영상 02:00 프레임 |
+| OptiSigns | `optisigns/demo-push-preview.png` | Push To Screens·Schedule·Preview | 같은 영상 07:00 프레임 |
+| OptiSigns | `optisigns/demo-operational-schedule.png` | 운영 스케줄 편집 | 같은 영상 10:00 프레임 |
+| Play | `play/store-screen-qr.png` | 모바일 화면 상태·Add screen·QR/Enter pairing code | 공식 Google Play 스크린샷 |
+| Play | `play/store-screen-status.png` | 화면 목록·Offline/Needs publish | 공식 Google Play 스크린샷 |
+| Play | `play/store-editor.png` | 모바일 편집기·좌표/애니메이션 | 공식 Google Play 스크린샷 |
+| Play | `play/store-group-schedule.png` | Group Base playlist·Synchronized·Schedule timeline | 공식 Google Play 스크린샷 |
+| NoviSign | `novisign/screens-tab.png` | Screens 표·Screen Key·Config·Group | 공식 Help Center 캡처(Wayback) |
+| NoviSign | `novisign/screen-options.png` | 화면 행과 설정 진입 | 공식 Help Center 캡처(Wayback) |
+| NoviSign | `novisign/screen-popup-menu.png` | Preview/Copy Key/Set Config/Set Location/Export/Delete | 공식 Help Center 캡처(Wayback) |
+| NoviSign | `novisign/screen-creation-select-playlist.png` | 화면 생성 시 Playlist 선택 | 공식 Help Center 캡처(Wayback) |
+| NoviSign | `novisign/screen-advanced-menu.png` | Advanced Settings/Groups | 공식 Help Center 캡처(Wayback) |
+| NoviSign | `novisign/demo-slideshow-editor.png` | Creative Composer | 공식 YouTube 00:15 프레임 |
+| Mvix | `mvix/device-management.webp` | Device Management/상태 | 공식 제품 UI 이미지 |
+| Mvix | `mvix/media-library.webp` | Media Library | 공식 제품 UI 이미지 |
+| Mvix | `mvix/playlist-builder.webp` | Playlist Builder | 공식 제품 UI 이미지 |
+| Mvix | `mvix/layout-designer.webp` | Layout Designer | 공식 제품 UI 이미지 |
+| Mvix | `mvix/content-deployment.webp` | Content Deployment | 공식 제품 UI 이미지 |
+| ScreenTinker | `screentinker/dashboard.png` | 대시보드 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/getting-started.webp` | 첫 사용 체크리스트 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/player-pairing.webp` | 6자리 페어링 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/video-wall-canvas.webp` | 비디오월 캔버스 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/video-wall-live.webp` | 월 라이브 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/group-header.webp` | 그룹 상태 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/layout-editor.webp` | Layout/Zone | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/preview-at.webp` | 시간 지정 미리보기 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/offline-card.webp` | 오프라인 카드 | 공식 저장소 UI 캡처 |
+| ScreenTinker | `screentinker/verify.webp` | 화면 검증 | 공식 저장소 UI 캡처 |
+| Concerto | `concerto/dashboard-live.png` | 공개 데모 대시보드 | 라이브 읽기 전용 |
+| Concerto | `concerto/screens-live.png` | 화면 카드·Offline | 라이브 읽기 전용 |
+| Concerto | `concerto/feeds-live.png` | Feed 목록 | 라이브 읽기 전용 |
+| Concerto | `concerto/screen-detail-live.png` | Template Preview·Feed Subscriptions | 라이브 읽기 전용 |
+| Concerto | `concerto/player-live.png` | 실제 Player 결과 | 라이브 읽기 전용 |
+
+## 10. 확인하지 못한 것 / 후속 조사
 
 - Xibo의 현재 CMS 랜딩 대시보드, 실제 빈 상태, 등록 승인 모달은 공개 화면으로 확인하지 못했다. Displays 그리드와 문서 설명만 근거로 삼았다.
-- Yodeck·ScreenCloud·OptiSigns·Play는 관리자 계정이 필요해 실제 화면 생성·업로드·게시를 수행하지 못했다. 문서와 공개 캡처의 단계 설명을 대조한 결과다.
+- Yodeck·ScreenCloud·OptiSigns·Play는 관리자 계정이 필요해 실제 화면 생성·업로드·게시를 수행하지 못했다. 공개 영상/스토어 화면으로 핵심 흐름을 교차 검증했지만, 현재 데스크톱 관리자 전체를 라이브로 조작한 것은 아니다.
 - ScreenCloud의 일부 캡처는 2019·2021년 화면이고, OptiSigns도 구버전 UI가 섞여 있다. 현재 UI와 다를 수 있다.
-- Play의 지원 문서는 화면 캡처가 거의 없어, “현재 화면 보기”와 관리자 UI를 라이브로 확인하지 못했다. 공식 마케팅 UI 이미지와 문서 텍스트로 대체했다.
+- Play는 공개 Google Play 앱 화면으로 모바일 관리자·화면 상태·Group Schedule을 확인했지만, 데스크톱 관리자 전체와 “현재 화면 보기”를 라이브로 조작하지는 못했다.
 - Anthias는 호스팅 데모가 없어 설정·자산 추가·컨트롤러 승인 흐름을 실제로 조작하지 못했다. 공식 사이트 캡처와 저장소 템플릿으로 확인했다.
 - Xibo·Yodeck·ScreenCloud·OptiSigns·Play·Anthias의 한국어 UI 번역 품질은 이번 조사에서 검증하지 않았다. 모든 공식 문서는 영어로 읽었다.
 - Screenly는 공개 문서의 내비게이션·용어·화면 흐름만 확인했고, 실제 관리자 UI 캡처는 확보하지 못했다. Signagelive는 네트워크 생성 절차와 라이선스 선행 조건만 확인했다.
-- NoviSign, Mvix, Reach Media, ScreenTinker, Concerto의 화면 조사는 이번 라운드에서 완료하지 못했다. 다음 라운드에서 공개 데모/매뉴얼/저장소 화면을 추가 확인한다.
+- NoviSign은 공식 사이트가 이 네트워크에서 차단되어 2026-10-05 Wayback 캡처 기준이다. Mvix는 공개 관리자 데모가 없고 공식 UI 이미지·문서만 확인했다.
+- ScreenTinker는 공식 저장소 캡처·문서를 사용했고 공개 데모 관리자 전체를 조작하지 못했다. Concerto는 공개 데모를 읽기 전용으로 확인했을 뿐 생성·편집은 하지 못했다.
+- Reach Media는 동명의 디지털 사이니지 관리자 제품을 확인하지 못해 비교에서 제외했다. 정확한 공식 도메인이 확보되면 다음 라운드에서 보완한다.
 
-## 10. 이 프로젝트에 대한 권고
+## 11. 이 프로젝트에 대한 권고
 
 1. **홈은 “상태 + 다음 할 일”로 제한한다.** Play의 “1 of N screens live”, Yodeck의 상태 타일, Anthias의 Enabled/Inactive처럼 현재 상태와 다음 행동을 먼저 보여준다. 기능 목록은 뒤로 보낸다.
 2. **2단계 화면 등록에 테스트 화면·확인 코드·승인을 넣는다.** Yodeck/Anthias의 장점을 결합해 “이 브라우저로 테스트”, “6자리 확인 코드”, “승인 대기”를 제공한다. 자동 발견은 후속 기능으로 두고, 수동 코드 흐름을 완성한다.
