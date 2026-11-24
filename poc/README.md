@@ -19,6 +19,10 @@ poc/
 └─ artifacts/             Saved test output, JSON reports, screenshots
 ```
 
+![PoC 가상 모니터 미리보기](screenshots/preview-site-a.png)
+
+*기술 검증용 PoC 화면. 최종 한국어 관리 UI는 prototype/에서 별도 설계한다.*
+
 ## Run it
 
 Requirements: Node.js 20 or newer. Node 24.22.2 was used for verification. The server uses only Node built-ins and needs no Docker, database, package install, or cloud service.
