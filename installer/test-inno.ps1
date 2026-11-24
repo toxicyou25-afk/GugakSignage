@@ -254,12 +254,22 @@ try {
     $explicitDataDir = Join-Path $testRoot "explicit-data-change"
     $changeLog = Join-Path $testRoot "inno-explicit-data-change.log"
     $configHashBeforeChange = Get-StableFileHash -Path (Join-Path $installDir "install.json")
+    $sentinelPath = Join-Path $installDir "package.json"
+    $sentinelBefore = [IO.File]::ReadAllBytes($sentinelPath)
+    [IO.File]::WriteAllText($sentinelPath, "installer-sentinel-content", [Text.UTF8Encoding]::new($false))
+    $sentinelHash = Get-StableFileHash -Path $sentinelPath
     $changeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /DATADIR="' + $explicitDataDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $changeLog + '"'
-    $changeRun = Start-Process -FilePath $SetupExe -ArgumentList $changeArguments -Wait -PassThru -WindowStyle Hidden
-    if ($changeRun.ExitCode -eq 0) { throw "기존 설치의 /DATADIR 변경이 Setup 성공으로 종료됐습니다." }
-    if ((Get-StableFileHash -Path (Join-Path $installDir "install.json")) -ne $configHashBeforeChange) { throw "거부된 /DATADIR 변경이 install.json을 변경했습니다." }
-    if (Test-Path -LiteralPath $explicitDataDir) { throw "거부된 /DATADIR 변경이 새 데이터 폴더를 만들었습니다." }
-    $report.checks.existingDataDirChangeRejected = $true
+    try {
+        $changeRun = Start-Process -FilePath $SetupExe -ArgumentList $changeArguments -Wait -PassThru -WindowStyle Hidden
+        if ($changeRun.ExitCode -eq 0) { throw "기존 설치의 /DATADIR 변경이 Setup 성공으로 종료됐습니다." }
+        if ((Get-StableFileHash -Path (Join-Path $installDir "install.json")) -ne $configHashBeforeChange) { throw "거부된 /DATADIR 변경이 install.json을 변경했습니다." }
+        if (Test-Path -LiteralPath $explicitDataDir) { throw "거부된 /DATADIR 변경이 새 데이터 폴더를 만들었습니다." }
+        if ((Get-StableFileHash -Path $sentinelPath) -ne $sentinelHash) { throw "거부된 /DATADIR 변경이 앱 파일을 덮어썼습니다." }
+        $report.checks.existingDataDirChangeRejected = $true
+        $report.checks.existingDataDirChangePreservesAppFiles = $true
+    } finally {
+        [IO.File]::WriteAllBytes($sentinelPath, $sentinelBefore)
+    }
 
     & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
     Wait-Until -TimeoutSeconds 25 -Description "Inno 업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }

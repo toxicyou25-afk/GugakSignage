@@ -250,15 +250,12 @@ var
   ExistingDataDir, SelectedDataDir, InstallDir: String;
 begin
   Result := '';
-  if not DataDirWasSpecified then
+  ExistingDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
+  if DataDirResolutionIsExisting then
   begin
-    ExistingDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
-    if DataDirResolutionIsExisting then
-    begin
-      PreviousDataDir := ExistingDataDir;
-      if not DataDirChangeConfirmed then
-        DataDirPage.Values[0] := ExistingDataDir;
-    end;
+    PreviousDataDir := ExistingDataDir;
+    if (not DataDirWasSpecified) and (not DataDirChangeConfirmed) then
+      DataDirPage.Values[0] := ExistingDataDir;
   end;
   SelectedDataDir := GetSelectedDataDirForValidation();
   InstallDir := ExpandConstant('{app}');
