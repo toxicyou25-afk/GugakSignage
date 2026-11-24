@@ -4,6 +4,8 @@
 
 공개 저장소: <https://github.com/toxicyou25-afk/GugakSignage>
 
+[![CI](https://github.com/toxicyou25-afk/GugakSignage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/toxicyou25-afk/GugakSignage/actions/workflows/ci.yml)
+
 공개 데모(설치 없이 화면 보기): <https://toxicyou25-afk.github.io/GugakSignage/>
 
 ## 현재 단계
@@ -13,6 +15,7 @@
 - 2026-11-24: 독자 UI·UX 설계와 작동형 프로토타입 착수
 - 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 59/59, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
 - 2026-11-24: **1차 동작본(관리 서버 + 윈도우 재생기) 구현·로컬 검증 완료** — SQLite, 한글 관리 화면, 콘텐츠·기기·재생목록·게시 API, 오프라인 캐시 재생기
+- 2026-11-24: **장소·다중 모니터·화면별 배정 통합** — 기존 기기를 보존하는 SQLite 마이그레이션, 4화면 관리·RenderPlan 미리보기·브라우저 캔버스 재생 확인
 - 2026-11-24: **독자 한국어 UI·UX 프로토타입 완료** (Playwright 1440·1280·768 스모크 통과, 원본 스크린샷 14장)
 - 2026-11-24: **Apache-2.0 오픈소스로 공개**
 - 장비 모델·운영체제·연결 방식·기존 프로그램 정보는 담당 직원 확인 대기
@@ -42,6 +45,7 @@
 - [단계별 계획](docs/plan.md)
 - [PoC 실행·검증](poc/README.md)
 - [MVP 실행·구성](docs/design/mvp-runtime.md)
+- [다중 모니터 데이터·API·재생 계약](docs/design/multimonitor.md)
 - [MVP 검증 기록](docs/verification/mvp.md)
 - [UI 프로토타입](prototype/README.md)
 - [오픈소스 운영 원칙](docs/OPEN_SOURCE.md)
@@ -90,7 +94,7 @@ npm start -- --port 4174
 
 owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입니다. 이제 관리 화면에서 콘텐츠를 올리고, 기기에 등록 코드를 발급하고, 재생목록·시간표를 저장·게시하면 재생기가 전체화면으로 순환 재생합니다. 서버가 끊기면 재생기는 마지막 목록을 로컬 캐시에서 계속 재생합니다.
 
-이 MVP는 **다중 모니터 배치·동기화·가상 미리보기**를 포함하지 않습니다. 그 영역은 `poc/packages/engine`의 검증된 RenderPlan 계약을 향후 연결할 수 있도록 경계를 분리했습니다. 비교와 전환 지점은 [MVP 실행·구성](docs/design/mvp-runtime.md)에 적었습니다.
+이 MVP는 이제 **장소 → 화면 그룹 → 모니터·배치 → 화면별 재생목록** 흐름과 **다중 모니터 동기화·가상 미리보기**를 포함합니다. 기존 기기·재생목록·시간표 API는 그대로 남아 있고, 장소·화면 게시는 `poc/packages/engine`의 기존 `buildLayout`·`buildRenderPlan`을 서버 미리보기와 브라우저 재생기가 함께 사용합니다. 세부 계약은 [다중 모니터 설계](docs/design/multimonitor.md)에 있습니다.
 
 ### 30분 실행 절차
 
@@ -144,6 +148,14 @@ npm run dev
 2. **재생목록**에서 새 목록을 만들고 콘텐츠를 추가한 뒤 표시 시간·맞춤 방식·순서를 저장합니다.
 3. **기기 → 재생 설정**에서 기본 재생목록이나 시간표를 지정하고 `저장 후 게시`를 누릅니다. 기존 기기는 `게시` 버튼으로 새 버전을 배포할 수 있습니다.
 
+**4-1) 여러 모니터를 한 장소로 묶기**
+
+1. **장소·화면**에서 장소를 만들고 PC 기기를 선택합니다.
+2. 모니터 수·해상도·가로/세로·회전·가로/세로/격자 배치와 서버 시각 동기 주기를 저장합니다.
+3. 각 화면에 재생목록을 배정합니다. 빈 값은 그룹 기본 재생목록을 사용합니다.
+4. `미리보기 새로고침`에서 실제 RenderPlan을 확인한 뒤 `게시`합니다.
+5. 한 PC가 여러 모니터를 구동하면 기본 재생기 주소가 한 창의 다중 화면 캔버스를 엽니다. 모니터마다 브라우저 창을 따로 띄울 때는 `/player/?display=<모니터 ID>`를 사용합니다. PC가 다르면 각 기기 카드의 등록 코드로 재생기를 연결합니다.
+
 **5) 오프라인 동작 확인**
 
 재생기가 목록과 파일을 한 번 받은 뒤 서버를 끄면(`Ctrl+C` 또는 `docker compose stop`) 좌측 상단에 `오프라인 · 마지막 목록을 재생 중` 배지가 나타나고 이미지·동영상 순환이 계속됩니다. 서버를 다시 켜면 15초 주기로 새 버전을 확인합니다.
@@ -171,13 +183,20 @@ npm run dev
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 11/11 통과 (API 10건과 `.env` 설정 로드 1건) |
+| `npm test` | 16/16 통과 (기존 11건 유지 + 다중 모니터 엔진·결정적 배정·마이그레이션·API 5건) |
 | `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
+| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 배정·RenderPlan 미리보기·게시, 한 PC 4화면 캔버스, 오프라인 재로드, 모니터별 분리 창 |
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
-실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`에 저장합니다.
+실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 4장을 저장합니다.
+
+### 자동 회귀 검증(CI)
+
+`.github/workflows/ci.yml`은 모든 Pull Request, `main` 브랜치 push, 수동 실행에서 Node.js 24 Windows 환경을 준비하고 `npm ci`, 타입 검사, 빌드, 단위·API 테스트를 순서대로 실행합니다. 이어서 임시 SQLite 데이터로 첫 실행 흐름과 예약 시간·오프라인 재생 흐름을 Microsoft Edge와 Playwright로 검증합니다.
+
+검증 스크립트의 JSON 로그와 스크린샷은 실행 성공·실패와 관계없이 `windows-verification-<실행 횟수>` 아티팩트로 14일 동안 보관됩니다. 같은 브랜치에서 새 실행이 시작되면 이전 실행은 자동 취소되며, npm 의존성은 lockfile을 기준으로 캐시됩니다.
 
 ### SQLite → PostgreSQL 전환 지점
 
@@ -192,7 +211,7 @@ MVP는 외부 DB 설치 없이 실행되도록 SQLite 단일 파일(`node:sqlite
 
 - 로그인은 단일 관리자 비밀번호와 서명 쿠키만 지원합니다. 권한 분리·감사 로그·비밀번호 재설정은 2차입니다.
 - 등록 코드를 아는 사람은 **기존 연결 끊고 다시 연결** 버튼으로 재생기를 인수할 수 있습니다. 코드는 기기 카드·관리자에게만 공유하고 외부에 노출하지 마세요.
-- 사이트·다중 모니터 그룹·베젤·동기화·가상 미리보기는 포함하지 않습니다. PoC 엔진과의 연결 지점은 설계 문서에 정리했습니다.
+- 다중 모니터 배치는 브라우저 창·가상 캔버스에서 확인했습니다. 물리 모니터 1·2·4·8대, 실제 EDID·GPU 출력, 베젤 실측, 장시간 LAN 시계 오차는 이 환경에 장비가 없어 `NOT_RUN`입니다.
 - URL 콘텐츠는 iframe입니다. 외부 사이트가 `X-Frame-Options`/CSP로 삽입을 막으면 표시되지 않으므로, 기관의 자체 안내 페이지를 권장합니다. 오프라인에서는 URL 항목을 안내 카드로 바꾸고 다음 항목으로 넘어갑니다.
 - 시간표는 재생기 PC의 로컬 시각을 사용합니다. 서버가 여러 시간대를 운영하면 시간대 설정을 추가해야 합니다.
 - 재생기 캐시는 IndexedDB이며 브라우저 저장 공간·용량 정책의 영향을 받습니다. LAN IP의 HTTP에서는 서비스 워커가 동작하지 않지만, 이미 열린 재생기와 IndexedDB 캐시는 서버 단절 시에도 동작합니다. 재부팅 후 오프라인 시작까지 보장하려면 HTTPS 또는 로컬 재생기 셸이 필요합니다.

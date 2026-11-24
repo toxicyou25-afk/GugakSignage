@@ -19,6 +19,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY public ./public
+COPY poc/packages/engine ./poc/packages/engine
 COPY seed ./seed
 COPY LICENSE NOTICE ./
 RUN mkdir -p /data && chown -R node:node /data /app

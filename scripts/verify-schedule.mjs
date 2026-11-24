@@ -77,7 +77,7 @@ try {
   step('서버 시작');
 
   browser = await chromium.launch({ channel: 'msedge', headless: true });
-  const adminContext = await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'ko-KR' });
+  const adminContext = await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
   const admin = await adminContext.newPage();
   admin.on('pageerror', (error) => report.pageErrors.push(`admin: ${error.message}`));
   await admin.goto(`${base}/admin/`, { waitUntil: 'networkidle' });
@@ -129,7 +129,7 @@ try {
   if (!created.code || created.version !== 1) throw new Error(`시간표 기기 준비 실패: ${JSON.stringify(created)}`);
   step('기본 목록 없이 시간표만 있는 기기 게시', created);
 
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, locale: 'ko-KR' });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
   const player = await context.newPage();
   player.on('pageerror', (error) => report.pageErrors.push(`player: ${error.message}`));
   await player.clock.install({ time: new Date('2026-11-24T08:00:00+09:00') });

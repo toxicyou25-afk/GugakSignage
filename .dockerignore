@@ -10,4 +10,8 @@ scripts
 docs
 prototype
 poc
+!poc/packages/
+poc/packages/*
+!poc/packages/engine/
+!poc/packages/engine/**
 *.log

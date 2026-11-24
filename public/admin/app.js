@@ -9,6 +9,7 @@ const state = {
   contents: [],
   devices: [],
   playlists: [],
+  sites: [],
   contentFilter: 'all',
   editor: null,
   uploading: false,
@@ -32,6 +33,7 @@ const el = {
 const PAGE_META = {
   dashboard: { title: '대시보드', eyebrow: 'OVERVIEW' },
   contents: { title: '콘텐츠', eyebrow: 'CONTENT LIBRARY' },
+  sites: { title: '장소·화면', eyebrow: 'SITES & DISPLAYS' },
   devices: { title: '기기', eyebrow: 'DISPLAYS' },
   playlists: { title: '재생목록', eyebrow: 'PLAYLISTS' },
 };
@@ -187,16 +189,18 @@ function showError(error) {
 }
 
 async function loadAll() {
-  const [dashboard, contents, devices, playlists] = await Promise.all([
+  const [dashboard, contents, devices, playlists, sites] = await Promise.all([
     api('/api/dashboard'),
     api('/api/contents'),
     api('/api/devices'),
     api('/api/playlists'),
+    api('/api/sites'),
   ]);
   state.dashboard = dashboard;
   state.contents = contents.contents;
   state.devices = devices.devices;
   state.playlists = playlists.playlists;
+  state.sites = sites.sites;
 }
 
 async function refreshOnly() {
@@ -222,6 +226,16 @@ async function route() {
   if (page === 'playlists' && id) {
     setPageMeta('playlists');
     await renderPlaylistEditor(id);
+    return;
+  }
+  if (page === 'sites') {
+    setPageMeta('sites');
+    if (!window.GugakTopology) {
+      el.view.innerHTML = '<div class="empty"><h3>화면 관리 모듈을 불러오지 못했습니다.</h3><p>페이지를 새로고침해 주세요.</p></div>';
+      return;
+    }
+    await window.GugakTopology.render(id || '', el.view);
+    el.view.focus({ preventScroll: true });
     return;
   }
   setPageMeta(PAGE_META[page] ? page : 'dashboard');
@@ -504,6 +518,8 @@ function deviceCardHtml(device) {
     </div>
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>
+      <span>장소 <strong>${esc(device.siteName || '미지정')}</strong></span>
+      <span>모니터 <strong>${device.displayCount || 0}개</strong></span>
       <span>게시 <strong>${device.publishedVersion ? `v${device.publishedVersion}` : '아직 없음'}</strong></span>
       <span>마지막 연결 <strong>${timeAgo(device.lastSeen)}</strong></span>
       ${device.reportedWidth ? `<span>실제 화면 <strong>${device.reportedWidth}×${device.reportedHeight || '?'}</strong></span>` : ''}
@@ -677,7 +693,7 @@ function syncEditorFields() {
     const item = state.editor.items[index];
     if (!item) return;
     item.durationSeconds = Number($('[data-item-duration]', row).value) || 10;
-    item.fitMode = $('[data-item-fit]', row).value;
+    item.fitMode = $('[data-item-fit]', row).value || null;
     item.transitionMs = Number($('[data-item-transition]', row).value) || 0;
     item.enabled = $('[data-item-enabled]', row).checked;
   });
@@ -697,7 +713,7 @@ function renderEditorItems() {
           <p class="playlist-item-title">${index + 1}. ${esc(item.content.name)}</p>
           <div class="playlist-item-fields">
             <label>표시 시간(초)<input type="number" data-item-duration min="3" max="3600" value="${item.durationSeconds}" /></label>
-            <label>화면 맞춤<select data-item-fit><option value="contain" ${item.fitMode === 'contain' ? 'selected' : ''}>전체 보이기</option><option value="cover" ${item.fitMode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${item.fitMode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
+            <label>화면 맞춤<select data-item-fit><option value="" ${!item.fitMode ? 'selected' : ''}>화면 설정 사용</option><option value="contain" ${item.fitMode === 'contain' ? 'selected' : ''}>전체 보이기</option><option value="cover" ${item.fitMode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${item.fitMode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
             <label>전환(ms)<input type="number" data-item-transition min="0" max="3000" step="100" value="${item.transitionMs}" /></label>
             <label style="justify-content:end"><span>&nbsp;</span><span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#48565d"><input type="checkbox" data-item-enabled ${item.enabled ? 'checked' : ''} style="width:auto;min-height:0" /> 사용</span></label>
           </div>
@@ -952,7 +968,7 @@ document.addEventListener('click', async (event) => {
         const select = $('#add-content-select');
         const content = state.contents.find((item) => item.id === select?.value);
         if (!content) return;
-        state.editor.items.push({ contentId: content.id, content, durationSeconds: content.kind === 'url' ? 15 : 10, fitMode: 'contain', transitionMs: 400, enabled: true });
+        state.editor.items.push({ contentId: content.id, content, durationSeconds: content.kind === 'url' ? 15 : 10, fitMode: null, transitionMs: 400, enabled: true });
         renderEditorItems();
       } else if (action === 'remove-playlist-item') {
         syncEditorFields();

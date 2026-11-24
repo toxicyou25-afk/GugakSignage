@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { AppConfig } from '../config.js';
 import { all, get, run, transaction, type DB } from '../db.js';
 import { PublishError, publishDevice } from '../publishing.js';
+import { ensureDeviceTopology } from '../topology-migration.js';
 import type { DeviceRow, Orientation, PlaylistRow, ScheduleRow } from '../types.js';
 import { asTrimmed, deviceStatus, id, newPairingCode, nowIso, parseIntRange } from '../util.js';
 
@@ -41,6 +42,12 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     ? get<PlaylistRow>(db, 'SELECT * FROM playlists WHERE id = ?', device.playlist_id)
     : undefined;
   const schedules = scheduleDtos(db, device.id);
+  const site = device.site_id ? get<{ name: string }>(db, 'SELECT name FROM sites WHERE id = ?', device.site_id) : undefined;
+  const displayCount = Number(get<{ n: number }>(
+    db,
+    'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?',
+    device.id,
+  )?.n ?? 0);
   return {
     id: device.id,
     name: device.name,
@@ -65,6 +72,9 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     status: deviceStatus(device, config.heartbeatOnlineMs),
     playerUrl: `/player/?code=${encodeURIComponent(device.pairing_code)}`,
     schedules,
+    siteId: device.site_id,
+    siteName: site?.name ?? null,
+    displayCount,
   };
 }
 
@@ -187,6 +197,7 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       now,
       now,
     );
+    ensureDeviceTopology(db, deviceId);
     const device = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', deviceId);
     res.status(201).json({ device: device ? deviceDto(db, config, device) : null });
   });
