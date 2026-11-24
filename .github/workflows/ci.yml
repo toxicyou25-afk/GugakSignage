@@ -15,6 +15,16 @@ jobs:
     name: Validate on Windows
     runs-on: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","Windows","X64","gugaksignage-ci"]') || 'windows-latest' }}
     timeout-minutes: 30
+    env:
+      TEMP: 'C:\actions-runners\GugakSignage\_temp'
+      TMP: 'C:\actions-runners\GugakSignage\_temp'
+      USERPROFILE: 'C:\actions-runners\GugakSignage\home'
+      HOME: 'C:\actions-runners\GugakSignage\home'
+      APPDATA: 'C:\actions-runners\GugakSignage\home\AppData\Roaming'
+      LOCALAPPDATA: 'C:\actions-runners\GugakSignage\home\AppData\Local'
+      RUNNER_TOOL_CACHE: 'C:\actions-runners\GugakSignage\_toolcache'
+      NPM_CONFIG_CACHE: 'C:\actions-runners\GugakSignage\_cache\npm'
+      PLAYWRIGHT_BROWSERS_PATH: 'C:\actions-runners\GugakSignage\_cache\ms-playwright'
     steps:
       - name: Verify isolated runner environment
         if: ${{ runner.environment == 'self-hosted' }}
@@ -51,8 +61,7 @@ jobs:
             'RUNNER_TEMP',
             'RUNNER_TOOL_CACHE',
             'NPM_CONFIG_CACHE',
-            'PLAYWRIGHT_BROWSERS_PATH',
-            'ACTIONS_RUNNER_HOOK_JOB_STARTED'
+            'PLAYWRIGHT_BROWSERS_PATH'
           )
           foreach ($name in $isolatedVariables) {
             $value = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -62,8 +71,8 @@ jobs:
           }
 
           $expectedHook = Join-Path $runnerRoot 'admission\Assert-TrustedJob.ps1'
-          if (-not $env:ACTIONS_RUNNER_HOOK_JOB_STARTED.Equals($expectedHook, [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'The repository runner admission hook is not configured.'
+          if (-not (Test-Path -LiteralPath $expectedHook -PathType Leaf)) {
+            throw 'The repository runner admission hook is missing.'
           }
 
       - name: Checkout
@@ -71,6 +80,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify installed admission hook
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $sourceHook = Join-Path $env:GITHUB_WORKSPACE 'scripts\runner\Assert-TrustedJob.ps1'
+          $installedHook = 'C:\actions-runners\GugakSignage\admission\Assert-TrustedJob.ps1'
+          $sourceHash = (Get-FileHash -LiteralPath $sourceHook -Algorithm SHA256).Hash
+          $installedHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
+          if ($sourceHash -ne $installedHash) {
+            throw 'The installed runner admission hook does not match the reviewed repository hook.'
+          }
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:

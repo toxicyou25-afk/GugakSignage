@@ -316,6 +316,9 @@ if (-not (Test-Path -LiteralPath $serviceFile)) {
 $serviceName = (Get-Content -LiteralPath $serviceFile -Raw).Trim()
 Set-ServiceProcessEnvironment -ServiceName $serviceName
 Set-Service -Name $serviceName -StartupType Automatic
+if ((Get-Service -Name $serviceName).Status -eq 'Running') {
+    Stop-Service -Name $serviceName -Force
+}
 Start-Service -Name $serviceName
 
 $service = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
