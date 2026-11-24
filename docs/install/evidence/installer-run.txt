@@ -1,0 +1,38 @@
+**********************
+Windows PowerShell transcript start
+Start time: 20261124193001
+Username: <user>
+RunAs User: <user>
+Configuration Name:
+Machine: <computer> (Microsoft Windows NT 10.0.26300.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\installer\test-install.ps1
+Process ID: 35748
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+[GugakSignage] 설치 시작
+[GugakSignage] 설치 폴더: <test-root>\app
+[GugakSignage] 데이터 폴더: <test-root>\data
+[GugakSignage] Node.js 확인: v24.22.2
+[GugakSignage] 재생 브라우저: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[GugakSignage] 서버 파일 복사
+[GugakSignage] 환경 설정과 임의 비밀번호 생성
+[GugakSignage] 바탕화면·시작 메뉴 바로가기 생성
+[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-cd47db7b
+[GugakSignage] watchdog 시작 후 서버 상태 확인
+[GugakSignage] 서버 준비 완료: http://127.0.0.1:57775/api/health
+[GugakSignage] 설치 완료
+[GugakSignage] 관리자 화면: http://127.0.0.1:57775/admin/
+[GugakSignage] 초기 비밀번호: <test-root>\data\.env 의 ADMIN_PASSWORD (로그에는 기록하지 않음)
+[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-103001.log
+[GugakSignage] watchdog 로그: <test-root>\data\logs\watchdog.log
+**********************
+Windows PowerShell transcript end
+End time: 20261124193008
+**********************

@@ -66,6 +66,9 @@ const runtime = {
   sampleCode: null,
   pairing: false,
   lastAttemptCode: null,
+  autoReconnect: false,
+  reconnectCode: null,
+  reconnectTimer: null,
 };
 
 function safeGet(key) {
@@ -168,6 +171,8 @@ async function pair(code, auto = false, options = {}) {
     const previousDevice = runtime.deviceId;
     runtime.token = data.token;
     runtime.deviceId = data.device?.id || null;
+    clearInterval(runtime.reconnectTimer);
+    runtime.reconnectTimer = null;
     safeSet(STORAGE.token, data.token);
     if (runtime.deviceId) safeSet(STORAGE.deviceId, runtime.deviceId);
     safeSet(STORAGE.lastCode, normalized);
@@ -199,6 +204,14 @@ async function pair(code, auto = false, options = {}) {
     el.sampleConnect.disabled = false;
     el.pairRecover.disabled = false;
   }
+}
+
+function startAutoReconnect() {
+  if (!runtime.autoReconnect || !runtime.reconnectCode || runtime.reconnectTimer) return;
+  runtime.reconnectTimer = setInterval(async () => {
+    if (runtime.token || runtime.pairing || !navigator.onLine) return;
+    await pair(runtime.reconnectCode, true, { takeover: true });
+  }, 15_000);
 }
 
 async function loadPlayerConfig() {
@@ -831,7 +844,13 @@ el.disconnect.addEventListener('click', async () => {
 
 document.addEventListener('mousemove', () => { if (!el.player.hidden) revealControls(); });
 document.addEventListener('touchstart', () => { if (!el.player.hidden) revealControls(); }, { passive: true });
-window.addEventListener('online', () => { fetchManifest(); sendHeartbeat(); });
+window.addEventListener('online', () => {
+  if (!runtime.token && runtime.autoReconnect) {
+    void pair(runtime.reconnectCode, true, { takeover: true });
+  }
+  fetchManifest();
+  sendHeartbeat();
+});
 window.addEventListener('offline', () => setOffline(true));
 
 window.__signagePlayer = {
@@ -853,6 +872,8 @@ window.__signagePlayer = {
 async function init() {
   const params = new URLSearchParams(location.search);
   const code = (params.get('code') || '').trim();
+  runtime.autoReconnect = params.get('reconnect') === '1';
+  runtime.reconnectCode = code;
   await loadPlayerConfig();
   const cached = loadCachedManifest();
   if (cached && runtime.token) {
@@ -864,7 +885,8 @@ async function init() {
   const codeMatchesPairedDevice = Boolean(runtime.token) && (!storedCode || storedCode === code.toUpperCase());
   if (code && !codeMatchesPairedDevice) {
     showPair('', code);
-    await pair(code, true);
+    await pair(code, true, { takeover: runtime.autoReconnect });
+    if (!runtime.token) startAutoReconnect();
     return;
   }
   if (runtime.token) {
@@ -873,6 +895,7 @@ async function init() {
     await fetchManifest({ initial: !runtime.manifest });
   } else {
     showPair('', safeGet(STORAGE.lastCode) || '');
+    startAutoReconnect();
   }
 }
 

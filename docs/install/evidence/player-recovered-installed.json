@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-11-24T10:30:58.167Z",
+  "expected": "online",
+  "url": "http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1",
+  "state": {
+    "playerReady": true,
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 1,
+    "playlistId": "pl-sample-lobby",
+    "queueLength": 5,
+    "index": 2,
+    "currentContentId": "ct-sample-video-bbb",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T10:30:58.140Z",
+    "visibility": "visible"
+  },
+  "screenshot": null
+}
