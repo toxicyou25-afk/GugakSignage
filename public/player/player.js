@@ -109,6 +109,7 @@ function setOffline(value) {
   if (value && runtime.currentItem?.content?.kind === 'url' && runtime.currentNode?.dataset.kind === 'url') {
     renderUrlOffline(runtime.currentNode, runtime.currentItem);
   }
+  if (runtime.manifest?.wall && runtime.wallSurface) renderWallFrame();
 }
 
 function showPair(message = '', prefill = '') {
@@ -494,6 +495,67 @@ function buildWallSurface(wall, visible) {
   el.stage.appendChild(surface);
 }
 
+function safeFrameUrl(value) {
+  try {
+    const url = new URL(String(value || ''), location.href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function wallClip(plan, className = 'wall-media-clip') {
+  const clip = document.createElement('div');
+  clip.className = className;
+  const viewport = plan.viewport;
+  const destination = plan.destinationRect;
+  Object.assign(clip.style, {
+    left: `${(destination.x / viewport.width) * 100}%`,
+    top: `${(destination.y / viewport.height) * 100}%`,
+    width: `${(destination.w / viewport.width) * 100}%`,
+    height: `${(destination.h / viewport.height) * 100}%`,
+  });
+  return clip;
+}
+
+function wallRotationLayer(plan) {
+  const layer = document.createElement('div');
+  layer.className = 'wall-rotation-layer';
+  const destination = plan.destinationRect;
+  const rotatedQuarter = plan.rotation === 90 || plan.rotation === 270;
+  Object.assign(layer.style, rotatedQuarter ? {
+    left: `${((destination.w - destination.h) / 2 / destination.w) * 100}%`,
+    top: `${((destination.h - destination.w) / 2 / destination.h) * 100}%`,
+    width: `${(destination.h / destination.w) * 100}%`,
+    height: `${(destination.w / destination.h) * 100}%`,
+    transform: `rotate(${plan.rotation}deg)`,
+  } : {
+    inset: '0',
+    transform: plan.rotation ? `rotate(${plan.rotation}deg)` : 'none',
+  });
+  return layer;
+}
+
+function wallUrlFallback(item) {
+  const fallback = document.createElement('div');
+  fallback.className = 'wall-url-offline';
+  fallback.innerHTML = `<div><strong>${escapeHtml(item.content.name || '웹 안내 화면')}</strong><p>네트워크 연결이 끊겨 URL 콘텐츠를 표시할 수 없습니다.</p><small>연결이 복구되면 자동으로 다시 표시됩니다.</small></div>`;
+  return fallback;
+}
+
+function mountWallClip(entry, clip, transitionMs) {
+  const previous = entry.canvas.querySelector('.wall-media-clip');
+  clip.style.transitionDuration = `${transitionMs}ms`;
+  entry.canvas.appendChild(clip);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => clip.classList.add('visible'));
+  });
+  if (previous) {
+    previous.classList.remove('visible');
+    setTimeout(() => previous.remove(), transitionMs + 120);
+  }
+}
+
 function updateWallScreen(displayId, plan, wall) {
   const entry = runtime.wallNodes.get(displayId);
   const display = wall.displays.find((candidate) => candidate.id === displayId);
@@ -506,77 +568,96 @@ function updateWallScreen(displayId, plan, wall) {
   if (plan.placeholder) {
     if (entry.contentId !== '__placeholder__') {
       entry.contentId = '__placeholder__';
-      entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${display.name}</span><strong>배정된 이미지가 없습니다</strong><small>관리 화면에서 화면별 콘텐츠를 배정하세요.</small></div>`;
+      entry.kind = null;
+      entry.offline = null;
+      entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${display.name}</span><strong>배정된 콘텐츠가 없습니다</strong><small>관리 화면에서 화면별 콘텐츠를 배정하세요.</small></div>`;
     }
     return;
   }
-  if (entry.contentId === plan.imageId && entry.imageId === plan.imageId) return;
-  const item = screen?.playlist?.items?.find((candidate) => candidate.content.id === plan.imageId);
-  if (!item) return;
+  const contentId = plan.contentId || plan.imageId;
+  const offline = Boolean(runtime.offline && plan.kind === 'url');
+  if (entry.contentId === contentId && entry.imageId === contentId && entry.kind === plan.kind && entry.offline === offline) return;
+  const item = screen?.playlist?.items?.find((candidate) => candidate.content.id === contentId);
+  if (!item) {
+    entry.contentId = contentId || '__missing__';
+    entry.kind = plan.kind;
+    entry.offline = offline;
+    entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${escapeHtml(display.name)}</span><strong>콘텐츠 정보를 찾을 수 없습니다</strong><small>관리 화면에서 게시본을 다시 확인해 주세요.</small></div>`;
+    entry.canvas.dataset.renderReady = 'false';
+    return;
+  }
   const token = ++entry.renderToken;
-  resolveMediaUrl(item.content).then((source) => {
+  const mount = (source) => {
     if (!runtime.wallNodes.has(displayId) || token !== entry.renderToken || !source) return;
     const viewport = plan.viewport;
     const sourceRect = plan.sourceRect || { x: 0, y: 0, w: item.content.width, h: item.content.height };
     const destination = plan.destinationRect;
-    const clip = document.createElement('div');
-    clip.className = 'wall-media-clip';
-    Object.assign(clip.style, {
-      left: `${(destination.x / viewport.width) * 100}%`,
-      top: `${(destination.y / viewport.height) * 100}%`,
-      width: `${(destination.w / viewport.width) * 100}%`,
-      height: `${(destination.h / viewport.height) * 100}%`,
-    });
-    const media = item.content.kind === 'video' ? document.createElement('video') : document.createElement('img');
-    media.className = 'wall-media';
-    const rotationLayer = document.createElement('div');
-    rotationLayer.className = 'wall-rotation-layer';
-    const rotatedQuarter = plan.rotation === 90 || plan.rotation === 270;
-    Object.assign(rotationLayer.style, rotatedQuarter ? {
-      left: `${((destination.w - destination.h) / 2 / destination.w) * 100}%`,
-      top: `${((destination.h - destination.w) / 2 / destination.h) * 100}%`,
-      width: `${(destination.h / destination.w) * 100}%`,
-      height: `${(destination.w / destination.h) * 100}%`,
-      transform: `rotate(${plan.rotation}deg)`,
-    } : {
-      inset: '0',
-      transform: plan.rotation ? `rotate(${plan.rotation}deg)` : 'none',
-    });
-    if (media instanceof HTMLImageElement) media.alt = item.content.name || '';
-    else {
-      media.muted = true;
-      media.loop = true;
-      media.autoplay = true;
-      media.playsInline = true;
-      media.play().catch(() => {});
+    const clip = wallClip(plan);
+    const rotationLayer = wallRotationLayer(plan);
+    if (item.content.kind === 'url') {
+      if (offline) {
+        rotationLayer.appendChild(wallUrlFallback(item));
+      } else {
+        const frame = document.createElement('iframe');
+        frame.className = 'wall-url-frame';
+        frame.src = source;
+        frame.title = item.content.name || 'URL 콘텐츠';
+        frame.loading = 'eager';
+        frame.referrerPolicy = 'no-referrer';
+        frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+        rotationLayer.appendChild(frame);
+      }
+    } else {
+      const media = item.content.kind === 'video' ? document.createElement('video') : document.createElement('img');
+      media.className = 'wall-media';
+      if (media instanceof HTMLImageElement) media.alt = item.content.name || '';
+      else {
+        media.muted = true;
+        media.loop = true;
+        media.autoplay = true;
+        media.playsInline = true;
+        media.play().catch(() => {});
+      }
+      Object.assign(media.style, {
+        left: `${(-sourceRect.x / sourceRect.w) * 100}%`,
+        top: `${(-sourceRect.y / sourceRect.h) * 100}%`,
+        width: `${(item.content.width / sourceRect.w) * 100}%`,
+        height: `${(item.content.height / sourceRect.h) * 100}%`,
+      });
+      media.src = source;
+      rotationLayer.appendChild(media);
     }
-    Object.assign(media.style, {
-      left: `${(-sourceRect.x / sourceRect.w) * 100}%`,
-      top: `${(-sourceRect.y / sourceRect.h) * 100}%`,
-      width: `${(item.content.width / sourceRect.w) * 100}%`,
-      height: `${(item.content.height / sourceRect.h) * 100}%`,
-    });
-    media.src = source;
-    rotationLayer.appendChild(media);
     clip.appendChild(rotationLayer);
-    const previous = entry.canvas.querySelector('.wall-media-clip');
     const transitionMs = Math.max(0, Number(plan.transitionMs) || 0);
-    clip.style.transitionDuration = `${transitionMs}ms`;
-    entry.canvas.appendChild(clip);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => clip.classList.add('visible'));
-    });
-    if (previous) {
-      previous.classList.remove('visible');
-      setTimeout(() => previous.remove(), transitionMs + 120);
-    }
+    mountWallClip(entry, clip, transitionMs);
     entry.canvas.dataset.renderReady = 'true';
-    entry.contentId = plan.imageId;
-    entry.imageId = plan.imageId;
-    runtime.currentContentId = plan.imageId;
-    document.body.dataset.currentContentId = plan.imageId || '';
-  }).catch(() => {
+    entry.contentId = contentId;
+    entry.imageId = contentId;
+    entry.kind = plan.kind;
+    entry.offline = offline;
+    runtime.currentContentId = contentId;
+    document.body.dataset.currentContentId = contentId || '';
+  };
+
+  if (item.content.kind === 'url') {
+    if (offline) {
+      mount('offline');
+      return;
+    }
+    const source = safeFrameUrl(item.content.url);
+    if (!source) {
+      entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${escapeHtml(display.name)}</span><strong>URL 주소를 확인해 주세요</strong><small>http:// 또는 https:// 주소만 표시할 수 있습니다.</small></div>`;
+      entry.canvas.dataset.renderReady = 'false';
+      return;
+    }
+    mount(source);
+    return;
+  }
+
+  resolveMediaUrl(item.content).then(mount).catch(() => {
+    if (token !== entry.renderToken) return;
     entry.canvas.dataset.renderReady = 'false';
+    entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${escapeHtml(display.name)}</span><strong>콘텐츠를 불러오지 못했습니다</strong><small>네트워크 또는 저장된 미디어 캐시를 확인해 주세요.</small></div>`;
   });
 }
 
@@ -595,7 +676,7 @@ function renderWallFrame() {
     plans.push(plan);
     updateWallScreen(display.id, plan, wall);
   }
-  runtime.currentContentId = plans.find((plan) => plan.imageId)?.imageId || null;
+  runtime.currentContentId = plans.find((plan) => plan.contentId || plan.imageId)?.contentId || null;
   runtime.playlistId = wall.group.id;
   const next = plans
     .map((plan) => plan.nextChangeAtMs)
@@ -1124,6 +1205,9 @@ window.__signagePlayer = {
         : [],
       wallPlans: Object.fromEntries([...runtime.wallPlans].map(([displayId, plan]) => [displayId, {
         imageId: plan.imageId,
+        contentId: plan.contentId,
+        kind: plan.kind,
+        contentUrl: plan.contentUrl,
         atMs: plan.atMs,
         fit: plan.fit,
         rotation: plan.rotation,

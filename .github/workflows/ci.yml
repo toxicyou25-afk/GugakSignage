@@ -33,6 +33,8 @@ jobs:
         run: npm run build
       - name: Unit and API tests
         run: npm test
+      - name: PoC engine tests
+        run: npm test --prefix poc
       - name: Verify first-run flow
         run: npm run verify:first-run
       - name: Verify schedule and offline playback

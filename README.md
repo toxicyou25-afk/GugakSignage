@@ -13,7 +13,7 @@
 - 2026-11-24: 오픈소스 후보 조사, 범용 아키텍처 설계, 다중 모니터 동기화 시뮬레이션 완료
 - 2026-11-24: 국내외 실제 서비스 화면·매뉴얼·데모·KRDS 벤치마킹 착수
 - 2026-11-24: 독자 UI·UX 설계와 작동형 프로토타입 착수
-- 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 59/59, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
+- 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 61/61, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
 - 2026-11-24: **1차 동작본(관리 서버 + 윈도우 재생기) 구현·로컬 검증 완료** — SQLite, 한글 관리 화면, 콘텐츠·기기·재생목록·게시 API, 오프라인 캐시 재생기
 - 2026-11-24: **장소·다중 모니터·화면별 배정 통합** — 기존 기기를 보존하는 SQLite 마이그레이션, 4화면 관리·RenderPlan 미리보기·브라우저 캔버스 재생 확인
 - 2026-11-24: **독자 한국어 UI·UX 프로토타입 완료** (Playwright 1440·1280·768 스모크 통과, 원본 스크린샷 14장)
@@ -82,7 +82,7 @@ npm start -- --port 4174
 
 | 항목 | 결과 |
 |---|---|
-| 단위·통합 테스트 | 59/59 통과 |
+| 단위·통합 테스트 | 61/61 통과 |
 | 결정론적 시나리오 | 63/63 통과 (48개 매트릭스) |
 | 미리보기 브라우저 | 48/48 통과 |
 | 4화면 동기화 | 65.4초, 이미지 순서 불일치 0건, 최대 전환 편차 10.2ms, 최대 지연 17.6ms |
@@ -183,14 +183,14 @@ npm run dev
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 16/16 통과 (기존 11건 유지 + 다중 모니터 엔진·결정적 배정·마이그레이션·API 5건) |
+| `npm test` | 17/17 통과 (기존 16건 유지 + 샘플 이미지·영상·URL wall 회귀 1건) |
 | `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
-| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 배정·RenderPlan 미리보기·게시, 한 PC 4화면 캔버스, 오프라인 재로드, 모니터별 분리 창 |
+| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 콘텐츠·PC 배정·RenderPlan 미리보기·게시, URL 단독 iframe·오프라인 대체 화면, 한 PC 4화면 캔버스, 모니터별 분리 창 |
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
-실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 4장을 저장합니다.
+실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 5장을 저장합니다.
 
 ### 자동 회귀 검증(CI)
 

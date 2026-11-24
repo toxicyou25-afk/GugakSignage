@@ -30,9 +30,15 @@ export interface RenderPlan {
   epochMs: number;
   dwellMs: number;
   imageCount: number;
+  itemCount: number;
   displayCount: number;
   imageIndex: number | null;
   imageId: string | null;
+  contentId: string | null;
+  kind: 'image' | 'video' | 'url';
+  content: Record<string, unknown> | null;
+  contentUrl: string | null;
+  requiresNetwork: boolean;
   itemId: string | null;
   image: Record<string, unknown> | null;
   imageUrl: string | null;

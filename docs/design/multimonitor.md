@@ -1,6 +1,6 @@
 # 장소·다중 모니터·배치 통합
 
-작성 2026-11-24 / 기준 `origin/main` `cfc8e739b370eae855c858e8066e94843e91b602`
+작성 2026-11-24 / hotfix 기준 `origin/main` `3556b02822ff10b94ecc468f6432216abf2156aa`
 
 ## 1. 목적과 경계
 
@@ -47,14 +47,16 @@ sites
 | `PUT /api/sites/:id` | 장소 이름·시간대·메모 변경 |
 | `POST /api/sites/:id/groups` | 같은 장소의 추가 화면 그룹 |
 | `PUT /api/groups/:id` | 그룹 기본 재생목록·재생 모드·dwell·epoch 변경 |
-| `PUT /api/groups/:id/configuration` | 모니터 수·해상도·방향·회전·PC·배치 일괄 저장 |
-| `PUT /api/displays/:id` | 화면별 재생목록·회전·맞춤·해상도 저장 |
+| `PUT /api/groups/:id/configuration` | 모니터 수·해상도·방향·회전·배치 일괄 저장. PC 선택은 새 화면·미연결 화면의 기본값이며 기존 연결은 보존 |
+| `PUT /api/displays/:id` | 선택한 화면의 PC·재생목록·회전·맞춤·해상도 저장 |
 | `GET /api/groups/:id/preview` | 현재 초안으로 서버가 계산한 화면별 RenderPlan |
 | `POST /api/groups/:id/publish` | 연결된 PC별 새 불변 게시 버전 생성 |
 | `GET /api/time` | 재생기의 서버 시각 오프셋 측정 |
 | `GET /api/player/manifest` | 레거시 필드와 선택적 `wall` 스냅샷을 함께 반환 |
 
 관리 API는 기존 관리자 세션 인증을 사용한다. 화면 게시는 배정된 PC가 없으면 400으로 중단한다.
+
+화면별 PC 선택지는 해당 장소에서 이 그룹에 이미 연결됐거나 아직 어떤 화면에도 연결되지 않은 기기다. PC를 화면에 명시적으로 배정하면 그 기기는 다른 그룹의 화면에서만 해제되고, 같은 그룹의 여러 모니터에는 함께 연결할 수 있다. 그룹 저장 SQL은 기존 `displays.device_id`를 덮어쓰지 않으며 `NULL`인 화면에만 기본 PC를 채운다.
 
 ## 4. RenderPlan과 미리보기
 
@@ -64,8 +66,10 @@ sites
 - `cover`: 표시 영역 비율에 맞춰 중앙 크롭
 - `stretch`: 명시적으로 선택한 경우에만 전체 채우기
 - `sourceRect`, `destinationRect`, `rotation`, `fit`, `nextChangeAtMs`를 미리보기·게시·재생이 같은 값으로 사용
+- `playlist.items`의 `contentId`·`kind`·`contentUrl`과 `contents` 입력으로 이미지·동영상·URL 종류를 보존
+- URL은 원본 픽셀이 없으므로 이미지 크기 필터에서 제외하고, `kind: "url"`, `requiresNetwork: true`, 전체 화면 `destinationRect`를 가진 RenderPlan으로 만든다
 
-미리보기 응답은 현재 DB 초안에서 서버 시각으로 계산한 화면별 계획이다. 재생기는 게시된 `wall` 스냅샷과 서버 시간 보정값으로 같은 `buildRenderPlan`을 호출하고, `sourceRect`를 CSS 클립과 원본 픽셀 배율로 그린다. 캔버스 모드에서는 각 모니터가 공유 이미지의 자기 슬롯 크롭을 표시한다.
+미리보기 응답은 현재 DB 초안에서 서버 시각으로 계산한 화면별 계획이다. 재생기는 게시된 `wall` 스냅샷과 서버 시간 보정값으로 같은 `buildRenderPlan`을 호출하고, 이미지·동영상은 `sourceRect`를 CSS 클립과 원본 픽셀 배율로 그린다. URL은 각 화면 슬롯 안의 별도 `iframe`에 표시한다. 캔버스 모드에서는 각 모니터가 공유 이미지의 자기 슬롯 크롭을 표시한다.
 
 ## 5. 동기화와 재생기 구성
 
@@ -76,7 +80,10 @@ sites
 - 한 PC가 여러 모니터를 구동할 때 기본 `/player/?code=...`는 모든 모니터를 한 캔버스에 배치한다.
 - 모니터마다 브라우저 창을 쓰면 `/player/?code=...&display=<id>`로 한 화면만 연다.
 - 모니터마다 PC가 다르면 각 PC가 같은 기기 그룹 스냅샷을 받되, `deviceId`가 일치하는 자기 모니터만 표시한다.
-- 화면별 서로 다른 재생목록은 `synchronized-cycle` 또는 `individual`에서 사용한다. `mirror`·`canvas`는 같은 이미지를 공유해야 하므로 그룹 기본 재생목록을 사용한다.
+- 화면별 서로 다른 재생목록은 `synchronized-cycle` 또는 `individual`에서 사용한다. `mirror`·`canvas`는 같은 콘텐츠를 공유해야 하므로 그룹 기본 재생목록을 사용한다.
+- URL 항목도 이미지·동영상과 같은 재생목록 위치, 표시 시간, 전환 시간, epoch를 쓴다. URL 단독 화면은 표시 시간 동안 고정되며, 혼합 화면은 다음 항목 경계에서 다른 미디어로 전환한다.
+- `mirror`·`canvas`의 URL도 모니터별 슬롯 안에서 각각 전체 `iframe`으로 표시하며, 하나의 웹 문서를 픽셀 단위로 이어 붙이는 보장은 하지 않는다.
+- 오프라인에서 현재 URL 항목은 콘텐츠 이름과 복구 안내가 있는 대체 카드로 표시한다. URL을 목록에서 조용히 제거하지 않으며, 연결이 돌아오면 다음 `renderWallFrame` 호출에서 `iframe`으로 복구한다.
 
 ## 6. 불변 게시
 
@@ -100,6 +107,8 @@ sites
 4. `devices.site_id`만 연결하고 기기·재생목록·시간표·게시 JSON은 변경하지 않는다.
 5. 마이그레이션 버전을 기록해 재실행 시 중복 생성하지 않는다.
 
+`playlist_items.fit_mode_override` 컬럼 추가와 기존 행의 값 backfill은 하나의 SQLite 트랜잭션에서 수행한다.
+
 자동 테스트는 레거시 테이블과 기기·게시 행을 먼저 만든 뒤 앱 DB를 두 번 열어 장소 1·모니터 1·기존 게시 JSON 보존을 확인한다.
 
 ## 8. 검증
@@ -119,10 +128,12 @@ npm run verify:multimonitor
 - 게시 전 미리보기와 동일 wall 입력의 RenderPlan 깊은 비교
 - 4모니터 API 저장 → 4번 화면 다른 재생목록 → 미리보기 → 게시 → 재생기 manifest
 - 4화면을 두 PC로 나누고 각 manifest가 자기 화면 배정만 받는지 확인
+- 화면별 PC 선택 UI에서 4번 화면만 다른 PC로 명시 재배정하고, 그룹 설정을 다시 저장해도 `[A,A,A,B]` 매핑이 유지되는지 확인
 - 4→2모니터 변경 뒤 기존 게시 JSON과 버전 불변 확인
 - 5기기 레거시 DB 20회 마이그레이션에서 장치→슬롯 매핑 동일성, 새 기기 추가 후 기존 slot/start index 보존
 - 항목 fit 미지정 + 화면 fit `cover` → RenderPlan `cover`, 항목 fit `contain` → RenderPlan `contain`
-- Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 재생목록, 게시, 한 PC 4화면, 3초 전환, 오프라인 재로드 offset, 한 화면 분리 창
+- 샘플 이미지 3·동영상 1·URL 1이 공유 wall 입력에 모두 남고 URL이 40초 경계에서 `kind: "url"` RenderPlan이 되는지 확인
+- Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 PC·재생목록, URL 단독 `iframe`, 게시, 한 PC 4화면, 3초 전환, 오프라인 URL 대체 화면, 오프라인 재로드 offset, 한 화면 분리 창
 
 브라우저 스크린샷과 콘솔 로그는 `docs/verification/evidence/multimonitor-*.png`, `docs/verification/multimonitor-run.json`에 있다.
 
@@ -131,6 +142,7 @@ npm run verify:multimonitor
 - 물리 모니터 1·2·4·8대 동시 출력: `NOT_RUN`
 - 실제 GPU·OS 디스플레이 배치·EDID·베젤 보정: `NOT_RUN`
 - 여러 물리 PC와 실제 LAN 스위치에서 장시간 시계 오차·재연결: `NOT_RUN`
+- 외부 사이트의 `X-Frame-Options`·CSP가 iframe 삽입을 거부하는 경우와 외부 인터넷 단절만 있고 LAN 서버는 연결된 혼합 상태: `NOT-VERIFIED`
 - 4K/8K 장시간 재생과 브라우저 메모리 상한: `NOT_RUN`
 - 프로젝터·TV의 overscan·색 프로파일 자동 보정: 범위 밖
 
