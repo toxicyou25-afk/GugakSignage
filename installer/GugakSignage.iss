@@ -279,7 +279,7 @@ begin
     MsgBox('Enter a data folder.', mbError, MB_OK);
     Result := False;
   end;
-  if (CurPageID = DataDirPage.ID) and Result and
+  if (CurPageID = DataDirPage.ID) and Result and (not WizardSilent) and
      (NormalizePathForCompare(DataDirPage.Values[0]) <> NormalizePathForCompare(GetDefaultDataDir)) then
     DataDirChangeConfirmed := True;
   if (CurPageID = DataDirPage.ID) and Result and DataDirResolutionIsExisting and (PreviousDataDir <> '') and
