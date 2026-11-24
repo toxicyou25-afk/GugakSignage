@@ -1,17 +1,25 @@
 ﻿{
-    "startedAt":  "2026-11-24T12:33:23.0839955Z",
-    "baseSha":  "2679285f60758114288ec9f864444d406259ac8f",
+    "startedAt":  "2026-11-24T15:13:50.0563178Z",
+    "baseSha":  "ff3faae7afb2ccfcdc15524f75d7cfcd2f427019",
     "nodeVersion":  "v24.22.2",
-    "port":  51189,
-    "debugPort":  51190,
-    "taskName":  "GugakSignage-Test-939176e6",
+    "port":  65226,
+    "debugPort":  65227,
+    "taskName":  "GugakSignage-Test-7589991b",
     "result":  "passed",
     "checks":  {
                    "guardTests":  {
-                                      "equalPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\equal, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\equal",
-                                      "insidePathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\parent, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\parent\\data",
-                                      "dotDotPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\dotdot, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\dotdot",
-                                      "uninstallEqualPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\fake-app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-c250e68b\\fake-app",
+                                      "legacyEnvOnlyDataDirResolved":  true,
+                                      "legacyEscapedUnicodePathResolved":  true,
+                                      "legacyTaskShortcutArgumentParsed":  true,
+                                      "innoSharedResolverTransportPreservesUnicode":  true,
+                                      "relativeInstallConfigHasPriority":  true,
+                                      "staleConfigFallsBackToExistingDefault":  true,
+                                      "configEnvConflictBlocked":  true,
+                                      "legacyDataInsideInstallBlocked":  true,
+                                      "equalPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\equal, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\equal",
+                                      "insidePathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\parent, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\parent\\data",
+                                      "dotDotPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\dotdot, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\dotdot",
+                                      "uninstallEqualPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\fake-app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-658c989b\\fake-app",
                                       "unsafeRemoveDataPathsBlocked":  4,
                                       "foreignShortcutDetected":  true,
                                       "foreignScheduledTaskDetected":  true,
@@ -27,6 +35,10 @@
                                                     "logRotated":  true,
                                                     "resumedWithoutManualRestart":  false
                                                 },
+                   "powerShellLegacyNoManifestUsesEnvDataDir":  true,
+                   "powerShellLegacyPreservesEnvAclAndValues":  true,
+                   "powerShellLegacyDisablesSampleSeed":  true,
+                   "powerShellLegacyPreservesDbAndUploads":  true,
                    "installed":  true,
                    "serverHealthy":  true,
                    "headlessTestBrowser":  true,
@@ -51,7 +63,7 @@
                                               "currentContentId":  "ct-sample-poster-autumn",
                                               "offline":  false,
                                               "lastError":  null,
-                                              "lastHeartbeatAt":  "2026-11-24T12:33:47.521Z",
+                                              "lastHeartbeatAt":  "2026-11-24T15:14:25.212Z",
                                               "wallGroupId":  null,
                                               "wallDisplayIds":  [
 
@@ -59,7 +71,8 @@
                                               "wallPlans":  {
 
                                                             },
-                                              "serverOffsetMs":  -0.3333333333333333,
+                                              "serverOffsetMs":  -0.6666666666666666,
+                                              "shellVersion":  "v4",
                                               "visibility":  "visible"
                                           },
                    "upgradePreservesDataDir":  true,
@@ -71,13 +84,13 @@
                    "dataDirChangeRequiresExplicitConfirmation":  true,
                    "pidIdentityMetadataRecorded":  true,
                    "serverRestartedAfterKill":  true,
-                   "serverRestartSeconds":  3.1,
-                   "serverPidBefore":  60852,
-                   "serverPidAfter":  15252,
+                   "serverRestartSeconds":  3,
+                   "serverPidBefore":  43824,
+                   "serverPidAfter":  27148,
                    "browserRestartedAfterKill":  true,
-                   "browserRestartSeconds":  4.5,
-                   "browserPidBefore":  70012,
-                   "browserPidAfter":  70720,
+                   "browserRestartSeconds":  4.7,
+                   "browserPidBefore":  45764,
+                   "browserPidAfter":  38956,
                    "autostartCanBeDisabled":  true,
                    "autostartCanBeReenabled":  true,
                    "watchdogKillDoesNotOrphanServer":  true,
@@ -95,7 +108,7 @@
                                                 "currentContentId":  "ct-sample-poster-class",
                                                 "offline":  false,
                                                 "lastError":  null,
-                                                "lastHeartbeatAt":  "2026-11-24T12:35:12.070Z",
+                                                "lastHeartbeatAt":  "2026-11-24T15:15:46.174Z",
                                                 "wallGroupId":  null,
                                                 "wallDisplayIds":  [
 
@@ -103,7 +116,8 @@
                                                 "wallPlans":  {
 
                                                               },
-                                                "serverOffsetMs":  0.5,
+                                                "serverOffsetMs":  -0.5,
+                                                "shellVersion":  "v4",
                                                 "visibility":  "visible"
                                             },
                    "manualRestartRecoversWatchdog":  true,
@@ -121,5 +135,5 @@
                    "방화벽 규칙 생성(권한/시스템 변경을 피하기 위해 선택 옵션 미실행)",
                    "프로세스는 살아 있으나 CDP가 멈춘 실제 renderer hang 재현"
                ],
-    "finishedAt":  "2026-11-24T12:35:30.8943292Z"
+    "finishedAt":  "2026-11-24T15:16:25.8131224Z"
 }

@@ -1,5 +1,5 @@
 ﻿{
-  "checkedAt": "2026-11-24T12:33:49.245Z",
+  "checkedAt": "2026-11-24T15:14:25.432Z",
   "expected": "online",
   "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
@@ -12,11 +12,12 @@
     "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T12:33:47.521Z",
+    "lastHeartbeatAt": "2026-11-24T15:14:25.212Z",
     "wallGroupId": null,
     "wallDisplayIds": [],
     "wallPlans": {},
-    "serverOffsetMs": -0.3333333333333333,
+    "serverOffsetMs": -0.6666666666666666,
+    "shellVersion": "v4",
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-installed.png"

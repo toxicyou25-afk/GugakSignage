@@ -1,5 +1,5 @@
 ﻿{
-  "checkedAt": "2026-11-24T12:34:48.095Z",
+  "checkedAt": "2026-11-24T15:15:22.860Z",
   "expected": "offline",
   "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
@@ -17,6 +17,7 @@
     "wallDisplayIds": [],
     "wallPlans": {},
     "serverOffsetMs": -3,
+    "shellVersion": "v4",
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-offline-installed.png"

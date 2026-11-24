@@ -1,31 +1,36 @@
-﻿2026-11-24T12:33:45.425Z [INFO] browser started {"pid":25256,"reason":"startup","debugPort":51190,"detached":true,"headless":true}
-2026-11-24T12:33:45.429Z [INFO] watchdog started {"pid":10900,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":51189,"manualRestartAfterHalt":false}
-2026-11-24T12:33:45.443Z [INFO] server started {"pid":55572,"reason":"startup","detached":false}
-2026-11-24T12:34:01.566Z [INFO] watchdog stopping {"reason":"stop-request"}
-2026-11-24T12:34:02.176Z [WARN] server exited {"pid":55572,"code":1,"signal":null}
-2026-11-24T12:34:02.294Z [WARN] browser exited {"pid":25256,"code":1,"signal":null}
-2026-11-24T12:34:09.571Z [INFO] browser started {"pid":70012,"reason":"startup","debugPort":51190,"detached":true,"headless":true}
-2026-11-24T12:34:09.574Z [INFO] watchdog started {"pid":15912,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":51189,"manualRestartAfterHalt":false}
-2026-11-24T12:34:09.587Z [INFO] server started {"pid":60852,"reason":"startup","detached":false}
-2026-11-24T12:34:24.752Z [WARN] server exited {"pid":60852,"code":4294967295,"signal":null}
-2026-11-24T12:34:24.757Z [WARN] server restart scheduled {"reason":"process-exit","failures":1,"delayMs":2000}
-2026-11-24T12:34:26.778Z [INFO] server started {"pid":15252,"reason":"backoff","detached":false}
-2026-11-24T12:34:27.933Z [WARN] browser exited {"pid":70012,"code":4294967295,"signal":null}
-2026-11-24T12:34:27.937Z [WARN] browser restart scheduled {"reason":"process-exit","failures":1,"delayMs":3000}
-2026-11-24T12:34:30.962Z [INFO] browser started {"pid":70720,"reason":"backoff","debugPort":51190,"detached":true,"headless":true}
-2026-11-24T12:34:34.257Z [INFO] watchdog stopping {"reason":"stop-request"}
-2026-11-24T12:34:35.207Z [WARN] server exited {"pid":15252,"code":1,"signal":null}
-2026-11-24T12:34:41.373Z [INFO] browser started {"pid":69968,"reason":"startup","debugPort":51190,"detached":true,"headless":true}
-2026-11-24T12:34:41.376Z [INFO] watchdog started {"pid":24352,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":51189,"manualRestartAfterHalt":false}
-2026-11-24T12:34:41.388Z [INFO] server started {"pid":63356,"reason":"startup","detached":false}
-2026-11-24T12:35:02.867Z [INFO] watchdog started {"pid":62596,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":51189,"manualRestartAfterHalt":false}
-2026-11-24T12:35:02.883Z [INFO] server started {"pid":56960,"reason":"startup","detached":false}
-2026-11-24T12:35:02.911Z [INFO] existing browser adopted {"pid":69968,"reason":"startup","stateKind":"cached"}
-2026-11-24T12:35:13.965Z [INFO] watchdog stopping {"reason":"stop-request"}
-2026-11-24T12:35:14.980Z [WARN] server exited {"pid":56960,"code":1,"signal":null}
-2026-11-24T12:35:17.634Z [INFO] browser started {"pid":51436,"reason":"startup","debugPort":51190,"detached":true,"headless":true}
-2026-11-24T12:35:17.638Z [INFO] watchdog started {"pid":64516,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":51189,"manualRestartAfterHalt":false}
-2026-11-24T12:35:17.654Z [INFO] server started {"pid":19080,"reason":"startup","detached":false}
-2026-11-24T12:35:19.659Z [INFO] watchdog stopping {"reason":"stop-request"}
-2026-11-24T12:35:20.320Z [WARN] server exited {"pid":19080,"code":1,"signal":null}
-2026-11-24T12:35:20.377Z [WARN] browser exited {"pid":51436,"code":1,"signal":null}
+﻿2026-11-24T15:14:17.789Z [INFO] browser started {"pid":22632,"reason":"startup","debugPort":65227,"detached":true,"headless":true}
+2026-11-24T15:14:17.792Z [INFO] watchdog started {"pid":47308,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":65226,"manualRestartAfterHalt":false}
+2026-11-24T15:14:17.810Z [INFO] server started {"pid":37524,"reason":"startup","detached":false}
+2026-11-24T15:14:33.907Z [INFO] watchdog stopping {"reason":"stop-request"}
+2026-11-24T15:14:34.463Z [WARN] server exited {"pid":37524,"code":1,"signal":null}
+2026-11-24T15:14:34.548Z [WARN] browser exited {"pid":22632,"code":1,"signal":null}
+2026-11-24T15:14:41.931Z [INFO] browser started {"pid":45764,"reason":"startup","debugPort":65227,"detached":true,"headless":true}
+2026-11-24T15:14:41.935Z [INFO] watchdog started {"pid":35828,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":65226,"manualRestartAfterHalt":false}
+2026-11-24T15:14:41.949Z [INFO] server started {"pid":43824,"reason":"startup","detached":false}
+2026-11-24T15:14:57.058Z [WARN] server exited {"pid":43824,"code":4294967295,"signal":null}
+2026-11-24T15:14:57.060Z [WARN] server restart scheduled {"reason":"process-exit","failures":1,"delayMs":2000}
+2026-11-24T15:14:57.167Z [WARN] state file write failed {"message":"EPERM, Permission denied: '<test-root>\\data\\logs\\watchdog-state.json'"}
+2026-11-24T15:14:59.186Z [INFO] server started {"pid":27148,"reason":"backoff","detached":false}
+2026-11-24T15:15:00.118Z [WARN] browser exited {"pid":45764,"code":4294967295,"signal":null}
+2026-11-24T15:15:00.121Z [WARN] browser restart scheduled {"reason":"process-exit","failures":1,"delayMs":3000}
+2026-11-24T15:15:03.130Z [INFO] browser started {"pid":38956,"reason":"backoff","debugPort":65227,"detached":true,"headless":true}
+2026-11-24T15:15:06.236Z [INFO] watchdog stopping {"reason":"stop-request"}
+2026-11-24T15:15:06.904Z [WARN] server exited {"pid":27148,"code":1,"signal":null}
+2026-11-24T15:15:07.029Z [WARN] browser exited {"pid":38956,"code":1,"signal":null}
+2026-11-24T15:15:13.353Z [INFO] browser started {"pid":15872,"reason":"startup","debugPort":65227,"detached":true,"headless":true}
+2026-11-24T15:15:13.359Z [INFO] watchdog started {"pid":46468,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":65226,"manualRestartAfterHalt":false}
+2026-11-24T15:15:13.381Z [INFO] server started {"pid":17028,"reason":"startup","detached":false}
+2026-11-24T15:15:37.490Z [INFO] watchdog started {"pid":53800,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":65226,"manualRestartAfterHalt":false}
+2026-11-24T15:15:37.503Z [INFO] server started {"pid":42356,"reason":"startup","detached":false}
+2026-11-24T15:15:37.527Z [INFO] existing browser adopted {"pid":15872,"reason":"startup","stateKind":"cached"}
+2026-11-24T15:15:48.640Z [INFO] watchdog stopping {"reason":"stop-request"}
+2026-11-24T15:15:50.194Z [WARN] server exited {"pid":42356,"code":1,"signal":null}
+2026-11-24T15:15:53.597Z [INFO] browser started {"pid":4636,"reason":"startup","debugPort":65227,"detached":true,"headless":true}
+2026-11-24T15:15:53.604Z [INFO] watchdog started {"pid":34436,"installDir":"<test-root>\\app","dataDir":"<test-root>\\data","port":65226,"manualRestartAfterHalt":false}
+2026-11-24T15:15:53.711Z [INFO] server started {"pid":51652,"reason":"startup","detached":false}
+2026-11-24T15:16:10.742Z [WARN] server health check failed {"message":"fetch failed","misses":1,"threshold":5}
+2026-11-24T15:16:10.970Z [WARN] server health check failed {"message":"fetch failed","misses":2,"threshold":5}
+2026-11-24T15:16:11.142Z [WARN] browser playback health check failed {"stateKind":"not-ready","misses":1,"threshold":3}
+2026-11-24T15:16:14.759Z [INFO] watchdog stopping {"reason":"stop-request"}
+2026-11-24T15:16:15.837Z [WARN] server exited {"pid":51652,"code":1,"signal":null}
+2026-11-24T15:16:15.962Z [WARN] browser exited {"pid":4636,"code":1,"signal":null}

@@ -1,5 +1,5 @@
 ﻿{
-  "checkedAt": "2026-11-24T12:35:01.258Z",
+  "checkedAt": "2026-11-24T15:15:36.006Z",
   "expected": "offline",
   "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
@@ -17,6 +17,7 @@
     "wallDisplayIds": [],
     "wallPlans": {},
     "serverOffsetMs": -3,
+    "shellVersion": "v4",
     "visibility": "visible"
   },
   "screenshot": null

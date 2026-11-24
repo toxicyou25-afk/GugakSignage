@@ -234,6 +234,22 @@ begin
   end;
 end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResolvedDataDir: String;
+begin
+  if CurStep = ssInstall then
+  begin
+    ResolvedDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
+    if DataDirResolutionIsExisting and not DataDirWasSpecified then
+    begin
+      PreviousDataDir := ResolvedDataDir;
+      if Assigned(DataDirPage) then
+        DataDirPage.Values[0] := ResolvedDataDir;
+    end;
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   PortNumber: Integer;
@@ -263,6 +279,9 @@ begin
     MsgBox('Enter a data folder.', mbError, MB_OK);
     Result := False;
   end;
+  if (CurPageID = DataDirPage.ID) and Result and
+     (NormalizePathForCompare(DataDirPage.Values[0]) <> NormalizePathForCompare(GetDefaultDataDir)) then
+    DataDirChangeConfirmed := True;
   if (CurPageID = DataDirPage.ID) and Result and DataDirResolutionIsExisting and (PreviousDataDir <> '') and
      (NormalizePathForCompare(DataDirPage.Values[0]) <> NormalizePathForCompare(PreviousDataDir)) then
   begin

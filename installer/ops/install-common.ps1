@@ -411,8 +411,14 @@ function Resolve-InstallerDataDir {
 
     if ($configuredDataDir) {
         if (-not (Test-Path -LiteralPath $configuredDataDir -PathType Container)) {
-            throw "install.json에 기록된 데이터 폴더를 찾지 못했습니다. 새 빈 데이터베이스를 만들지 않도록 중단합니다: $configuredDataDir"
+            if (Test-DataDirHasContent -Path $normalizedDefault) {
+                $configuredDataDir = ""
+            } else {
+                throw "install.json에 기록된 데이터 폴더를 찾지 못했습니다. 새 빈 데이터베이스를 만들지 않도록 중단합니다: $configuredDataDir"
+            }
         }
+    }
+    if ($configuredDataDir) {
         return [pscustomobject]@{
             DataDir = $configuredDataDir
             Source = "install.json"
@@ -434,6 +440,14 @@ function Resolve-InstallerDataDir {
     }
 
     if ($hasManifest -or $hasLegacyEnv) {
+        if (Test-DataDirHasContent -Path $normalizedDefault) {
+            return [pscustomobject]@{
+                DataDir = $normalizedDefault
+                Source = "default"
+                HasPreviousEvidence = $true
+                HasExistingData = $true
+            }
+        }
         throw "기존 설치 흔적은 있지만 데이터 경로를 확인할 수 없습니다. 새 빈 데이터베이스나 샘플을 만들지 않도록 중단합니다. install.json=$configPath, .env=$legacyEnvPath"
     }
 
@@ -444,4 +458,58 @@ function Resolve-InstallerDataDir {
         HasPreviousEvidence = $false
         HasExistingData = [bool]($defaultExists -and (Test-DataDirHasContent -Path $normalizedDefault))
     }
+}
+
+function Get-DataDirArgumentValues {
+    param([AllowEmptyString()][string]$Arguments)
+    if ([string]::IsNullOrWhiteSpace($Arguments)) { return @() }
+    $tokens = [Collections.Generic.List[string]]::new()
+    $builder = [Text.StringBuilder]::new()
+    $inDouble = $false
+    $inSingle = $false
+    for ($index = 0; $index -lt $Arguments.Length; $index++) {
+        $character = $Arguments[$index]
+        if ($character -eq [char]92 -and $inDouble -and ($index + 1) -lt $Arguments.Length -and
+            $Arguments[$index + 1] -eq [char]34) {
+            [void]$builder.Append([char]34)
+            $index++
+            continue
+        }
+        if ($character -eq [char]34 -and -not $inSingle) {
+            $inDouble = -not $inDouble
+            continue
+        }
+        if ($character -eq [char]39 -and -not $inDouble) {
+            $inSingle = -not $inSingle
+            continue
+        }
+        if ([char]::IsWhiteSpace($character) -and -not $inDouble -and -not $inSingle) {
+            if ($builder.Length -gt 0) {
+                $tokens.Add($builder.ToString())
+                [void]$builder.Clear()
+            }
+            continue
+        }
+        [void]$builder.Append($character)
+    }
+    if ($builder.Length -gt 0) { $tokens.Add($builder.ToString()) }
+
+    $values = [Collections.Generic.List[string]]::new()
+    for ($index = 0; $index -lt $tokens.Count; $index++) {
+        $match = [regex]::Match($tokens[$index], '^(?:-{1,2}data-?dir|/DATADIR)(?:=(.*))?$',
+            [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $match.Success) { continue }
+        $value = $match.Groups[1].Value
+        if (-not $value) {
+            if (($index + 1) -lt $tokens.Count) {
+                $value = $tokens[$index + 1]
+                $index++
+            } else {
+                continue
+            }
+        }
+        $value = ConvertFrom-EnvScalarValue -Value $value
+        if (-not [string]::IsNullOrWhiteSpace($value)) { $values.Add($value) }
+    }
+    return @($values | Select-Object -Unique)
 }
