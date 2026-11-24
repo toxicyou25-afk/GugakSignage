@@ -214,6 +214,59 @@ async function refreshOnly() {
   state.devices = devices.devices;
 }
 
+function playerControlState() {
+  return state.dashboard?.playerControl || {
+    desired: 'stopped', running: false, pid: null, startedAt: null, deviceId: null, playerUrl: null, lastError: null,
+  };
+}
+
+async function waitForPlayerControl(desired, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = playerControlState();
+  while (Date.now() < deadline) {
+    try {
+      const response = await api('/api/player/state');
+      latest = response.player;
+      if (state.dashboard) state.dashboard.playerControl = latest;
+      if (desired === 'running' ? latest.running : latest.desired === 'stopped' && !latest.running) return latest;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return latest;
+}
+
+async function launchPlayer(deviceId, trigger) {
+  const device = state.devices.find((item) => item.id === deviceId);
+  if (!device) throw new ApiError('재생기를 실행할 기기를 찾을 수 없습니다.', 404);
+  setBusy(trigger, true, '실행 중…');
+  try {
+    await api('/api/player/launch', { method: 'POST', body: { deviceId } });
+    const player = await waitForPlayerControl('running');
+    await loadAll();
+    await route();
+    if (player.running) toast(`‘${device.name}’ 재생기를 실행했습니다.`);
+    else toast(player.lastError || '재생기 실행 요청을 보냈지만 로컬 watchdog이 응답하지 않았습니다.', 'error');
+  } finally {
+    setBusy(trigger, false);
+  }
+}
+
+async function stopPlayer(trigger) {
+  setBusy(trigger, true, '중지 중…');
+  try {
+    await api('/api/player/stop', { method: 'POST' });
+    const player = await waitForPlayerControl('stopped');
+    await loadAll();
+    await route();
+    if (player.running) toast(player.lastError || '재생기 중지 요청을 보냈지만 로컬 watchdog이 응답하지 않았습니다.', 'error');
+    else toast('재생기를 중지했습니다.');
+  } finally {
+    setBusy(trigger, false);
+  }
+}
+
 function setPageMeta(page) {
   const meta = PAGE_META[page] || PAGE_META.dashboard;
   el.pageTitle.textContent = meta.title;
@@ -294,6 +347,115 @@ function renderSettings() {
 }
 
 /* ---------------- Dashboard ---------------- */
+const FIT_LABELS = {
+  contain: '화면 맞춤',
+  cover: '채우기',
+  stretch: '늘리기',
+};
+
+function fitLabel(value) {
+  return FIT_LABELS[value] || '화면 맞춤';
+}
+
+function renderSampleBanner(show) {
+  if (!show) return '';
+  return `
+    <section class="sample-banner" aria-labelledby="sample-banner-title">
+      <div class="sample-banner-copy">
+        <p class="eyebrow">START WITH YOUR CONTENT</p>
+        <h2 id="sample-banner-title">지금은 샘플 콘텐츠가 표시 중입니다. 내 이미지를 올리고 재생목록을 게시하세요.</h2>
+        <p>샘플 목록은 화면 동작을 확인하는 용도입니다. 콘텐츠를 올리고 재생목록에 담아 기기에 게시하면 실제 안내 화면으로 바뀝니다.</p>
+      </div>
+      <div class="button-row sample-banner-actions">
+        <a class="btn btn-primary" href="#/contents">내 이미지 올리기</a>
+        <a class="btn btn-ghost" href="#/playlists">재생목록 만들기</a>
+        <a class="btn btn-ghost" href="#/devices">기기 확인</a>
+      </div>
+    </section>`;
+}
+
+function playerLaunchButton(device, className = 'btn btn-primary btn-sm') {
+  if (!device) return '';
+  const player = playerControlState();
+  if (player.running && player.deviceId === device.id) {
+    return `<button class="${className}" type="button" data-action="stop-player">재생기 중지</button>`;
+  }
+  const label = player.running ? '이 기기로 실행' : '재생기 실행';
+  return `<button class="${className}" type="button" data-action="launch-player" data-id="${esc(device.id)}">${label}</button>`;
+}
+
+function playerStateBadge() {
+  const player = playerControlState();
+  if (player.running) return '<span class="badge badge-live">재생기 실행 중</span>';
+  if (player.desired === 'running') return '<span class="badge badge-pending">재생기 시작 중</span>';
+  return '<span class="badge badge-plain badge-offline">재생기 꺼짐</span>';
+}
+
+function renderCurrentBroadcast(devices) {
+  const player = playerControlState();
+  const cards = devices.map((device) => {
+    const broadcast = device.broadcast || {};
+    const items = [...(broadcast.items || [])].sort((left, right) => left.position - right.position);
+    const currentId = player.running && player.deviceId === device.id && device.playerState?.startsWith('playing:')
+      ? broadcast.currentContentId
+      : null;
+    const published = Number(device.publishedVersion || 0) > 0;
+    const playlistName = broadcast.playlistName || device.playlistName || null;
+    const publishedNameDiffers = playlistName && playlistName !== device.playlistName;
+    const runningThisDevice = player.running && player.deviceId === device.id;
+    const sourceNote = broadcast.source === 'assigned'
+      ? '<p class="broadcast-note">아직 게시되지 않았습니다. 아래는 다음 게시에 배포될 초안 재생목록입니다.</p>'
+      : broadcast.source === 'published' && items.length === 0
+        ? '<p class="broadcast-note">게시본에 지금 시간대에 표시할 활성 항목이 없습니다. 재생기는 예약 시간을 기다립니다.</p>'
+        : '';
+    return `
+      <article class="card broadcast-card" data-device-id="${esc(device.id)}" data-source="${esc(broadcast.source || 'none')}">
+        <div class="broadcast-head">
+          <div>
+            <h3>${esc(device.name)}</h3>
+            <p>${esc(device.location || '위치 미지정')} · ${device.orientation === 'portrait' ? '세로' : '가로'} ${device.width}×${device.height}</p>
+          </div>
+          ${statusBadge(device.status)}
+        </div>
+        <div class="broadcast-meta">
+          <span>배정 재생목록 <strong>${esc(device.playlistName || '미지정')}</strong>${publishedNameDiffers ? ` · 현재 게시 ${esc(playlistName)}` : ''}</span>
+          <span>게시 <strong>${published ? `v${device.publishedVersion}` : '미게시'}</strong></span>
+          <span>시각 <strong>${published ? fmtDate(device.publishedAt) : '—'}</strong></span>
+        </div>
+        ${sourceNote}
+        ${items.length ? `<ol class="broadcast-items">${items.map((item) => {
+          const active = currentId && item.contentId === currentId;
+          return `<li class="broadcast-item${active ? ' is-current' : ''}" data-content-id="${esc(item.contentId)}"${active ? ' aria-current="true"' : ''}>
+            ${thumbHtml(item.content, { portrait: item.content.width && item.content.height && item.content.height > item.content.width })}
+            <div class="broadcast-item-copy">
+              <strong>${esc(item.content.name || '이름 없는 콘텐츠')}</strong>
+              <span>${item.position}번 · ${durationLabel(item.durationSeconds)} · ${fitLabel(item.fitMode)} (${esc(item.fitMode)})</span>
+            </div>
+            ${active ? '<span class="badge badge-live">지금 화면</span>' : ''}
+          </li>`;
+        }).join('')}</ol>` : '<div class="broadcast-empty">표시할 재생 항목이 없습니다. <a href="#/playlists">재생목록 구성</a>에서 콘텐츠를 추가하세요.</div>'}
+        <div class="broadcast-foot">
+          <p class="broadcast-error"><span>마지막 오류</span> ${device.lastError ? esc(device.lastError) : '없음'}</p>
+          <div class="button-row">
+            ${playerLaunchButton(device)}
+            <a class="btn btn-ghost btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">재생기 미리보기</a>
+            <button class="btn btn-ghost btn-sm" type="button" data-action="device-settings" data-id="${esc(device.id)}">기기 설정</button>
+          </div>
+        </div>
+        ${runningThisDevice ? '<p class="broadcast-running-note">재생기가 이 기기로 실행 중입니다. 창을 닫으면 자동 재실행하지 않습니다.</p>' : ''}
+      </article>`;
+  }).join('');
+
+  return `
+    <section class="current-broadcast" aria-labelledby="current-broadcast-title">
+      <div class="card-head">
+        <div><p class="eyebrow">ON AIR</p><h2 id="current-broadcast-title">현재 송출</h2></div>
+        <div class="button-row">${playerStateBadge()}${player.running ? '<button class="btn btn-ghost btn-sm" type="button" data-action="stop-player">재생기 중지</button>' : ''}<a class="btn btn-ghost btn-sm" href="#/devices">기기 관리</a></div>
+      </div>
+      ${devices.length ? `<div class="broadcast-grid">${cards}</div>` : '<div class="empty"><h3>등록된 기기가 없습니다</h3><p>기기를 추가하고 재생목록을 게시하면 현재 송출 내용이 여기에 표시됩니다.</p><a class="btn btn-primary" href="#/devices">기기 추가</a></div>'}
+    </section>`;
+}
+
 function renderDashboard() {
   const data = state.dashboard;
   if (!data) {
@@ -302,10 +464,10 @@ function renderDashboard() {
   }
   const { counts, devices } = data;
   const steps = [
-    { done: counts.contents > 0, title: '콘텐츠 올리기', note: counts.contents ? `${counts.contents}개 보관 중` : '이미지·영상·URL' },
-    { done: counts.devices > 0, title: '기기 등록', note: counts.devices ? `${counts.devices}대 등록` : '등록 코드 발급' },
-    { done: counts.playlists > 0, title: '재생목록 만들기', note: counts.playlists ? `${counts.playlists}개 준비` : '순서와 시간 설정' },
-    { done: counts.publishedDevices > 0, title: '게시하기', note: counts.publishedDevices ? `${counts.publishedDevices}대 송출 중` : '재생기에 배포' },
+    { done: counts.contents > 0, title: '콘텐츠 올리기', note: counts.contents ? `${counts.contents}개 보관 중` : '이미지·영상·URL', href: '#/contents' },
+    { done: counts.devices > 0, title: '기기 등록', note: counts.devices ? `${counts.devices}대 등록` : '등록 코드 발급', href: '#/devices' },
+    { done: counts.playlists > 0, title: '재생목록 만들기', note: counts.playlists ? `${counts.playlists}개 준비` : '순서와 시간 설정', href: '#/playlists' },
+    { done: counts.publishedDevices > 0, title: '게시하기', note: counts.publishedDevices ? `${counts.publishedDevices}대 송출 중` : '재생기에 배포', href: '#/devices' },
   ];
   const tasks = buildTasks(counts, devices);
   const primary = devices.find((device) => device.status === 'pending') || devices[0];
@@ -318,12 +480,15 @@ function renderDashboard() {
           <p class="eyebrow">TODAY'S SIGNAGE</p>
           <h2>${counts.onlineDevices > 0 ? '지금, 화면이 정상적으로 연결되어 있습니다.' : '재생기를 연결해 첫 송출을 시작하세요.'}</h2>
           <p>콘텐츠를 올리고 기기에 배정한 뒤 게시하면, 재생기가 마지막 목록을 캐시해 서버가 잠시 끊겨도 계속 재생합니다.</p>
+          <div class="hero-actions">${playerStateBadge()}${primary ? playerLaunchButton(primary, 'btn btn-primary btn-sm') : ''}<a class="btn btn-ghost btn-sm hero-preview" href="#/devices">재생기 설정</a></div>
         </div>
         <div class="hero-stat"><strong>${counts.onlineDevices}<span style="font-size:18px;color:#afc5cb"> / ${counts.devices}</span></strong><span>연결된 화면</span></div>
       </section>
 
+      ${renderSampleBanner(data.sampleContent?.showBanner === true)}
+
       <section class="steps" aria-label="송출 준비 단계">
-        ${steps.map((step) => `<div class="step ${step.done ? 'done' : ''}"><div><strong>${step.title}</strong><span>${step.note}</span></div></div>`).join('')}
+        ${steps.map((step) => `<a class="step ${step.done ? 'done' : ''}" href="${step.href}" aria-label="${step.title}: ${step.note}"><div><strong>${step.title}</strong><span>${step.note}</span></div><span class="step-link">바로 가기</span></a>`).join('')}
       </section>
 
       <div class="grid grid-4">
@@ -332,6 +497,8 @@ function renderDashboard() {
         <section class="card stat"><p class="stat-label">기기</p><p class="stat-value">${counts.devices}</p><p class="stat-note">온라인 ${counts.onlineDevices} · 대기 ${counts.pendingDevices}</p></section>
         <section class="card stat"><p class="stat-label">게시된 기기</p><p class="stat-value">${counts.publishedDevices}</p><p class="stat-note">마지막 목록을 재생 중</p></section>
       </div>
+
+      ${renderCurrentBroadcast(devices)}
 
       <div class="grid grid-2">
         <section class="card card-pad next-card">
@@ -350,7 +517,7 @@ function renderDashboard() {
             <p class="small muted" style="margin-top:-8px">재생기 첫 화면에 아래 6자리 코드를 입력합니다.</p>
             <div class="device-code-wrap" style="margin-top:14px">
               <div><span class="device-code-label">REGISTRATION CODE</span><span class="device-code">${esc(primary.pairingCode)}</span></div>
-              <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(primary.pairingCode)}">코드 복사</button><a class="btn btn-primary btn-sm" href="${esc(primary.playerUrl)}" target="_blank" rel="noopener">재생기 열기</a></div>
+              <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(primary.pairingCode)}">코드 복사</button>${playerLaunchButton(primary)}<a class="btn btn-ghost btn-sm" href="${esc(primary.playerUrl)}" target="_blank" rel="noopener">미리보기</a></div>
             </div>
             <p class="tiny muted" style="margin-top:14px">${esc(primary.name)} · ${primary.orientation === 'portrait' ? '세로' : '가로'} ${primary.width}×${primary.height}</p>
           ` : '<div class="empty" style="padding:26px 18px"><h3>등록된 기기가 없습니다</h3><p>기기를 먼저 추가하면 재생기 연결 코드가 발급됩니다.</p><a class="btn btn-primary btn-sm" href="#/devices">기기 추가</a></div>'}
@@ -544,8 +711,9 @@ function uploadOne(file, onProgress) {
 
 /* ---------------- Devices ---------------- */
 function renderDevices() {
+  const player = playerControlState();
   el.view.innerHTML = `
-    <div class="card-head" style="margin-bottom:10px"><p class="page-intro" style="margin:0">기기를 추가하면 6자리 등록 코드가 발급됩니다. 재생기 첫 화면에 코드를 입력하면 연결되고, 준비한 재생목록을 게시할 수 있습니다.</p><button class="btn btn-primary" type="button" data-action="new-device">기기 추가</button></div>
+    <div class="card-head" style="margin-bottom:10px"><div><p class="page-intro" style="margin:0">기기를 추가하면 6자리 등록 코드가 발급됩니다. 재생기 첫 화면에 코드를 입력하면 연결되고, 준비한 재생목록을 게시할 수 있습니다.</p><div class="device-player-state">${playerStateBadge()}<span>${player.running && player.deviceId ? `‘${esc(state.devices.find((device) => device.id === player.deviceId)?.name || '기기')}’ 재생 중` : '재생기는 관리자 화면의 실행 버튼으로만 시작합니다.'}</span></div></div><div class="button-row">${player.running ? '<button class="btn btn-ghost" type="button" data-action="stop-player">재생기 중지</button>' : ''}<button class="btn btn-primary" type="button" data-action="new-device">기기 추가</button></div></div>
     ${state.devices.length ? `<div class="device-grid">${state.devices.map(deviceCardHtml).join('')}</div>` : `
       <div class="empty"><div class="empty-mark">▣</div><h3>등록된 기기가 없습니다</h3><p>로비 PC나 안내 모니터를 기기로 추가하세요. 기기마다 고유한 등록 코드와 재생 상태를 관리합니다.</p><button class="btn btn-primary" type="button" data-action="new-device">첫 기기 추가</button></div>`}
   `;
@@ -554,14 +722,15 @@ function renderDevices() {
 function deviceCardHtml(device) {
   const orientation = device.orientation === 'portrait' ? '세로' : '가로';
   const stateLabel = device.playerState?.startsWith('playing') ? '재생 중' : device.playerState === 'paused' ? '일시정지' : device.status === 'online' ? '연결됨' : '—';
+  const player = playerControlState();
   return `<article class="card device-card">
     <div class="device-top">
       <div><h2 class="device-name">${esc(device.name)}</h2><p class="device-loc">${esc(device.location || '위치 미지정')} · ${orientation} ${device.width}×${device.height}</p></div>
-      <div class="button-row">${statusBadge(device.status)}${device.paired ? '<span class="badge badge-info">연결됨</span>' : '<span class="badge badge-plain badge-warn">미연결</span>'}</div>
+      <div class="button-row">${statusBadge(device.status)}${device.paired ? '<span class="badge badge-info">연결됨</span>' : '<span class="badge badge-plain badge-warn">미연결</span>'}${player.running && player.deviceId === device.id ? '<span class="badge badge-live">재생기 실행 중</span>' : ''}</div>
     </div>
     <div class="device-code-wrap">
       <div><span class="device-code-label">등록 코드 · 재생기 첫 화면에 입력</span><span class="device-code">${esc(device.pairingCode)}</span></div>
-      <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button><a class="btn btn-primary btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">재생기 열기</a></div>
+      <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button>${playerLaunchButton(device)}<a class="btn btn-ghost btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">미리보기</a></div>
     </div>
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>
@@ -968,6 +1137,10 @@ document.addEventListener('click', async (event) => {
         toast('콘텐츠를 삭제했습니다.');
       } else if (action === 'new-device') {
         openCreateDeviceModal();
+      } else if (action === 'launch-player') {
+        await launchPlayer(trigger.dataset.id, trigger);
+      } else if (action === 'stop-player') {
+        await stopPlayer(trigger);
       } else if (action === 'device-settings') {
         const device = state.devices.find((item) => item.id === trigger.dataset.id);
         if (device) openDeviceSettings(device);

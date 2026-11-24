@@ -12,6 +12,7 @@ import { contentRoutes } from './routes/contents.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { deviceRoutes } from './routes/devices.js';
 import { playerRoutes } from './routes/player.js';
+import { playerControlRoutes } from './routes/player-control.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
 
@@ -47,6 +48,7 @@ export function createApp(db: DB, config: AppConfig) {
   });
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
+  app.use('/api/player', admin, playerControlRoutes(db, config));
   app.use('/api/dashboard', admin, dashboardRoutes(db, config));
   app.use('/api/contents', admin, contentRoutes(db, config));
   app.use('/api/playlists', admin, playlistRoutes(db));

@@ -3,6 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { classifyPlayerState } from './watchdog-health.mjs';
+import { openAdminOnStartup } from './admin-startup.mjs';
+import {
+  clearPlayerCommand,
+  desiredAfterBrowserExit,
+  readPlayerCommand,
+  readPlayerState,
+  writePlayerState as persistPlayerState,
+} from './player-state.mjs';
 
 const installDir = path.resolve(import.meta.dirname, '..');
 const configPath = path.join(installDir, 'install.json');
@@ -13,6 +21,7 @@ const watchdogConfig = {
   browserCheckIntervalMs: 15000,
   serverStartupGraceMs: 120000,
   browserStartupGraceMs: 120000,
+  browserTargetMissingGraceMs: 15000,
   serverHealthFailureThreshold: 5,
   browserHealthFailureThreshold: 3,
   serverHeartbeatMaxAgeMs: 90000,
@@ -118,6 +127,7 @@ fs.writeFileSync(lockPath, String(process.pid), 'utf8');
 
 const stopRequestPath = path.join(controlDir, 'stop.request');
 const statePath = path.join(logDir, 'watchdog-state.json');
+const persistedPlayerState = readPlayerState(config.dataDir);
 let previousState = null;
 try {
   previousState = JSON.parse(fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, ''));
@@ -150,6 +160,22 @@ let lastBrowserState = null;
 let lastBrowserStateKind = null;
 let lastBrowserResponsive = null;
 let previousServerChecked = false;
+const adminStartupState = { attempted: false };
+let playerDesired = persistedPlayerState.desired === 'running' ? 'running' : 'stopped';
+let playerDeviceId = persistedPlayerState.deviceId;
+let playerUrl = persistedPlayerState.playerUrl || config.playerUrl;
+let playerLastError = persistedPlayerState.lastError;
+let playerLastExit = null;
+let playerCommandBusy = false;
+
+if (playerDesired === 'running' && processIsAlive(Number(persistedPlayerState.pid))) {
+  browser = { pid: Number(persistedPlayerState.pid), adopted: true };
+  browserStartedAt = Date.parse(persistedPlayerState.startedAt || '') || Date.now();
+} else if (playerDesired === 'running') {
+  playerDesired = 'stopped';
+  playerDeviceId = null;
+  playerLastError = '이전 재생기 프로세스를 찾지 못했습니다. 필요하면 관리자 화면에서 다시 실행하세요.';
+}
 
 function writeState() {
   const state = {
@@ -167,6 +193,9 @@ function writeState() {
     lastBrowserState,
     lastBrowserStateKind,
     lastBrowserResponsive,
+    playerDesired,
+    playerDeviceId,
+    playerUrl,
     serverHealthMisses,
     browserHealthMisses,
     serverFailures,
@@ -189,6 +218,25 @@ function writeState() {
     }
   } catch (error) {
     writeLog('WARN', 'state file write failed', { message: error.message });
+  }
+}
+
+function writePlayerState() {
+  try {
+    persistPlayerState(config.dataDir, {
+      schemaVersion: 1,
+      desired: playerDesired,
+      running: Boolean(browser && browserStartedAt),
+      pid: browser?.pid ?? null,
+      startedAt: browserStartedAt ? new Date(browserStartedAt).toISOString() : null,
+      deviceId: playerDeviceId,
+      playerUrl,
+      lastError: playerLastError,
+      updatedAt: new Date().toISOString(),
+      ...(playerLastExit ? { lastExit: playerLastExit } : {}),
+    });
+  } catch (error) {
+    writeLog('WARN', 'player state write failed', { message: error.message });
   }
 }
 
@@ -268,8 +316,10 @@ async function haltWatchdog(component, reason) {
   browser = null;
   serverStartedAt = 0;
   browserStartedAt = 0;
+  playerDesired = 'stopped';
   fs.rmSync(lockPath, { force: true });
   writeState();
+  writePlayerState();
   setTimeout(() => process.exit(2), 100);
 }
 
@@ -290,7 +340,7 @@ function scheduleServerRestart(reason) {
 }
 
 function scheduleBrowserRestart(reason) {
-  if (shuttingDown || browserRestartTimer || halted) return;
+  if (shuttingDown || browserRestartTimer || halted || playerDesired !== 'running') return;
   browserFailures += 1;
   if (browserFailures >= watchdogConfig.maxConsecutiveFailures) {
     void haltWatchdog('browser', '연속 실패 한도 도달: ' + reason);
@@ -404,22 +454,6 @@ async function startBrowser(reason) {
   clearTimer(browserRestartTimer);
   browserRestartTimer = null;
   try {
-    const previousBrowserPid = Number(previousState?.browserPid || 0);
-    if (processIsAlive(previousBrowserPid)) {
-      try {
-        const health = await checkBrowserHealth();
-        browser = { pid: previousBrowserPid, adopted: true };
-        browserStartedAt = Date.parse(previousState?.browserStartedAt || '') || Date.now();
-        browserHealthySince = health.healthy ? Date.now() : 0;
-        browserHealthMisses = 0;
-        writeLog('INFO', 'existing browser adopted', { pid: previousBrowserPid, reason, stateKind: health.kind });
-        writeState();
-        return;
-      } catch {
-        // The old browser or debugging endpoint is unavailable; start a new one.
-      }
-    }
-
     const browserName = path.basename(config.browserPath).toLowerCase();
     const isEdge = browserName === 'msedge.exe';
     const args = [
@@ -443,13 +477,13 @@ async function startBrowser(reason) {
     }
     if (isEdge) {
       args.push(
-        '--app=' + config.playerUrl,
+        '--app=' + playerUrl,
         '--start-fullscreen',
         '--disable-features=msEdgeFirstRunExperience',
         '--disable-session-crashed-bubble',
       );
     } else {
-      args.push('--kiosk', '--start-fullscreen', config.playerUrl);
+      args.push('--kiosk', '--start-fullscreen', playerUrl);
     }
     const child = spawn(config.browserPath, args, {
       cwd: installDir,
@@ -464,14 +498,40 @@ async function startBrowser(reason) {
     child.once('error', (error) => {
       writeLog('ERROR', 'browser process error', { message: error.message });
       if (browser === child) browser = null;
-      scheduleBrowserRestart('spawn-error');
+      browserStartedAt = 0;
+      browserHealthySince = 0;
+      playerLastError = '재생기 실행에 실패했습니다: ' + error.message;
+      if (reason === 'admin-request' || reason === 'admin-switch') {
+        playerDesired = 'stopped';
+        writeState();
+        writePlayerState();
+      } else {
+        scheduleBrowserRestart('spawn-error');
+      }
     });
     child.once('exit', (code, signal) => {
       writeLog('WARN', 'browser exited', { pid: child.pid, code, signal });
       if (browser === child) browser = null;
       browserStartedAt = 0;
       browserHealthySince = 0;
+      browserHealthMisses = 0;
+      playerLastExit = { code, signal, at: new Date().toISOString() };
+      const nextDesired = desiredAfterBrowserExit({
+        intentional: Boolean(child.__watchdogIntentionalStop),
+        desired: playerDesired,
+        code,
+      });
+      if (!child.__watchdogIntentionalStop && nextDesired === 'stopped') {
+        playerDesired = 'stopped';
+        playerLastError = '재생기 창이 닫혀 실행을 중지했습니다.';
+        writeLog('INFO', 'player window closed by user; keeping it stopped', { pid: child.pid });
+        writeState();
+        writePlayerState();
+        return;
+      }
+      playerDesired = nextDesired;
       writeState();
+      writePlayerState();
       if (!child.__watchdogIntentionalStop) scheduleBrowserRestart('process-exit');
     });
     writeLog('INFO', 'browser started', {
@@ -482,17 +542,95 @@ async function startBrowser(reason) {
       headless: config.browserHeadless === true,
     });
     writeState();
+    writePlayerState();
   } catch (error) {
     writeLog('ERROR', 'browser start failed', { message: error.message });
     browser = null;
-    scheduleBrowserRestart('start-exception');
+    browserStartedAt = 0;
+    playerLastError = '재생기 실행에 실패했습니다: ' + error.message;
+    if (reason === 'admin-request' || reason === 'admin-switch') playerDesired = 'stopped';
+    else scheduleBrowserRestart('start-exception');
+    writeState();
+    writePlayerState();
   } finally {
     browserActionBusy = false;
   }
 }
 
+async function stopBrowser(reason, markStopped = true) {
+  clearTimer(browserRestartTimer);
+  browserRestartTimer = null;
+  const child = browser;
+  if (markStopped) playerDesired = 'stopped';
+  if (child) {
+    child.__watchdogIntentionalStop = true;
+    browser = null;
+    try {
+      await killProcessTree(child);
+    } catch (error) {
+      writeLog('ERROR', 'browser stop failed', { message: error.message });
+      playerLastError = '재생기 종료에 실패했습니다: ' + error.message;
+    }
+  }
+  browserStartedAt = 0;
+  browserHealthySince = 0;
+  browserHealthMisses = 0;
+  writeState();
+  writePlayerState();
+  writeLog('INFO', 'player stopped', { reason });
+}
+
+async function handlePlayerCommand() {
+  if (playerCommandBusy || browserActionBusy || shuttingDown) return;
+  const command = readPlayerCommand(config.dataDir);
+  if (!command) return;
+  playerCommandBusy = true;
+  clearPlayerCommand(config.dataDir);
+  try {
+    if (command.action === 'stop') {
+      await stopBrowser('admin-request');
+      return;
+    }
+    let requestedUrl;
+    try {
+      requestedUrl = new URL(String(command.playerUrl || ''));
+    } catch {
+      requestedUrl = null;
+    }
+    if (!requestedUrl || requestedUrl.protocol !== 'http:' || requestedUrl.hostname !== '127.0.0.1' ||
+        !requestedUrl.pathname.startsWith('/player')) {
+      playerLastError = '재생기 실행 요청의 주소가 올바르지 않습니다.';
+      playerDesired = 'stopped';
+      writeState();
+      writePlayerState();
+      return;
+    }
+    const samePlayer = Boolean(
+      browser && playerDeviceId === String(command.deviceId || '') && playerUrl === requestedUrl.toString(),
+    );
+    if (samePlayer) {
+      playerDesired = 'running';
+      writeState();
+      writePlayerState();
+      return;
+    }
+    if (browser) await stopBrowser('admin-switch', false);
+    playerDesired = 'running';
+    playerDeviceId = typeof command.deviceId === 'string' ? command.deviceId : null;
+    playerUrl = requestedUrl.toString();
+    playerLastError = null;
+    playerLastExit = null;
+    browserFailures = 0;
+    writeState();
+    writePlayerState();
+    await startBrowser('admin-request');
+  } finally {
+    playerCommandBusy = false;
+  }
+}
+
 async function replaceBrowser(reason) {
-  if (!browser || browserActionBusy || shuttingDown) return;
+  if (!browser || browserActionBusy || shuttingDown || playerDesired !== 'running') return;
   browserActionBusy = true;
   const child = browser;
   child.__watchdogIntentionalStop = true;
@@ -510,6 +648,8 @@ async function replaceBrowser(reason) {
   browserStartedAt = 0;
   browserHealthySince = 0;
   browserHealthMisses = 0;
+  writeState();
+  writePlayerState();
   scheduleBrowserRestart(reason);
 }
 
@@ -568,7 +708,7 @@ async function checkBrowserHealth() {
   });
   if (!response.ok) throw new Error('CDP HTTP ' + response.status);
   const targets = await response.json();
-  const playerBase = config.playerUrl.split('?')[0];
+  const playerBase = String(playerUrl || config.playerUrl).split('?')[0];
   const page = targets.find((target) =>
     target.type === 'page' && typeof target.url === 'string' && target.url.startsWith(playerBase),
   );
@@ -589,6 +729,18 @@ async function superviseServer() {
     lastServerHealthyAt = new Date().toISOString();
     serverHealthMisses = 0;
     if (!serverHealthySince) serverHealthySince = Date.now();
+    if (!adminStartupState.attempted) {
+      void openAdminOnStartup({
+        config,
+        port: config.port,
+        installDir,
+        state: adminStartupState,
+      }).then((result) => {
+        writeLog('INFO', 'admin startup decision', result);
+      }).catch((error) => {
+        writeLog('WARN', 'admin startup decision failed', { message: error.message });
+      });
+    }
     if (serverFailures > 0 && Date.now() - serverHealthySince >= watchdogConfig.stableResetMs) {
       writeLog('INFO', 'server stable; resetting restart failures', { previousFailures: serverFailures });
       serverFailures = 0;
@@ -639,6 +791,11 @@ async function superviseBrowser() {
     browserHealthMisses += 1;
     const age = Date.now() - browserStartedAt;
     writeLog('WARN', 'browser CDP health check failed', { message: error.message, misses: browserHealthMisses });
+    if (error.message === 'player target not found' && age >= watchdogConfig.browserTargetMissingGraceMs) {
+      playerLastError = '재생기 페이지가 닫혀 실행을 중지했습니다.';
+      await stopBrowser('player-target-missing');
+      return;
+    }
     if (browserHealthMisses >= watchdogConfig.browserHealthFailureThreshold && age >= watchdogConfig.browserStartupGraceMs) {
       await replaceBrowser('cdp-health-check');
     }
@@ -654,6 +811,7 @@ async function shutdown(reason) {
   clearTimer(browserRestartTimer);
   const currentServer = server;
   const currentBrowser = browser;
+  playerDesired = 'stopped';
   if (currentServer) currentServer.__watchdogIntentionalStop = true;
   if (currentBrowser) currentBrowser.__watchdogIntentionalStop = true;
   try {
@@ -666,11 +824,11 @@ async function shutdown(reason) {
   fs.rmSync(stopRequestPath, { force: true });
   fs.rmSync(lockPath, { force: true });
   writeState();
+  writePlayerState();
   setTimeout(() => process.exit(0), 100);
 }
 
 void startServer('startup');
-void startBrowser('startup');
 
 const serverTimer = setInterval(() => {
   if (!server && !serverRestartTimer && !shuttingDown) scheduleServerRestart('missing-process');
@@ -678,12 +836,15 @@ const serverTimer = setInterval(() => {
 }, watchdogConfig.healthIntervalMs);
 
 const browserTimer = setInterval(() => {
-  if (!browser && !browserRestartTimer && !shuttingDown) scheduleBrowserRestart('missing-process');
+  if (playerDesired === 'running' && !browser && !browserRestartTimer && !shuttingDown) {
+    scheduleBrowserRestart('missing-process');
+  }
   void superviseBrowser();
 }, watchdogConfig.browserCheckIntervalMs);
 
 const controlTimer = setInterval(() => {
   if (fs.existsSync(stopRequestPath)) void shutdown('stop-request');
+  void handlePlayerCommand();
 }, 1000);
 
 process.once('SIGINT', () => void shutdown('SIGINT'));
@@ -709,3 +870,4 @@ writeLog('INFO', 'watchdog started', {
   manualRestartAfterHalt: Boolean(previousState?.halted),
 });
 writeState();
+writePlayerState();

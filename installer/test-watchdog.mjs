@@ -26,6 +26,14 @@ try {
     path.join(repoRoot, 'installer', 'ops', 'watchdog-health.mjs'),
     path.join(opsDir, 'watchdog-health.mjs'),
   );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'admin-startup.mjs'),
+    path.join(opsDir, 'admin-startup.mjs'),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'player-state.mjs'),
+    path.join(opsDir, 'player-state.mjs'),
+  );
   const config = {
     installDir,
     dataDir,
@@ -72,9 +80,13 @@ try {
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
   assert.equal(state.halted, true);
   assert.ok(state.haltedReason);
-  assert.ok(state.haltedComponent);
+  assert.equal(state.haltedComponent, 'server');
   assert.equal(state.serverPid, null);
   assert.equal(state.browserPid, null);
+  const playerState = JSON.parse(fs.readFileSync(path.join(dataDir, 'control', 'player-state.json'), 'utf8'));
+  assert.equal(playerState.desired, 'stopped');
+  assert.equal(playerState.running, false);
+  assert.equal(playerState.pid, null);
   assert.equal(fs.existsSync(path.join(logDir, 'watchdog.lock')), false);
   assert.notEqual(exit, 0);
 

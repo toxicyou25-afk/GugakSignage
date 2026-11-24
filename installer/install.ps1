@@ -20,7 +20,9 @@ param(
     [switch]$NoStart,
     [switch]$ConfigureOnly,
     [switch]$AllowDataDirChange,
-    [switch]$HeadlessBrowser
+    [switch]$HeadlessBrowser,
+    [switch]$NoAdminAutoOpen,
+    [switch]$OpenAdminOnStartup
 )
 
 $ErrorActionPreference = "Stop"
@@ -123,6 +125,8 @@ function Write-InstallConfig {
     param(
         [string]$ConfigPath,
         [string[]]$Shortcuts,
+        [string[]]$AdminShortcuts,
+        [bool]$AdminAutoOpenEnabled,
         $PreviousConfig,
         [bool]$AutoStartRegistered
     )
@@ -149,6 +153,10 @@ function Write-InstallConfig {
         debugPort           = $DebugPort
         browserHeadless     = $useHeadlessBrowser
         shortcuts           = $Shortcuts
+        adminShortcuts      = $AdminShortcuts
+        adminAutoOpen       = [ordered]@{
+            enabled = $AdminAutoOpenEnabled
+        }
         autoStartRegistered = $AutoStartRegistered
         createdAt           = $createdAt
         updatedAt           = [DateTime]::UtcNow.ToString("o")
@@ -157,6 +165,7 @@ function Write-InstallConfig {
             browserCheckIntervalMs        = 15000
             serverStartupGraceMs          = 120000
             browserStartupGraceMs         = 120000
+            browserTargetMissingGraceMs   = 15000
             serverHealthFailureThreshold  = 5
             browserHealthFailureThreshold = 3
             serverHeartbeatMaxAgeMs       = 90000
@@ -184,6 +193,24 @@ function New-Shortcut {
     $shortcut = $shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
     $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\watchdog-launch.vbs") + '"'
+    $shortcut.WorkingDirectory = $InstallDir
+    $shortcut.Description = $Description
+    $shortcut.IconLocation = "$BrowserPath,0"
+    $shortcut.Save()
+    return $ShortcutPath
+}
+
+function New-AdminShortcut {
+    param(
+        [string]$ShortcutPath,
+        [string]$Description
+    )
+    $parent = Split-Path -Parent $ShortcutPath
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\admin-launch.vbs") + '"'
     $shortcut.WorkingDirectory = $InstallDir
     $shortcut.Description = $Description
     $shortcut.IconLocation = "$BrowserPath,0"
@@ -255,6 +282,19 @@ $useHeadlessBrowser = if ($PSBoundParameters.ContainsKey("HeadlessBrowser")) {
 } else {
     $false
 }
+$adminAutoOpenEnabled = if ($NoAdminAutoOpen) {
+    $false
+} elseif ($useHeadlessBrowser) {
+    $false
+} elseif ($OpenAdminOnStartup) {
+    $true
+} elseif ($previousConfig -and ($previousConfig.PSObject.Properties.Name -contains "adminAutoOpen") -and
+    $null -ne $previousConfig.adminAutoOpen -and
+    ($previousConfig.adminAutoOpen.PSObject.Properties.Name -contains "enabled")) {
+    [bool]$previousConfig.adminAutoOpen.enabled
+} else {
+    $true
+}
 
 $defaultDataDir = if ($isAdmin) {
     Join-Path $env:ProgramData "GugakSignage"
@@ -302,6 +342,10 @@ $previousShortcuts = @()
 if ($previousConfig -and $previousConfig.shortcuts -and -not $dataDirChanged) {
     $previousShortcuts = @($previousConfig.shortcuts | ForEach-Object { [string]$_ })
 }
+$previousAdminShortcuts = @()
+if ($previousConfig -and $previousConfig.adminShortcuts -and -not $dataDirChanged) {
+    $previousAdminShortcuts = @($previousConfig.adminShortcuts | ForEach-Object { [string]$_ })
+}
 if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
     if (-not $DesktopDir) { $DesktopDir = [Environment]::GetFolderPath("Desktop") }
     if (-not $StartMenuDir) {
@@ -311,8 +355,20 @@ if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
         (Join-Path (Get-NormalizedPath -Path $DesktopDir) "GugakSignage.lnk"),
         (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "GugakSignage.lnk")
     )
+    $adminShortcutPaths = @(
+        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "GugakSignage 관리자.lnk"),
+        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "GugakSignage 관리자.lnk")
+    )
 } else {
     $shortcutPaths = $previousShortcuts
+    $adminShortcutPaths = if ($previousAdminShortcuts.Count -eq 2) {
+        $previousAdminShortcuts
+    } else {
+        @(
+            (Join-Path (Split-Path -Parent $previousShortcuts[0]) "GugakSignage 관리자.lnk"),
+            (Join-Path (Split-Path -Parent $previousShortcuts[1]) "GugakSignage 관리자.lnk")
+        )
+    }
 }
 
 if (-not $LogDir) {
@@ -349,6 +405,11 @@ try {
     foreach ($shortcutPath in $shortcutPaths) {
         if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $InstallDir)) {
             throw "기존 GugakSignage 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $shortcutPath"
+        }
+    }
+    foreach ($adminShortcutPath in $adminShortcutPaths) {
+        if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $adminShortcutPath -InstallDir $InstallDir)) {
+            throw "기존 GugakSignage 관리자 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $adminShortcutPath"
         }
     }
 
@@ -422,6 +483,27 @@ try {
         if ((Test-Path -LiteralPath $sourceTool) -and -not (Test-PathEqual -Left $sourceTool -Right $destinationTool)) {
             Copy-Item -LiteralPath $sourceTool -Destination $destinationTool -Force
         }
+    }
+    $installedOpsDir = Join-Path $InstallDir "ops"
+    New-Item -ItemType Directory -Path $installedOpsDir -Force | Out-Null
+    foreach ($opsFile in @("admin-launch.vbs", "open-admin.ps1", "admin-startup.mjs", "player-state.mjs")) {
+        $destination = Join-Path $installedOpsDir $opsFile
+        if (Test-Path -LiteralPath $destination -PathType Leaf) { continue }
+        $candidates = @(
+            (Join-Path $PSScriptRoot "ops\$opsFile"),
+            (Join-Path $PSScriptRoot "..\ops\$opsFile")
+        )
+        if ($SourceDir) {
+            $candidates += @(
+                (Join-Path $SourceDir "installer\ops\$opsFile"),
+                (Join-Path $SourceDir "ops\$opsFile")
+            )
+        }
+        $source = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+        if (-not $source) {
+            throw "운영 도구를 찾지 못했습니다: ops\$opsFile. 설치 패키지를 다시 준비하세요."
+        }
+        Copy-Item -LiteralPath $source -Destination $destination -Force
     }
 
     $envFile = Join-Path $DataDir ".env"
@@ -501,7 +583,13 @@ try {
         if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $InstallDir)) {
             throw "기존 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $shortcutPath"
         }
-        $null = New-Shortcut -ShortcutPath $shortcutPath -Description "GugakSignage 서버와 전체 화면 재생기를 시작합니다."
+        $null = New-Shortcut -ShortcutPath $shortcutPath -Description "GugakSignage 서버와 관리자 페이지를 시작합니다."
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\admin-launch.vbs") -PathType Leaf)) {
+        throw "관리자 실행 파일이 없습니다. 설치 패키지를 다시 준비하세요: ops\admin-launch.vbs"
+    }
+    foreach ($adminShortcutPath in $adminShortcutPaths) {
+        $null = New-AdminShortcut -ShortcutPath $adminShortcutPath -Description "GugakSignage 관리자 페이지를 기본 브라우저로 엽니다."
     }
     Write-Step "바탕화면·시작 메뉴 바로가기 생성"
 
@@ -531,7 +619,7 @@ try {
         $autoStartRegistered = [bool]($existingTask -and $existingTask.State -ne "Disabled")
     }
 
-    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered
+    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -AdminShortcuts $adminShortcutPaths -AdminAutoOpenEnabled $adminAutoOpenEnabled -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered
 
     if (-not $NoStart) {
         if (-not $NoAutoStart) {
@@ -561,6 +649,8 @@ try {
     Write-Step "설치 완료"
     Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
     Write-Step "관리자 화면: http://127.0.0.1:$Port/admin/"
+    Write-Step "관리자 바로가기: $($adminShortcutPaths -join ', ')"
+    Write-Step "관리자 페이지 자동 열기: $(if ($adminAutoOpenEnabled) { '사용' } else { '사용 안 함' })"
     Write-Step "초기 비밀번호: $envFile 의 ADMIN_PASSWORD (로그에는 기록하지 않음)"
     Write-Step "설치 로그: $script:InstallLogPath"
     Write-Step "watchdog 로그: $(Join-Path $LogDir "watchdog.log")"

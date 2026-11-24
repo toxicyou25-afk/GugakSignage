@@ -205,6 +205,35 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(devices.body.devices[0].reportedWidth, 1080);
   });
 
+  await t.test('관리자 전용 재생기 실행·중지 제어 요청을 기록한다', async () => {
+    const initial = await admin('/api/player/state');
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.player.desired, 'stopped');
+    assert.equal(initial.body.player.running, false);
+
+    const unauth = await request('/api/player/state');
+    assert.equal(unauth.status, 401);
+
+    const badDevice = await admin('/api/player/launch', { method: 'POST', body: { deviceId: 'missing' } });
+    assert.equal(badDevice.status, 404);
+
+    const launch = await admin('/api/player/launch', { method: 'POST', body: { deviceId: created.deviceId } });
+    assert.equal(launch.status, 202, JSON.stringify(launch.body));
+    assert.equal(launch.body.accepted, true);
+    assert.match(launch.body.playerUrl, /^http:\/\/127\.0\.0\.1:\d+\/player\/\?code=/);
+    const commandPath = path.join(config.dataDir, 'control', 'player-command.json');
+    const command = JSON.parse(fs.readFileSync(commandPath, 'utf8'));
+    assert.equal(command.action, 'launch');
+    assert.equal(command.deviceId, created.deviceId);
+    assert.equal(command.playerUrl, launch.body.playerUrl);
+
+    const stop = await admin('/api/player/stop', { method: 'POST' });
+    assert.equal(stop.status, 202);
+    const stopCommand = JSON.parse(fs.readFileSync(commandPath, 'utf8'));
+    assert.equal(stopCommand.action, 'stop');
+    fs.rmSync(commandPath, { force: true });
+  });
+
   await t.test('재생목록 저장, 기기 배정, 게시와 재생기 조회', async () => {
     const playlist = await admin('/api/playlists', {
       method: 'POST',
@@ -289,6 +318,30 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(devices.body.devices[0].status, 'online');
     assert.equal(devices.body.devices[0].playerState, `playing:${created.imageId}`);
     assert.equal(devices.body.devices[0].publishedVersion, 2);
+
+    const dashboard = await admin('/api/dashboard');
+    assert.equal(dashboard.status, 200);
+    const dashboardDevice = dashboard.body.devices[0];
+    assert.equal(dashboardDevice.broadcast.source, 'published');
+    assert.equal(dashboardDevice.broadcast.playlistName, '검증 재생목록');
+    assert.equal(dashboardDevice.broadcast.currentContentId, created.imageId);
+    assert.deepEqual(
+      dashboardDevice.broadcast.items.map((item: any) => ({
+        position: item.position,
+        name: item.content.name,
+        durationSeconds: item.durationSeconds,
+        fitMode: item.fitMode,
+      })),
+      [
+        { position: 1, name: 'poster', durationSeconds: 5, fitMode: 'contain' },
+        { position: 2, name: 'sample', durationSeconds: 10, fitMode: 'cover' },
+        { position: 3, name: '안내 페이지', durationSeconds: 8, fitMode: 'contain' },
+      ],
+    );
+    assert.equal(dashboardDevice.broadcast.sampleOnly, false);
+    assert.equal(dashboard.body.sampleContent.showBanner, false);
+    assert.equal(dashboard.body.playerControl.desired, 'stopped');
+    assert.equal(dashboard.body.playerControl.running, false);
   });
 
   await t.test('등록 코드로 기존 연결을 인수하고 이전 토큰을 무효화한다', async () => {

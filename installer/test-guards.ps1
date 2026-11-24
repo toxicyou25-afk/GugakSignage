@@ -191,6 +191,43 @@ try {
     }
     $results.foreignShortcutDetected = $true
 
+    $adminOwnerApp = Join-Path $tempRoot "admin-owner-app"
+    $adminOwnerOps = Join-Path $adminOwnerApp "ops"
+    New-Item -ItemType Directory -Path $adminOwnerOps -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $adminOwnerOps "admin-launch.vbs") -Value "' fixture" -Encoding ascii
+    $adminShortcutDir = Join-Path $tempRoot "admin-desktop"
+    New-Item -ItemType Directory -Path $adminShortcutDir -Force | Out-Null
+    $adminShortcutPath = Join-Path $adminShortcutDir "GugakSignage 관리자.lnk"
+    $adminShortcut = $shell.CreateShortcut($adminShortcutPath)
+    $adminShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $adminShortcut.Arguments = '//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"'
+    $adminShortcut.WorkingDirectory = $adminOwnerApp
+    $adminShortcut.Save()
+    if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $adminShortcutPath -InstallDir $adminOwnerApp)) {
+        throw "GugakSignage 관리자 바로가기 소유권을 확인하지 못했습니다."
+    }
+    $foreignAdminShortcut = Join-Path $adminShortcutDir "foreign-admin.lnk"
+    $foreignAdmin = $shell.CreateShortcut($foreignAdminShortcut)
+    $foreignAdmin.TargetPath = Join-Path $env:SystemRoot "System32\notepad.exe"
+    $foreignAdmin.Save()
+    if (Test-AdminShortcutOwnedByInstall -ShortcutPath $foreignAdminShortcut -InstallDir $adminOwnerApp) {
+        throw "다른 프로그램 바로가기를 GugakSignage 관리자 소유로 판정했습니다."
+    }
+    $results.adminShortcutTargetVerified = $true
+
+    $adminPortApp = Join-Path $tempRoot "admin-port-app"
+    New-Item -ItemType Directory -Path $adminPortApp -Force | Out-Null
+    $openAdminScript = Join-Path $PSScriptRoot "ops\open-admin.ps1"
+    $defaultAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($defaultAdminUrl -ne "http://127.0.0.1:3000/admin/") { throw "install.json 없는 관리자 URL fallback이 잘못되었습니다: $defaultAdminUrl" }
+    [IO.File]::WriteAllText((Join-Path $adminPortApp "install.json"), '{ "port": 4123 }', [Text.UTF8Encoding]::new($false))
+    $configuredAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($configuredAdminUrl -ne "http://127.0.0.1:4123/admin/") { throw "install.json 포트의 관리자 URL이 잘못되었습니다: $configuredAdminUrl" }
+    [IO.File]::WriteAllText((Join-Path $adminPortApp "install.json"), '{ "port": 70000 }', [Text.UTF8Encoding]::new($false))
+    $invalidAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($invalidAdminUrl -ne "http://127.0.0.1:3000/admin/") { throw "잘못된 포트의 관리자 URL fallback이 잘못되었습니다: $invalidAdminUrl" }
+    $results.adminUrlPortFallback = $true
+
     $fakeTask = [pscustomobject]@{
         Description = "Unrelated task"
         Actions = @([pscustomobject]@{

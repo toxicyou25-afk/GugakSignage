@@ -2,9 +2,83 @@
 import { Router } from 'express';
 import type { AppConfig } from '../config.js';
 import { all, get, type DB } from '../db.js';
+import {
+  activePlaylistForNow,
+  broadcastFromPlaylist,
+  emptyBroadcast,
+  mergeBroadcasts,
+  parsePlayingContentId,
+  shouldShowSampleBanner,
+  snapshotHasUserContent,
+  type BroadcastItem,
+  type CurrentBroadcast,
+} from '../current-display.js';
+import { buildPlaylist, latestPublication, type Snapshot } from '../publishing.js';
+import { readPlayerState } from '../player-control.js';
 import type { ContentRow, DeviceRow } from '../types.js';
+import { safeJsonParse } from '../util.js';
 import { contentDto } from './contents.js';
 import { deviceDto } from './devices.js';
+
+type DashboardDevice = ReturnType<typeof deviceDto> & { broadcast: CurrentBroadcast };
+
+function broadcastItemsForDevice(
+  db: DB,
+  device: DeviceRow,
+  now: Date,
+): CurrentBroadcast {
+  const publication = latestPublication(db, device.id);
+  if (publication) {
+    const snapshot = safeJsonParse<Snapshot>(publication.snapshot);
+    if (snapshot?.wall) {
+      const playlists = (snapshot.wall.screens || [])
+        .map((screen) => screen.playlist)
+        .filter((playlist, index, values) => values.findIndex((value) => value.id === playlist.id) === index);
+      if (playlists.length > 0) {
+        const merged = mergeBroadcasts(playlists, 'published');
+        merged.playlistId = snapshot.wall.group.id;
+        return merged;
+      }
+      if (snapshot.wall.groupPlaylist) {
+        const merged = broadcastFromPlaylist(snapshot.wall.groupPlaylist, 'published');
+        merged.playlistId = snapshot.wall.group.id;
+        return merged;
+      }
+    }
+    const active = activePlaylistForNow(
+      snapshot?.defaultPlaylist ?? null,
+      snapshot?.schedules ?? [],
+      now,
+    );
+    if (active) return broadcastFromPlaylist(active, 'published');
+    return {
+      ...emptyBroadcast(),
+      source: 'published',
+    };
+  }
+
+  if (device.playlist_id) {
+    const assigned = buildPlaylist(db, device.playlist_id);
+    if (assigned) return broadcastFromPlaylist(assigned, 'assigned');
+  }
+  return emptyBroadcast();
+}
+
+function withCurrentContent(broadcast: CurrentBroadcast, playerState: string | null): CurrentBroadcast {
+  const currentContentId = parsePlayingContentId(playerState);
+  if (!currentContentId) return broadcast;
+  const visible = broadcast.items.some((item: BroadcastItem) => item.contentId === currentContentId);
+  return {
+    ...broadcast,
+    currentContentId: visible ? currentContentId : null,
+  };
+}
+
+function publishedContainsUserContent(db: DB, deviceId: string): boolean {
+  const publication = latestPublication(db, deviceId);
+  if (!publication) return false;
+  return snapshotHasUserContent(safeJsonParse<Snapshot>(publication.snapshot));
+}
 
 export function dashboardRoutes(db: DB, config: AppConfig): Router {
   const router = Router();
@@ -12,7 +86,17 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
   router.get('/', (_req, res) => {
     const contents = all<ContentRow>(db, 'SELECT * FROM contents ORDER BY created_at DESC LIMIT 6');
     const devices = all<DeviceRow>(db, 'SELECT * FROM devices ORDER BY created_at ASC');
-    const deviceSummary = devices.map((device) => deviceDto(db, config, device));
+    const now = new Date();
+    const deviceSummary: DashboardDevice[] = devices.map((device) => {
+      const summary = deviceDto(db, config, device);
+      const broadcast = withCurrentContent(broadcastItemsForDevice(db, device, now), device.player_state);
+      return { ...summary, broadcast };
+    });
+    const hasUserContents = Number(get<{ n: number }>(
+      db,
+      "SELECT COUNT(*) AS n FROM contents WHERE id NOT LIKE 'ct-sample-%'",
+    )?.n ?? 0) > 0;
+    const hasUserPublication = devices.some((device) => publishedContainsUserContent(db, device.id));
     const counts = {
       contents: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM contents')?.n ?? 0),
       images: Number(get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM contents WHERE kind = 'image'")?.n ?? 0),
@@ -42,6 +126,12 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
       devices: deviceSummary,
       contents: contents.map(contentDto),
       recentPublications,
+      playerControl: readPlayerState(config.dataDir),
+      sampleContent: {
+        showBanner: shouldShowSampleBanner({ hasUserContents, hasUserPublication }),
+        hasUserContents,
+        hasUserPublication,
+      },
     });
   });
 
