@@ -4,6 +4,8 @@
 
 공개 저장소: <https://github.com/toxicyou25-afk/GugakSignage>
 
+공개 데모(설치 없이 화면 보기): <https://toxicyou25-afk.github.io/GugakSignage/>
+
 ## 현재 단계
 
 - 2026-11-24: 오픈소스 후보 조사, 범용 아키텍처 설계, 다중 모니터 동기화 시뮬레이션 완료
