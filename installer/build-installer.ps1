@@ -92,8 +92,17 @@ if (-not $SkipCompile) {
         $isccPath = $iscc.Source
     } else {
         $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-        $candidate = Join-Path $programFilesX86 "Inno Setup 6\ISCC.exe"
-        if (Test-Path -LiteralPath $candidate) { $isccPath = $candidate }
+        $candidates = @(
+            (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+            (Join-Path $programFilesX86 "Inno Setup 6\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+        )
+        foreach ($candidate in $candidates) {
+            if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+                $isccPath = $candidate
+                break
+            }
+        }
     }
     if ($isccPath) {
         Write-Step "Inno Setup 컴파일"

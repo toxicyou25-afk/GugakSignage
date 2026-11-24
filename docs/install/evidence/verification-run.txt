@@ -1,12 +1,12 @@
-**********************
+﻿**********************
 Windows PowerShell transcript start
-Start time: 20261124193001
+Start time: 20261124204428
 Username: <user>
 RunAs User: <user>
 Configuration Name:
 Machine: <computer> (Microsoft Windows NT 10.0.26300.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\installer\test-install.ps1
-Process ID: 35748
+Process ID: 64232
 PSVersion: 5.1.26100.9818
 PSEdition: Desktop
 PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
@@ -16,6 +16,21 @@ WSManStackVersion: 3.0
 PSRemotingProtocolVersion: 2.3
 SerializationVersion: 1.1.0.1
 **********************
+[install-test] 경로·소유권 안전 가드 회귀 시험
+{"equalPathBlocked":"데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\equal, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\equal","insidePathBlocked":"데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\parent, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\parent\\data","dotDotPathBlocked":"데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\dotdot, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\dotdot","uninstallEqualPathBlocked":"데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\fake-app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-db78c432\\fake-app","unsafeRemoveDataPathsBlocked":4,"foreignShortcutDetected":true,"foreignScheduledTaskDetected":true,"pidIdentityMismatchBlocked":true,"result":"passed"}
+[install-test] watchdog 건강 판정·영구 중단 회귀 시험
+✔ watchdog은 실제 재생과 캐시 재생만 정상으로 판정한다 (1.0803ms)
+✔ 페어링·오류·대기 화면은 응답 상태이지만 정상 재생으로 오판하지 않는다 (0.1551ms)
+✔ 온라인 재생의 오래된 하트비트와 플레이어 미준비는 재시작 대상으로 판정한다 (0.5708ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 79.4049
+{"result":"passed","exitCode":2,"haltedComponent":"browser","haltedReason":"연속 실패 한도 도달: spawn-error","logRotated":true,"resumedWithoutManualRestart":false}
 [install-test] 임시 설치 시작: <test-root>
 [GugakSignage] 설치 시작
 [GugakSignage] 설치 폴더: <test-root>\app
@@ -25,32 +40,56 @@ SerializationVersion: 1.1.0.1
 [GugakSignage] 서버 파일 복사
 [GugakSignage] 환경 설정과 임의 비밀번호 생성
 [GugakSignage] 바탕화면·시작 메뉴 바로가기 생성
-[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-cd47db7b
+[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-57fa0491
 [GugakSignage] watchdog 시작 후 서버 상태 확인
-[GugakSignage] 서버 준비 완료: http://127.0.0.1:57775/api/health
+[GugakSignage] 서버 준비 완료: http://127.0.0.1:58169/api/health
 [GugakSignage] 설치 완료
-[GugakSignage] 관리자 화면: http://127.0.0.1:57775/admin/
+[GugakSignage] 관리자 화면: http://127.0.0.1:58169/admin/
 [GugakSignage] 초기 비밀번호: <test-root>\data\.env 의 ADMIN_PASSWORD (로그에는 기록하지 않음)
-[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-103001.log
+[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-114441.log
 [GugakSignage] watchdog 로그: <test-root>\data\logs\watchdog.log
 True
 True
 True
-{"checkedAt":"2026-11-24T10:30:13.083Z","expected":"online","url":"http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T10:30:12.224Z","visibility":"visible"},"screenshot":"<repo>\\docs\\install\\evidence\\player-installed.png"}
+{"checkedAt":"2026-11-24T11:44:50.874Z","expected":"online","url":"http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T11:44:48.469Z","visibility":"visible"},"screenshot":"<repo>\\docs\\install\\evidence\\player-installed.png"}
 True
 True
-{"checkedAt":"2026-11-24T10:30:20.524Z","expected":"online","url":"http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T10:30:19.565Z","visibility":"visible"},"screenshot":null}
+[GugakSignage] 설치 시작
+[GugakSignage] 설치 폴더: <test-root>\app
+[GugakSignage] 데이터 폴더: <test-root>\data
+[GugakSignage] 기존 데이터 경로를 기본값으로 사용: <test-root>\data
+[GugakSignage] Node.js 확인: v24.22.2
+[GugakSignage] 재생 브라우저: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[GugakSignage] 서버 파일 복사
+[GugakSignage] 기존 환경 설정 보존: PORT=58169
+[GugakSignage] 기존 데이터 감지로 샘플 시드 비활성화
+[GugakSignage] 바탕화면·시작 메뉴 바로가기 생성
+[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-57fa0491
+[GugakSignage] 설치 완료
+[GugakSignage] 관리자 화면: http://127.0.0.1:58169/admin/
+[GugakSignage] 초기 비밀번호: <test-root>\data\.env 의 ADMIN_PASSWORD (로그에는 기록하지 않음)
+[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-114506.log
+[GugakSignage] watchdog 로그: <test-root>\data\logs\watchdog.log
+PS>TerminatingError(): "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: <test-root>\data, 요청: <test-root>\changed-data"
+True
+True
+True
+True
+{"checkedAt":"2026-11-24T11:45:32.368Z","expected":"online","url":"http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T11:45:31.699Z","visibility":"visible"},"screenshot":null}
 [GugakSignage] 다음 로그인부터 자동 실행하지 않습니다.
 True
 [GugakSignage] 자동 실행을 켜고 watchdog을 시작했습니다.
 True
 True
-{"checkedAt":"2026-11-24T10:30:30.723Z","expected":"offline","url":"http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":true,"lastError":"Failed to fetch","lastHeartbeatAt":null,"visibility":"visible"},"screenshot":"<repo>\\docs\\install\\evidence\\player-offline-installed.png"}
-{"checkedAt":"2026-11-24T10:30:43.839Z","expected":"offline","url":"http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":1,"currentContentId":"ct-sample-poster-welcome","offline":true,"lastError":"Failed to fetch","lastHeartbeatAt":null,"visibility":"visible"},"screenshot":null}
 True
-{"checkedAt":"2026-11-24T10:30:58.167Z","expected":"online","url":"http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":2,"currentContentId":"ct-sample-video-bbb","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T10:30:58.140Z","visibility":"visible"},"screenshot":null}
+{"checkedAt":"2026-11-24T11:45:43.004Z","expected":"offline","url":"http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":0,"currentContentId":"ct-sample-poster-autumn","offline":true,"lastError":"Failed to fetch","lastHeartbeatAt":null,"visibility":"visible"},"screenshot":"<repo>\\docs\\install\\evidence\\player-offline-installed.png"}
+{"checkedAt":"2026-11-24T11:45:56.138Z","expected":"offline","url":"http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":1,"currentContentId":"ct-sample-poster-welcome","offline":true,"lastError":"Failed to fetch","lastHeartbeatAt":null,"visibility":"visible"},"screenshot":null}
+True
+{"checkedAt":"2026-11-24T11:46:10.468Z","expected":"online","url":"http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1","state":{"playerReady":true,"deviceId":"dev-sample-lobby","manifestVersion":1,"playlistId":"pl-sample-lobby","queueLength":5,"index":3,"currentContentId":"ct-sample-poster-class","offline":false,"lastError":null,"lastHeartbeatAt":"2026-11-24T11:46:10.318Z","visibility":"visible"},"screenshot":null}
+[GugakSignage] watchdog을 수동으로 재시작했습니다.
+True
 [GugakSignage] 제거 시작 (데이터 보존이 기본)
-[GugakSignage] 자동 실행 작업 제거: GugakSignage-Test-cd47db7b
+[GugakSignage] 자동 실행 작업 제거: GugakSignage-Test-57fa0491
 [GugakSignage] 바로가기 제거: <test-root>\desktop\GugakSignage.lnk
 [GugakSignage] 바로가기 제거: <test-root>\start-menu\GugakSignage.lnk
 [GugakSignage] 설치 파일 제거: <test-root>\app
@@ -58,5 +97,5 @@ True
 [GugakSignage] 제거 완료
 **********************
 Windows PowerShell transcript end
-End time: 20261124193105
+End time: 20261124204624
 **********************

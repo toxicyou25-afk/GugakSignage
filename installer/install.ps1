@@ -8,8 +8,8 @@ param(
     [string]$PlayerUrl = "",
     [string]$BrowserPath = "",
     [string]$NodePath = "",
-    [string]$TaskName = "GugakSignage-Watchdog",
-    [string]$FirewallRuleName = "GugakSignage-Server",
+    [string]$TaskName = "",
+    [string]$FirewallRuleName = "",
     [string]$DesktopDir = "",
     [string]$StartMenuDir = "",
     [string]$ProfileDir = "",
@@ -18,11 +18,18 @@ param(
     [switch]$OpenFirewall,
     [switch]$NoAutoStart,
     [switch]$NoStart,
-    [switch]$ConfigureOnly
+    [switch]$ConfigureOnly,
+    [switch]$AllowDataDirChange
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
+$commonPath = Join-Path $PSScriptRoot "ops\install-common.ps1"
+if (-not (Test-Path -LiteralPath $commonPath)) {
+    $commonPath = Join-Path $PSScriptRoot "..\ops\install-common.ps1"
+}
+. $commonPath
+
 $script:TranscriptStarted = $false
 $script:InstallLogPath = $null
 
@@ -56,21 +63,10 @@ function New-RandomSecret {
     return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
-function Get-EnvPort {
-    param([string]$EnvFile)
-    if (-not (Test-Path -LiteralPath $EnvFile)) { return $null }
-    $line = Get-Content -LiteralPath $EnvFile |
-        Where-Object { $_ -match "^\s*PORT\s*=\s*(\d+)\s*$" } |
-        Select-Object -First 1
-    if (-not $line) { return $null }
-    $null = $line -match "(\d+)"
-    return [int]$Matches[1]
-}
-
 function Protect-EnvironmentFile {
     param([string]$Path)
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    & icacls.exe $Path /inheritance:r /grant:r "*${sid}:(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+    & icacls.exe $Path /inheritance:r /grant:r "*$($sid):(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "환경 설정 파일의 ACL을 보호하지 못했습니다: $Path"
     }
@@ -115,11 +111,19 @@ function Find-DebugPort {
 function Write-InstallConfig {
     param(
         [string]$ConfigPath,
-        [string[]]$Shortcuts
+        [string[]]$Shortcuts,
+        $PreviousConfig,
+        [bool]$AutoStartRegistered
     )
+    $createdAt = if ($PreviousConfig -and $PreviousConfig.createdAt) {
+        [string]$PreviousConfig.createdAt
+    } else {
+        [DateTime]::UtcNow.ToString("o")
+    }
     $config = [ordered]@{
-        schemaVersion       = 1
+        schemaVersion       = 2
         product             = "GugakSignage"
+        ownershipMarker     = "GugakSignage installer"
         installDir          = $InstallDir
         dataDir             = $DataDir
         envFile             = $envFile
@@ -133,22 +137,27 @@ function Write-InstallConfig {
         firewallRuleName    = $FirewallRuleName
         debugPort           = $DebugPort
         shortcuts           = $Shortcuts
-        autoStartRegistered = -not $NoAutoStart
+        autoStartRegistered = $AutoStartRegistered
+        createdAt           = $createdAt
         updatedAt           = [DateTime]::UtcNow.ToString("o")
         watchdog            = [ordered]@{
-            healthIntervalMs         = 5000
-            browserCheckIntervalMs   = 15000
-            startupGraceMs           = 45000
-            serverBackoffInitialMs   = 2000
-            serverBackoffMaxMs       = 60000
-            browserBackoffInitialMs  = 3000
-            browserBackoffMaxMs      = 60000
-            circuitBreakerAfter      = 8
-            circuitBreakerCooldownMs = 300000
-            stableResetMs            = 60000
+            healthIntervalMs              = 5000
+            browserCheckIntervalMs        = 15000
+            serverStartupGraceMs          = 120000
+            browserStartupGraceMs         = 120000
+            serverHealthFailureThreshold  = 5
+            browserHealthFailureThreshold = 3
+            serverHeartbeatMaxAgeMs       = 90000
+            serverBackoffInitialMs        = 2000
+            serverBackoffMaxMs            = 60000
+            browserBackoffInitialMs       = 3000
+            browserBackoffMaxMs           = 60000
+            maxConsecutiveFailures        = 8
+            stableResetMs                 = 60000
+            logMaxBytes                   = 5242880
         }
     }
-    $json = $config | ConvertTo-Json -Depth 5
+    $json = $config | ConvertTo-Json -Depth 6
     [IO.File]::WriteAllText($ConfigPath, $json, [Text.UTF8Encoding]::new($false))
 }
 
@@ -171,6 +180,10 @@ function New-Shortcut {
 }
 
 function Register-WatchdogTask {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($existing -and -not (Test-ScheduledTaskOwnedByInstall -Task $existing -InstallDir $InstallDir)) {
+        throw "같은 이름의 다른 작업 스케줄러 항목이 있습니다. 덮어쓰지 않았습니다: $TaskName"
+    }
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\watchdog-launch.vbs"
     $taskArguments = '//B //NoLogo "' + $launcher + '"'
@@ -184,7 +197,7 @@ function Register-WatchdogTask {
 }
 
 function Wait-ServerHealth {
-    param([int]$TimeoutSeconds = 60)
+    param([int]$TimeoutSeconds = 150)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $client = [System.Net.Http.HttpClient]::new()
     $client.Timeout = [TimeSpan]::FromSeconds(2)
@@ -212,26 +225,95 @@ if (-not $InstallDir) {
         Join-Path $env:LOCALAPPDATA "Programs\GugakSignage"
     }
 }
-if (-not $DataDir) {
-    $DataDir = if ($isAdmin) {
-        Join-Path $env:ProgramData "GugakSignage"
-    } else {
-        Join-Path $env:LOCALAPPDATA "GugakSignage"
+$InstallDir = Get-NormalizedPath -Path $InstallDir
+
+$configPath = Join-Path $InstallDir "install.json"
+$previousConfig = if (Test-Path -LiteralPath $configPath) {
+    Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+} else {
+    $null
+}
+if ($previousConfig -and -not (Test-PathEqual -Left ([string]$previousConfig.installDir) -Right $InstallDir)) {
+    throw "기존 install.json의 설치 경로가 현재 대상과 다릅니다. 다른 설치를 덮어쓰지 않습니다: $($previousConfig.installDir)"
+}
+
+$defaultDataDir = if ($isAdmin) {
+    Join-Path $env:ProgramData "GugakSignage"
+} else {
+    Join-Path $env:LOCALAPPDATA "GugakSignage"
+}
+$previousDataDir = ""
+if ($previousConfig -and $previousConfig.dataDir) {
+    $previousDataDir = Get-NormalizedPath -Path ([string]$previousConfig.dataDir)
+}
+if (-not $previousDataDir) {
+    $legacyEnv = Join-Path $InstallDir ".env"
+    $legacyData = Get-EnvValue -EnvFile $legacyEnv -Name "DATA_DIR"
+    if ($legacyData) {
+        if (-not [IO.Path]::IsPathRooted($legacyData)) { $legacyData = Join-Path $InstallDir $legacyData }
+        $previousDataDir = Get-NormalizedPath -Path $legacyData
     }
 }
-if (-not $DesktopDir) { $DesktopDir = [Environment]::GetFolderPath("Desktop") }
-if (-not $StartMenuDir) {
-    $StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GugakSignage"
-}
-if (-not $ProfileDir) { $ProfileDir = Join-Path $env:LOCALAPPDATA "GugakSignagePlayer" }
-if (-not $LogDir) { $LogDir = Join-Path $DataDir "logs" }
 
-$InstallDir = [IO.Path]::GetFullPath($InstallDir)
-$DataDir = [IO.Path]::GetFullPath($DataDir)
-$LogDir = [IO.Path]::GetFullPath($LogDir)
-$DesktopDir = [IO.Path]::GetFullPath($DesktopDir)
-$StartMenuDir = [IO.Path]::GetFullPath($StartMenuDir)
-$ProfileDir = [IO.Path]::GetFullPath($ProfileDir)
+$dataDirWasExplicit = -not [string]::IsNullOrWhiteSpace($DataDir)
+if (-not $dataDirWasExplicit) {
+    $DataDir = if ($previousDataDir) { $previousDataDir } else { $defaultDataDir }
+}
+$DataDir = Get-NormalizedPath -Path $DataDir
+$dataDirChanged = $previousDataDir -and -not (Test-PathEqual -Left $previousDataDir -Right $DataDir)
+if ($dataDirChanged -and -not $AllowDataDirChange) {
+    throw "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: $previousDataDir, 요청: $DataDir"
+}
+
+Assert-DataDirOutsideInstall -InstallDir $InstallDir -DataDir $DataDir
+
+$existingDataDetected = [bool]$previousConfig
+if (Test-Path -LiteralPath (Join-Path $DataDir "signage.sqlite")) { $existingDataDetected = $true }
+if (Test-Path -LiteralPath (Join-Path $DataDir ".env")) { $existingDataDetected = $true }
+if ($previousDataDir -and (Test-Path -LiteralPath (Join-Path $previousDataDir "signage.sqlite"))) {
+    $existingDataDetected = $true
+}
+
+if (-not $TaskName) {
+    $TaskName = if ($previousConfig -and $previousConfig.taskName) { [string]$previousConfig.taskName } else { "GugakSignage-Watchdog" }
+}
+if (-not $FirewallRuleName) {
+    $FirewallRuleName = if ($previousConfig -and $previousConfig.firewallRuleName) { [string]$previousConfig.firewallRuleName } else { "GugakSignage-Server" }
+}
+if (-not $ProfileDir) {
+    $ProfileDir = if ($previousConfig -and $previousConfig.profileDir) {
+        [string]$previousConfig.profileDir
+    } else {
+        Join-Path $env:LOCALAPPDATA "GugakSignagePlayer"
+    }
+}
+$ProfileDir = Get-NormalizedPath -Path $ProfileDir
+
+$previousShortcuts = @()
+if ($previousConfig -and $previousConfig.shortcuts -and -not $dataDirChanged) {
+    $previousShortcuts = @($previousConfig.shortcuts | ForEach-Object { [string]$_ })
+}
+if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
+    if (-not $DesktopDir) { $DesktopDir = [Environment]::GetFolderPath("Desktop") }
+    if (-not $StartMenuDir) {
+        $StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GugakSignage"
+    }
+    $shortcutPaths = @(
+        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "GugakSignage.lnk"),
+        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "GugakSignage.lnk")
+    )
+} else {
+    $shortcutPaths = $previousShortcuts
+}
+
+if (-not $LogDir) {
+    $LogDir = if ($previousConfig -and $previousConfig.logDir -and -not $dataDirChanged) {
+        [string]$previousConfig.logDir
+    } else {
+        Join-Path $DataDir "logs"
+    }
+}
+$LogDir = Get-NormalizedPath -Path $LogDir
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataDir "control") -Force | Out-Null
@@ -244,6 +326,22 @@ try {
     Write-Step "설치 시작"
     Write-Step "설치 폴더: $InstallDir"
     Write-Step "데이터 폴더: $DataDir"
+    if ($previousDataDir) {
+        Write-Step "기존 데이터 경로를 기본값으로 사용: $previousDataDir"
+    }
+    if ($dataDirChanged) {
+        Write-Step "명시 확인에 따라 데이터 경로 변경: $previousDataDir -> $DataDir"
+    }
+
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task -and -not (Test-ScheduledTaskOwnedByInstall -Task $task -InstallDir $InstallDir)) {
+        throw "같은 이름의 다른 작업 스케줄러 항목이 있습니다. 덮어쓰지 않았습니다: $TaskName"
+    }
+    foreach ($shortcutPath in $shortcutPaths) {
+        if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $InstallDir)) {
+            throw "기존 GugakSignage 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $shortcutPath"
+        }
+    }
 
     if (-not $NodePath) {
         $nodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
@@ -272,7 +370,7 @@ try {
             Join-Path $PSScriptRoot ".."
         }
     }
-    $SourceDir = [IO.Path]::GetFullPath($SourceDir)
+    $SourceDir = Get-NormalizedPath -Path $SourceDir
 
     if (-not $ConfigureOnly) {
         $required = @(
@@ -287,7 +385,7 @@ try {
                 throw "설치 패키지가 불완전합니다: $item. build-installer.ps1로 패키지를 만든 뒤 실행하세요."
             }
         }
-        if ([IO.Path]::GetFullPath($SourceDir).TrimEnd("\") -eq $InstallDir.TrimEnd("\")) {
+        if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
             throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
         }
         Write-Step "서버 파일 복사"
@@ -311,7 +409,7 @@ try {
     foreach ($tool in @("install.ps1", "uninstall.ps1", "set-autostart.ps1")) {
         $sourceTool = Join-Path $PSScriptRoot $tool
         $destinationTool = Join-Path $toolsDir $tool
-        if ((Test-Path -LiteralPath $sourceTool) -and ([IO.Path]::GetFullPath($sourceTool) -ne [IO.Path]::GetFullPath($destinationTool))) {
+        if ((Test-Path -LiteralPath $sourceTool) -and -not (Test-PathEqual -Left $sourceTool -Right $destinationTool)) {
             Copy-Item -LiteralPath $sourceTool -Destination $destinationTool -Force
         }
     }
@@ -322,6 +420,7 @@ try {
         $adminPassword = New-RandomSecret -ByteCount 18
         $sessionSecret = New-RandomSecret -ByteCount 48
         $dataDirEnv = $DataDir.Replace('"', '\"')
+        $seedSamples = if ($existingDataDetected) { "false" } else { "true" }
         $lines = @(
             "# Generated by GugakSignage installer. Do not commit this file.",
             [string]::Concat("ADMIN_PASSWORD=", $adminPassword),
@@ -332,29 +431,42 @@ try {
             [string]::Concat('DB_PATH="', (Join-Path $DataDir "signage.sqlite").Replace('"', '\"'), '"'),
             [string]::Concat('UPLOAD_DIR="', (Join-Path $DataDir "uploads").Replace('"', '\"'), '"'),
             "MAX_UPLOAD_MB=300",
-            "SEED_SAMPLES=true"
+            [string]::Concat("SEED_SAMPLES=", $seedSamples)
         )
-        Set-Content -LiteralPath $envFile -Value $lines -Encoding utf8
+        [IO.File]::WriteAllLines($envFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
         Protect-EnvironmentFile -Path $envFile
     } else {
         $existingEnv = Get-Content -LiteralPath $envFile -Raw
-        if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\\s*$" -or
-            $existingEnv -match "(?m)^SESSION_SECRET=change-this-to-a-long-random-string\\s*$") {
+        if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
+            $existingEnv -match "(?m)^SESSION_SECRET=change-this-to-a-long-random-string\s*$") {
             throw "기존 .env에 개발용 기본 비밀값이 있습니다. 파일을 보존한 상태로 관리자 비밀번호와 세션 시크릿을 교체한 뒤 다시 설치하세요."
         }
-        $existingPort = Get-EnvPort -EnvFile $envFile
+        $existingPort = Get-EnvValue -EnvFile $envFile -Name "PORT"
         if ($existingPort) {
-            $Port = $existingPort
+            $Port = [int]$existingPort
             Write-Step "기존 환경 설정 보존: PORT=$Port"
         } else {
             Write-Step "기존 환경 설정 보존"
         }
+        $databasePath = Join-Path $DataDir "signage.sqlite"
+        if ((Test-Path -LiteralPath $databasePath) -and $existingEnv -match "(?m)^SEED_SAMPLES=true\s*$") {
+            $updatedEnv = [regex]::Replace($existingEnv, "(?m)^SEED_SAMPLES=true\s*$", "SEED_SAMPLES=false")
+            [IO.File]::WriteAllText($envFile, $updatedEnv, [Text.UTF8Encoding]::new($false))
+            Protect-EnvironmentFile -Path $envFile
+            Write-Step "기존 데이터 감지로 샘플 시드 비활성화"
+        }
     }
 
     if (-not $PlayerUrl) {
-        $PlayerUrl = "http://127.0.0.1:$Port/player/?code=GUGAK1&reconnect=1"
+        $PlayerUrl = if ($previousConfig -and $previousConfig.playerUrl) {
+            [string]$previousConfig.playerUrl
+        } else {
+            "http://127.0.0.1:$Port/player/?code=GUGAK1&reconnect=1"
+        }
     }
-    if ($DebugPort -le 0) { $DebugPort = Find-DebugPort }
+    if ($DebugPort -le 0) {
+        $DebugPort = if ($previousConfig -and $previousConfig.debugPort) { [int]$previousConfig.debugPort } else { Find-DebugPort }
+    }
 
     New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
     $launcherLines = @(
@@ -367,11 +479,10 @@ try {
     )
     Set-Content -LiteralPath (Join-Path $InstallDir "ops\watchdog-launch.vbs") -Value $launcherLines -Encoding ascii
 
-    $shortcutPaths = @(
-        (Join-Path $DesktopDir "GugakSignage.lnk"),
-        (Join-Path $StartMenuDir "GugakSignage.lnk")
-    )
     foreach ($shortcutPath in $shortcutPaths) {
+        if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $InstallDir)) {
+            throw "기존 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $shortcutPath"
+        }
         $null = New-Shortcut -ShortcutPath $shortcutPath -Description "GugakSignage 서버와 전체 화면 재생기를 시작합니다."
     }
     Write-Step "바탕화면·시작 메뉴 바로가기 생성"
@@ -392,13 +503,17 @@ try {
         Write-Step "방화벽 인바운드 규칙 생성: TCP $Port"
     }
 
-    $configPath = Join-Path $InstallDir "install.json"
-    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths
-
+    $autoStartRegistered = $false
     if (-not $NoAutoStart) {
         Register-WatchdogTask
+        $autoStartRegistered = $true
         Write-Step "작업 스케줄러 자동 실행 등록: $TaskName"
+    } else {
+        $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        $autoStartRegistered = [bool]($existingTask -and $existingTask.State -ne "Disabled")
     }
+
+    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered
 
     if (-not $NoStart) {
         if (-not $NoAutoStart) {
@@ -413,14 +528,14 @@ try {
             Start-Process @launchArgs
         }
         Write-Step "watchdog 시작 후 서버 상태 확인"
-        if (-not (Wait-ServerHealth -TimeoutSeconds 60)) {
+        if (-not (Wait-ServerHealth -TimeoutSeconds 150)) {
             $watchdogLog = Join-Path $LogDir "watchdog.log"
             $tail = if (Test-Path -LiteralPath $watchdogLog) {
-                (Get-Content -LiteralPath $watchdogLog -Tail 20) -join [Environment]::NewLine
+                (Get-Content -LiteralPath $watchdogLog -Tail 30) -join [Environment]::NewLine
             } else {
                 "watchdog.log가 아직 생성되지 않았습니다."
             }
-            throw "서버가 60초 안에 준비되지 않았습니다.$([Environment]::NewLine)$tail"
+            throw "서버가 150초 안에 준비되지 않았습니다.$([Environment]::NewLine)$tail"
         }
         Write-Step "서버 준비 완료: http://127.0.0.1:$Port/api/health"
     }

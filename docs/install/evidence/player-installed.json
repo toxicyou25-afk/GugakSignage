@@ -1,7 +1,7 @@
-{
-  "checkedAt": "2026-11-24T10:30:13.083Z",
+﻿{
+  "checkedAt": "2026-11-24T11:44:50.874Z",
   "expected": "online",
-  "url": "http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1",
+  "url": "http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1",
   "state": {
     "playerReady": true,
     "deviceId": "dev-sample-lobby",
@@ -12,7 +12,7 @@
     "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T10:30:12.224Z",
+    "lastHeartbeatAt": "2026-11-24T11:44:48.469Z",
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-installed.png"

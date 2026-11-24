@@ -1,7 +1,7 @@
-{
-  "checkedAt": "2026-11-24T10:30:43.839Z",
+﻿{
+  "checkedAt": "2026-11-24T11:45:56.138Z",
   "expected": "offline",
-  "url": "http://127.0.0.1:57775/player/?code=GUGAK1&reconnect=1",
+  "url": "http://127.0.0.1:58169/player/?code=GUGAK1&reconnect=1",
   "state": {
     "playerReady": true,
     "deviceId": "dev-sample-lobby",

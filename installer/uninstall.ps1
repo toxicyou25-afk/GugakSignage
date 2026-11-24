@@ -8,18 +8,54 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$commonPath = Join-Path $PSScriptRoot "ops\install-common.ps1"
+if (-not (Test-Path -LiteralPath $commonPath)) {
+    $commonPath = Join-Path $PSScriptRoot "..\ops\install-common.ps1"
+}
+. $commonPath
+
 $configPath = Join-Path $PSScriptRoot "..\install.json"
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-$installDir = [IO.Path]::GetFullPath([string]$config.installDir)
-$dataDir = [IO.Path]::GetFullPath([string]$config.dataDir)
-$logDir = [IO.Path]::GetFullPath([string]$config.logDir)
-$profileDir = [IO.Path]::GetFullPath([string]$config.profileDir)
-$configInstallDir = [IO.Path]::GetFullPath($configPath)
-if (-not $configInstallDir.StartsWith($installDir, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "설치 정보의 경로가 일치하지 않습니다."
+if ([string]$config.product -ne "GugakSignage") {
+    throw "GugakSignage 설치 정보가 아닙니다: $configPath"
+}
+$installDir = Get-NormalizedPath -Path ([string]$config.installDir)
+$expectedInstallDir = Get-NormalizedPath -Path (Join-Path $PSScriptRoot "..")
+if (-not (Test-PathEqual -Left $installDir -Right $expectedInstallDir)) {
+    throw "설치 정보의 경로가 현재 제거 도구와 일치하지 않습니다."
+}
+$dataDir = Get-NormalizedPath -Path ([string]$config.dataDir)
+$logDir = Get-NormalizedPath -Path ([string]$config.logDir)
+$profileDir = Get-NormalizedPath -Path ([string]$config.profileDir)
+
+Assert-DataDirOutsideInstall -InstallDir $installDir -DataDir $dataDir
+if ($RemoveData) {
+    Assert-SafeDataRemovalTarget -DataDir $dataDir -ProtectedPaths @($installDir, $profileDir)
+}
+
+$systemRoot = Get-NormalizedPath -Path $env:SystemRoot
+$userProfile = Get-NormalizedPath -Path $env:USERPROFILE
+$documentsRoots = @(
+    [Environment]::GetFolderPath("Desktop"),
+    [Environment]::GetFolderPath("MyDocuments"),
+    [Environment]::GetFolderPath("MyPictures"),
+    [Environment]::GetFolderPath("MyVideos")
+) | Where-Object { $_ } | ForEach-Object { Get-NormalizedPath -Path $_ }
+if ($installDir.Equals([IO.Path]::GetPathRoot($installDir), [StringComparison]::OrdinalIgnoreCase) -or
+    $installDir.Equals($userProfile, [StringComparison]::OrdinalIgnoreCase) -or
+    (Test-PathWithin -Path $installDir -Parent $systemRoot)) {
+    throw "안전하지 않은 설치 폴더 경로라 자동 삭제하지 않습니다: $installDir"
+}
+foreach ($documentsRoot in $documentsRoots) {
+    if ((Test-PathEqual -Left $installDir -Right $documentsRoot) -or (Test-PathWithin -Path $installDir -Parent $documentsRoot)) {
+        throw "사용자 문서 폴더 안의 경로는 자동 삭제하지 않습니다: $installDir"
+    }
+}
+if ((Get-PathDepthBelowRoot -Path $installDir) -lt 2) {
+    throw "너무 얕은 설치 폴더는 자동 삭제하지 않습니다: $installDir"
 }
 
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -34,43 +70,18 @@ function Write-Step {
     if (-not $Quiet) { Write-Host "[GugakSignage] $Message" }
 }
 
-function Get-OwnedProcess {
-    param(
-        [int]$ProcessId,
-        [string[]]$Needles
-    )
-    if ($ProcessId -le 0) { return $null }
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-    if (-not $process) { return $null }
-    $commandLine = [string]$process.CommandLine
-    foreach ($needle in $Needles) {
-        if ($needle -and $commandLine.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            return $process
-        }
-    }
-    return $null
-}
-
-function Stop-OwnedProcess {
-    param(
-        [int]$ProcessId,
-        [string[]]$Needles
-    )
-    $owned = Get-OwnedProcess -ProcessId $ProcessId -Needles $Needles
-    if (-not $owned) { return $false }
-    & taskkill.exe /PID $ProcessId /T /F *> $null
-    return $true
-}
-
 function Remove-ExactShortcut {
     param([string]$ShortcutPath)
     if (-not $ShortcutPath) { return }
     $fullPath = [IO.Path]::GetFullPath($ShortcutPath)
     if ([IO.Path]::GetFileName($fullPath) -ne "GugakSignage.lnk") { return }
-    if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
-        Remove-Item -LiteralPath $fullPath -Force
-        Write-Step "바로가기 제거: $fullPath"
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
+    if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir)) {
+        Write-Warning "다른 프로그램의 바로가기로 보여 남겨 둡니다: $fullPath"
+        return
     }
+    Remove-Item -LiteralPath $fullPath -Force
+    Write-Step "바로가기 제거: $fullPath"
 }
 
 try {
@@ -86,9 +97,9 @@ try {
         $null
     }
     if ($state -and $state.watchdogPid) {
-        $deadline = [DateTime]::UtcNow.AddSeconds(12)
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
         while ([DateTime]::UtcNow -lt $deadline) {
-            $watchdog = Get-OwnedProcess -ProcessId ([int]$state.watchdogPid) -Needles @("watchdog.mjs")
+            $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
             if (-not $watchdog) { break }
             Start-Sleep -Milliseconds 250
         }
@@ -97,27 +108,25 @@ try {
     if ($config.taskName) {
         $task = Get-ScheduledTask -TaskName ([string]$config.taskName) -ErrorAction SilentlyContinue
         if ($task) {
-            Stop-ScheduledTask -TaskName ([string]$config.taskName) -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName ([string]$config.taskName) -Confirm:$false
-            Write-Step "자동 실행 작업 제거: $($config.taskName)"
+            if (-not (Test-ScheduledTaskOwnedByInstall -Task $task -InstallDir $installDir)) {
+                Write-Warning "다른 프로그램의 작업으로 보여 남겨 둡니다: $($config.taskName)"
+            } else {
+                Stop-ScheduledTask -TaskName ([string]$config.taskName) -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName ([string]$config.taskName) -Confirm:$false
+                Write-Step "자동 실행 작업 제거: $($config.taskName)"
+            }
         }
     }
 
     if ($state) {
-        if ($state.serverPid) {
-            if (Stop-OwnedProcess -ProcessId ([int]$state.serverPid) -Needles @($installDir, "dist\server.js")) {
-                Write-Step "남아 있던 서버 프로세스 종료: $($state.serverPid)"
-            }
+        if ($state.serverPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js"))) {
+            Write-Step "남아 있던 서버 프로세스 종료: $($state.serverPid)"
         }
-        if ($state.browserPid) {
-            if (Stop-OwnedProcess -ProcessId ([int]$state.browserPid) -Needles @($profileDir)) {
-                Write-Step "남아 있던 재생기 프로세스 종료: $($state.browserPid)"
-            }
+        if ($state.browserPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @($profileDir))) {
+            Write-Step "남아 있던 재생기 프로세스 종료: $($state.browserPid)"
         }
-        if ($state.watchdogPid) {
-            if (Stop-OwnedProcess -ProcessId ([int]$state.watchdogPid) -Needles @("watchdog.mjs")) {
-                Write-Step "남아 있던 watchdog 프로세스 종료: $($state.watchdogPid)"
-            }
+        if ($state.watchdogPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs"))) {
+            Write-Step "남아 있던 watchdog 프로세스 종료: $($state.watchdogPid)"
         }
     }
 
@@ -140,18 +149,9 @@ try {
         }
     }
 
-    $dataInsideInstall = $dataDir.StartsWith($installDir + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
-    if ($dataInsideInstall -and -not $RemoveData) {
-        throw "데이터 폴더가 설치 폴더 안에 있어 보존 제거를 안전하게 진행할 수 없습니다: $dataDir"
-    }
-
     if (-not $KeepInstallFiles -and -not $InnoUninstall) {
         if (-not (Test-Path -LiteralPath $configPath)) {
             throw "설치 확인 파일이 사라져 설치 폴더를 자동 삭제하지 않습니다."
-        }
-        $installRoot = [IO.Path]::GetPathRoot($installDir)
-        if ($installDir -eq $installRoot -or $installDir -eq $env:SystemRoot -or $installDir -eq $env:USERPROFILE) {
-            throw "안전하지 않은 설치 폴더 경로라 자동 삭제하지 않습니다: $installDir"
         }
         Write-Step "설치 파일 제거: $installDir"
         Remove-Item -LiteralPath $installDir -Recurse -Force
@@ -162,10 +162,7 @@ try {
     }
 
     if ($RemoveData) {
-        $root = [IO.Path]::GetPathRoot($dataDir)
-        if ($dataDir -eq $root -or $dataDir -eq $env:USERPROFILE) {
-            throw "안전하지 않은 데이터 폴더 경로라 자동 삭제하지 않습니다: $dataDir"
-        }
+        Assert-SafeDataRemovalTarget -DataDir $dataDir -ProtectedPaths @($installDir, $profileDir)
         Write-Step "명시적 요청에 따라 데이터 폴더 제거: $dataDir"
         $removeDataAfterStop = $true
     } else {

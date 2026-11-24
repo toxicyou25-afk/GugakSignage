@@ -2,22 +2,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { classifyPlayerState } from './watchdog-health.mjs';
 
 const installDir = path.resolve(import.meta.dirname, '..');
 const configPath = path.join(installDir, 'install.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
+const configuredWatchdog = config.watchdog || {};
 const watchdogConfig = {
   healthIntervalMs: 5000,
   browserCheckIntervalMs: 15000,
-  startupGraceMs: 45000,
+  serverStartupGraceMs: 120000,
+  browserStartupGraceMs: 120000,
+  serverHealthFailureThreshold: 5,
+  browserHealthFailureThreshold: 3,
+  serverHeartbeatMaxAgeMs: 90000,
   serverBackoffInitialMs: 2000,
   serverBackoffMaxMs: 60000,
   browserBackoffInitialMs: 3000,
   browserBackoffMaxMs: 60000,
-  circuitBreakerAfter: 8,
-  circuitBreakerCooldownMs: 300000,
+  maxConsecutiveFailures: 8,
   stableResetMs: 60000,
-  ...(config.watchdog || {}),
+  logMaxBytes: 5 * 1024 * 1024,
+  ...configuredWatchdog,
 };
 
 const logDir = path.resolve(config.logDir || path.join(config.dataDir, 'logs'));
@@ -25,30 +31,72 @@ const controlDir = path.join(config.dataDir, 'control');
 fs.mkdirSync(logDir, { recursive: true });
 fs.mkdirSync(controlDir, { recursive: true });
 
-function rotateFile(filePath) {
-  try {
-    const stat = fs.statSync(filePath);
-    if (stat.size < 5 * 1024 * 1024) return;
-    const previous = filePath + '.1';
-    fs.rmSync(previous, { force: true });
-    fs.renameSync(filePath, previous);
-  } catch {
-    // Missing and inaccessible files are handled when the stream opens.
-  }
-}
-
+const watchdogStartedAt = new Date(Date.now() - (process.uptime() * 1000)).toISOString();
 const logPath = path.join(logDir, 'watchdog.log');
 const serverStdoutPath = path.join(logDir, 'server.stdout.log');
 const serverStderrPath = path.join(logDir, 'server.stderr.log');
-rotateFile(logPath);
-rotateFile(serverStdoutPath);
-rotateFile(serverStderrPath);
-const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+const logSizes = new Map();
+
+function rotateLog(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < watchdogConfig.logMaxBytes) {
+      logSizes.set(filePath, stat.size);
+      return;
+    }
+    const previous = filePath + '.1';
+    fs.rmSync(previous, { force: true });
+    try {
+      fs.renameSync(filePath, previous);
+    } catch {
+      fs.truncateSync(filePath, 0);
+    }
+  } catch {
+    // A missing log starts at size zero.
+  }
+  try {
+    logSizes.set(filePath, fs.statSync(filePath).size);
+  } catch {
+    logSizes.set(filePath, 0);
+  }
+}
+
+function appendRotating(filePath, data) {
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf8');
+  let size = logSizes.get(filePath);
+  if (size === undefined) {
+    try { size = fs.statSync(filePath).size; } catch { size = 0; }
+  }
+  if (size + buffer.length > watchdogConfig.logMaxBytes) {
+    const previous = filePath + '.1';
+    try { fs.rmSync(previous, { force: true }); } catch {}
+    try {
+      fs.renameSync(filePath, previous);
+    } catch {
+      try {
+        fs.truncateSync(filePath, 0);
+      } catch {
+        return;
+      }
+    }
+    size = 0;
+  }
+  fs.appendFileSync(filePath, buffer);
+  logSizes.set(filePath, size + buffer.length);
+}
+
+rotateLog(logPath);
+rotateLog(serverStdoutPath);
+rotateLog(serverStderrPath);
 
 function writeLog(level, message, details) {
   const suffix = details === undefined ? '' : ' ' + JSON.stringify(details);
   const line = new Date().toISOString() + ' [' + level + '] ' + message + suffix + '\n';
-  logStream.write(line);
+  try {
+    appendRotating(logPath, line);
+  } catch {
+    // Logging failure must not terminate the supervisor.
+  }
 }
 
 const lockPath = path.join(logDir, 'watchdog.lock');
@@ -57,14 +105,14 @@ try {
   if (Number.isInteger(existingPid) && existingPid > 0) {
     try {
       process.kill(existingPid, 0);
-      fs.appendFileSync(logPath, new Date().toISOString() + ' [INFO] watchdog already running ' + existingPid + '\n');
+      appendRotating(logPath, new Date().toISOString() + ' [INFO] watchdog already running ' + existingPid + '\n');
       process.exit(0);
     } catch {
       fs.rmSync(lockPath, { force: true });
     }
   }
 } catch {
-  // No existing lock.
+  // No previous lock.
 }
 fs.writeFileSync(lockPath, String(process.pid), 'utf8');
 
@@ -72,10 +120,11 @@ const stopRequestPath = path.join(controlDir, 'stop.request');
 const statePath = path.join(logDir, 'watchdog-state.json');
 let previousState = null;
 try {
-  previousState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  previousState = JSON.parse(fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, ''));
 } catch {
-  // First start or an incomplete previous state file.
+  // First start or an incomplete state file.
 }
+
 let server = null;
 let browser = null;
 let serverStartedAt = 0;
@@ -91,15 +140,22 @@ let browserRestartTimer = null;
 let serverActionBusy = false;
 let browserActionBusy = false;
 let shuttingDown = false;
+let halted = false;
+let haltedReason = null;
+let haltedComponent = null;
+let stoppedReason = null;
 let lastServerHealthyAt = null;
 let lastBrowserCheckAt = null;
 let lastBrowserState = null;
-let serverStdout = null;
-let serverStderr = null;
+let lastBrowserStateKind = null;
+let lastBrowserResponsive = null;
+let previousServerChecked = false;
 
 function writeState() {
   const state = {
+    schemaVersion: 2,
     watchdogPid: process.pid,
+    watchdogStartedAt,
     serverPid: server?.pid ?? null,
     browserPid: browser?.pid ?? null,
     serverState: server ? 'running' : 'stopped',
@@ -109,8 +165,16 @@ function writeState() {
     lastServerHealthyAt,
     lastBrowserCheckAt,
     lastBrowserState,
+    lastBrowserStateKind,
+    lastBrowserResponsive,
+    serverHealthMisses,
+    browserHealthMisses,
     serverFailures,
     browserFailures,
+    halted,
+    haltedReason,
+    haltedComponent,
+    stoppedReason,
     updatedAt: new Date().toISOString(),
   };
   const temporary = statePath + '.tmp';
@@ -129,9 +193,6 @@ function writeState() {
 }
 
 function delayForFailures(count, initial, maximum) {
-  if (count >= watchdogConfig.circuitBreakerAfter) {
-    return watchdogConfig.circuitBreakerCooldownMs;
-  }
   return Math.min(initial * (2 ** Math.max(0, count - 1)), maximum);
 }
 
@@ -139,75 +200,137 @@ function clearTimer(timer) {
   if (timer) clearTimeout(timer);
 }
 
+function processIsAlive(processId) {
+  if (!Number.isInteger(processId) || processId <= 0) return false;
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function killProcessTree(child) {
   if (!child?.pid) return;
-  await new Promise((resolve) => {
+  await new Promise((resolve, reject) => {
     const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
       windowsHide: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const timer = setTimeout(resolve, 8000);
-    killer.once('close', () => {
+    let output = '';
+    killer.stdout.on('data', (chunk) => { output += chunk.toString(); });
+    killer.stderr.on('data', (chunk) => { output += chunk.toString(); });
+    const timer = setTimeout(() => {
+      killer.kill();
+      reject(new Error('taskkill timeout for PID ' + child.pid));
+    }, 8000);
+    killer.once('close', (code) => {
       clearTimeout(timer);
-      resolve();
+      if (code !== 0 && processIsAlive(child.pid)) {
+        reject(new Error('taskkill failed for PID ' + child.pid + ': ' + output.trim()));
+      } else {
+        resolve();
+      }
     });
-    killer.once('error', () => {
+    killer.once('error', (error) => {
       clearTimeout(timer);
-      resolve();
+      reject(error);
     });
   });
 }
 
-function scheduleServerRestart(reason) {
-  if (shuttingDown || serverRestartTimer) return;
-  serverFailures += 1;
-  const delayMs = delayForFailures(
-    serverFailures,
-    watchdogConfig.serverBackoffInitialMs,
-    watchdogConfig.serverBackoffMaxMs,
-  );
-  writeLog('WARN', 'server restart scheduled', {
+async function haltWatchdog(component, reason) {
+  if (shuttingDown || halted) return;
+  halted = true;
+  shuttingDown = true;
+  haltedComponent = component;
+  haltedReason = reason;
+  stoppedReason = 'failure-threshold';
+  writeLog('CRITICAL', 'watchdog automatic restart stopped', {
+    component,
     reason,
-    failures: serverFailures,
-    delayMs,
-    circuitBreaker: serverFailures >= watchdogConfig.circuitBreakerAfter,
+    serverFailures,
+    browserFailures,
+    manualRecovery: 'set-autostart.ps1 -Restart',
   });
+  clearTimer(serverRestartTimer);
+  clearTimer(browserRestartTimer);
+  const currentServer = server;
+  const currentBrowser = browser;
+  if (currentServer) currentServer.__watchdogIntentionalStop = true;
+  if (currentBrowser) currentBrowser.__watchdogIntentionalStop = true;
+  try {
+    await Promise.all([killProcessTree(currentServer), killProcessTree(currentBrowser)]);
+  } catch (error) {
+    writeLog('ERROR', 'child cleanup failed while halting', { message: error.message });
+  }
+  server = null;
+  browser = null;
+  serverStartedAt = 0;
+  browserStartedAt = 0;
+  fs.rmSync(lockPath, { force: true });
+  writeState();
+  setTimeout(() => process.exit(2), 100);
+}
+
+function scheduleServerRestart(reason) {
+  if (shuttingDown || serverRestartTimer || halted) return;
+  serverFailures += 1;
+  if (serverFailures >= watchdogConfig.maxConsecutiveFailures) {
+    void haltWatchdog('server', '연속 실패 한도 도달: ' + reason);
+    return;
+  }
+  const delayMs = delayForFailures(serverFailures, watchdogConfig.serverBackoffInitialMs, watchdogConfig.serverBackoffMaxMs);
+  writeLog('WARN', 'server restart scheduled', { reason, failures: serverFailures, delayMs });
   writeState();
   serverRestartTimer = setTimeout(() => {
     serverRestartTimer = null;
-    startServer('backoff');
+    void startServer('backoff');
   }, delayMs);
 }
 
 function scheduleBrowserRestart(reason) {
-  if (shuttingDown || browserRestartTimer) return;
+  if (shuttingDown || browserRestartTimer || halted) return;
   browserFailures += 1;
-  const delayMs = delayForFailures(
-    browserFailures,
-    watchdogConfig.browserBackoffInitialMs,
-    watchdogConfig.browserBackoffMaxMs,
-  );
-  writeLog('WARN', 'browser restart scheduled', {
-    reason,
-    failures: browserFailures,
-    delayMs,
-    circuitBreaker: browserFailures >= watchdogConfig.circuitBreakerAfter,
-  });
+  if (browserFailures >= watchdogConfig.maxConsecutiveFailures) {
+    void haltWatchdog('browser', '연속 실패 한도 도달: ' + reason);
+    return;
+  }
+  const delayMs = delayForFailures(browserFailures, watchdogConfig.browserBackoffInitialMs, watchdogConfig.browserBackoffMaxMs);
+  writeLog('WARN', 'browser restart scheduled', { reason, failures: browserFailures, delayMs });
   writeState();
   browserRestartTimer = setTimeout(() => {
     browserRestartTimer = null;
-    startBrowser('backoff');
+    void startBrowser('backoff');
   }, delayMs);
 }
 
-function startServer(reason) {
-  if (shuttingDown || server || serverActionBusy) return;
+async function adoptPreviousServer() {
+  if (previousServerChecked) return false;
+  previousServerChecked = true;
+  const previousPid = Number(previousState?.serverPid || 0);
+  if (!processIsAlive(previousPid)) return false;
+  try {
+    await checkServerHealth();
+    server = { pid: previousPid, adopted: true };
+    serverStartedAt = Date.parse(previousState?.serverStartedAt || '') || Date.now();
+    serverHealthySince = Date.now();
+    serverHealthMisses = 0;
+    writeLog('INFO', 'existing server adopted', { pid: previousPid });
+    writeState();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startServer(reason) {
+  if (shuttingDown || server || serverActionBusy || halted) return;
   serverActionBusy = true;
   clearTimer(serverRestartTimer);
   serverRestartTimer = null;
   try {
-    serverStdout = fs.createWriteStream(serverStdoutPath, { flags: 'a' });
-    serverStderr = fs.createWriteStream(serverStderrPath, { flags: 'a' });
+    if (await adoptPreviousServer()) return;
     const child = spawn(config.nodePath || process.execPath, [path.join(installDir, 'dist', 'server.js')], {
       cwd: installDir,
       env: {
@@ -217,19 +340,21 @@ function startServer(reason) {
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      detached: true,
+      detached: false,
     });
     server = child;
     serverStartedAt = Date.now();
     serverHealthySince = 0;
     serverHealthMisses = 0;
-    child.stdout.pipe(serverStdout);
-    child.stderr.pipe(serverStderr);
+    child.stdout.on('data', (chunk) => {
+      try { appendRotating(serverStdoutPath, chunk); } catch {}
+    });
+    child.stderr.on('data', (chunk) => {
+      try { appendRotating(serverStderrPath, chunk); } catch {}
+    });
     child.once('error', (error) => {
       writeLog('ERROR', 'server process error', { message: error.message });
       if (server === child) server = null;
-      serverStdout?.end();
-      serverStderr?.end();
       scheduleServerRestart('spawn-error');
     });
     child.once('exit', (code, signal) => {
@@ -237,14 +362,10 @@ function startServer(reason) {
       if (server === child) server = null;
       serverStartedAt = 0;
       serverHealthySince = 0;
-      serverStdout?.end();
-      serverStderr?.end();
-      serverStdout = null;
-      serverStderr = null;
       writeState();
       if (!child.__watchdogIntentionalStop) scheduleServerRestart('process-exit');
     });
-    writeLog('INFO', 'server started', { pid: child.pid, reason });
+    writeLog('INFO', 'server started', { pid: child.pid, reason, detached: false });
     writeState();
   } catch (error) {
     writeLog('ERROR', 'server start failed', { message: error.message });
@@ -262,36 +383,43 @@ async function replaceServer(reason) {
   child.__watchdogIntentionalStop = true;
   server = null;
   writeLog('WARN', 'server health check failed; replacing process', { pid: child.pid, reason });
-  await killProcessTree(child);
+  try {
+    await killProcessTree(child);
+  } catch (error) {
+    writeLog('ERROR', 'server replacement kill failed', { message: error.message });
+    await haltWatchdog('server', '프로세스 종료 실패');
+    return;
+  } finally {
+    serverActionBusy = false;
+  }
   serverStartedAt = 0;
   serverHealthySince = 0;
   serverHealthMisses = 0;
-  serverActionBusy = false;
   scheduleServerRestart(reason);
 }
 
 async function startBrowser(reason) {
-  if (shuttingDown || browser || browserActionBusy) return;
+  if (shuttingDown || browser || browserActionBusy || halted) return;
   browserActionBusy = true;
   clearTimer(browserRestartTimer);
   browserRestartTimer = null;
   try {
     const previousBrowserPid = Number(previousState?.browserPid || 0);
-    if (previousBrowserPid > 0) {
+    if (processIsAlive(previousBrowserPid)) {
       try {
-        process.kill(previousBrowserPid, 0);
-        await checkBrowserHealth();
+        const health = await checkBrowserHealth();
         browser = { pid: previousBrowserPid, adopted: true };
         browserStartedAt = Date.parse(previousState?.browserStartedAt || '') || Date.now();
-        browserHealthySince = Date.now();
+        browserHealthySince = health.healthy ? Date.now() : 0;
         browserHealthMisses = 0;
-        writeLog('INFO', 'existing browser adopted', { pid: previousBrowserPid, reason });
+        writeLog('INFO', 'existing browser adopted', { pid: previousBrowserPid, reason, stateKind: health.kind });
         writeState();
         return;
       } catch {
-        // The old process or debugging endpoint is unavailable; start a new browser.
+        // The old browser or debugging endpoint is unavailable; start a new one.
       }
     }
+
     const browserName = path.basename(config.browserPath).toLowerCase();
     const isEdge = browserName === 'msedge.exe';
     const args = [
@@ -343,7 +471,7 @@ async function startBrowser(reason) {
       writeState();
       if (!child.__watchdogIntentionalStop) scheduleBrowserRestart('process-exit');
     });
-    writeLog('INFO', 'browser started', { pid: child.pid, reason, debugPort: config.debugPort });
+    writeLog('INFO', 'browser started', { pid: child.pid, reason, debugPort: config.debugPort, detached: true });
     writeState();
   } catch (error) {
     writeLog('ERROR', 'browser start failed', { message: error.message });
@@ -361,11 +489,18 @@ async function replaceBrowser(reason) {
   child.__watchdogIntentionalStop = true;
   browser = null;
   writeLog('WARN', 'browser check failed; replacing process', { pid: child.pid, reason });
-  await killProcessTree(child);
+  try {
+    await killProcessTree(child);
+  } catch (error) {
+    writeLog('ERROR', 'browser replacement kill failed', { message: error.message });
+    await haltWatchdog('browser', '프로세스 종료 실패');
+    return;
+  } finally {
+    browserActionBusy = false;
+  }
   browserStartedAt = 0;
   browserHealthySince = 0;
   browserHealthMisses = 0;
-  browserActionBusy = false;
   scheduleBrowserRestart(reason);
 }
 
@@ -396,7 +531,7 @@ async function evaluatePage(webSocketDebuggerUrl) {
         id: 1,
         method: 'Runtime.evaluate',
         params: {
-          expression: '({ playerReady: Boolean(window.__signagePlayer), state: window.__signagePlayer?.getState?.() || null, visibility: document.visibilityState })',
+          expression: '({ playerReady: Boolean(window.__signagePlayer), state: window.__signagePlayer?.getState?.() || null, visibility: document.visibilityState, now: Date.now() })',
           returnByValue: true,
         },
       }));
@@ -430,9 +565,12 @@ async function checkBrowserHealth() {
   );
   if (!page?.webSocketDebuggerUrl) throw new Error('player target not found');
   const result = await evaluatePage(page.webSocketDebuggerUrl);
-  if (!result?.playerReady) throw new Error('player runtime not ready');
+  const classification = classifyPlayerState(result, watchdogConfig.serverHeartbeatMaxAgeMs);
   lastBrowserCheckAt = new Date().toISOString();
   lastBrowserState = result.state;
+  lastBrowserStateKind = classification.kind;
+  lastBrowserResponsive = classification.responsive;
+  return classification;
 }
 
 async function superviseServer() {
@@ -443,15 +581,15 @@ async function superviseServer() {
     serverHealthMisses = 0;
     if (!serverHealthySince) serverHealthySince = Date.now();
     if (serverFailures > 0 && Date.now() - serverHealthySince >= watchdogConfig.stableResetMs) {
-      writeLog('INFO', 'server stable; resetting backoff', { previousFailures: serverFailures });
+      writeLog('INFO', 'server stable; resetting restart failures', { previousFailures: serverFailures });
       serverFailures = 0;
       writeState();
     }
   } catch (error) {
     serverHealthMisses += 1;
-    writeLog('WARN', 'server health check failed', { message: error.message, misses: serverHealthMisses });
+    writeLog('WARN', 'server health check failed', { message: error.message, misses: serverHealthMisses, threshold: watchdogConfig.serverHealthFailureThreshold });
     const age = Date.now() - serverStartedAt;
-    if (serverHealthMisses >= 3 && age >= watchdogConfig.startupGraceMs) {
+    if (serverHealthMisses >= watchdogConfig.serverHealthFailureThreshold && age >= watchdogConfig.serverStartupGraceMs) {
       await replaceServer('health-check');
     }
   }
@@ -460,20 +598,40 @@ async function superviseServer() {
 async function superviseBrowser() {
   if (!browser || shuttingDown) return;
   try {
-    await checkBrowserHealth();
-    browserHealthMisses = 0;
-    if (!browserHealthySince) browserHealthySince = Date.now();
-    if (browserFailures > 0 && Date.now() - browserHealthySince >= watchdogConfig.stableResetMs) {
-      writeLog('INFO', 'browser stable; resetting backoff', { previousFailures: browserFailures });
-      browserFailures = 0;
+    const health = await checkBrowserHealth();
+    if (health.healthy) {
+      browserHealthMisses = 0;
+      if (!browserHealthySince) browserHealthySince = Date.now();
+      if (browserFailures > 0 && Date.now() - browserHealthySince >= watchdogConfig.stableResetMs) {
+        writeLog('INFO', 'browser stable; resetting restart failures', { previousFailures: browserFailures });
+        browserFailures = 0;
+      }
       writeState();
+      return;
+    }
+    if (health.responsive && !health.actionable) {
+      browserHealthMisses = 0;
+      browserHealthySince = 0;
+      writeLog('WARN', 'browser is responsive but not showing active playback', { stateKind: health.kind });
+      writeState();
+      return;
+    }
+    browserHealthMisses += 1;
+    const age = Date.now() - browserStartedAt;
+    writeLog('WARN', 'browser playback health check failed', {
+      stateKind: health.kind,
+      misses: browserHealthMisses,
+      threshold: watchdogConfig.browserHealthFailureThreshold,
+    });
+    if (browserHealthMisses >= watchdogConfig.browserHealthFailureThreshold && age >= watchdogConfig.browserStartupGraceMs) {
+      await replaceBrowser('playback-health-check');
     }
   } catch (error) {
     browserHealthMisses += 1;
-    writeLog('WARN', 'browser health check failed', { message: error.message, misses: browserHealthMisses });
     const age = Date.now() - browserStartedAt;
-    if (browserHealthMisses >= 2 && age >= watchdogConfig.startupGraceMs) {
-      await replaceBrowser('health-check');
+    writeLog('WARN', 'browser CDP health check failed', { message: error.message, misses: browserHealthMisses });
+    if (browserHealthMisses >= watchdogConfig.browserHealthFailureThreshold && age >= watchdogConfig.browserStartupGraceMs) {
+      await replaceBrowser('cdp-health-check');
     }
   }
 }
@@ -481,6 +639,7 @@ async function superviseBrowser() {
 async function shutdown(reason) {
   if (shuttingDown) return;
   shuttingDown = true;
+  stoppedReason = reason;
   writeLog('INFO', 'watchdog stopping', { reason });
   clearTimer(serverRestartTimer);
   clearTimer(browserRestartTimer);
@@ -488,17 +647,20 @@ async function shutdown(reason) {
   const currentBrowser = browser;
   if (currentServer) currentServer.__watchdogIntentionalStop = true;
   if (currentBrowser) currentBrowser.__watchdogIntentionalStop = true;
-  await Promise.all([killProcessTree(currentServer), killProcessTree(currentBrowser)]);
+  try {
+    await Promise.all([killProcessTree(currentServer), killProcessTree(currentBrowser)]);
+  } catch (error) {
+    writeLog('ERROR', 'child cleanup failed while stopping', { message: error.message });
+  }
   server = null;
   browser = null;
   fs.rmSync(stopRequestPath, { force: true });
   fs.rmSync(lockPath, { force: true });
   writeState();
-  logStream.end();
   setTimeout(() => process.exit(0), 100);
 }
 
-startServer('startup');
+void startServer('startup');
 void startBrowser('startup');
 
 const serverTimer = setInterval(() => {
@@ -535,5 +697,6 @@ writeLog('INFO', 'watchdog started', {
   installDir,
   dataDir: config.dataDir,
   port: config.port,
+  manualRestartAfterHalt: Boolean(previousState?.halted),
 });
 writeState();

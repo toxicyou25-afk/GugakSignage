@@ -1,0 +1,37 @@
+﻿**********************
+Windows PowerShell 기록 시작
+시작 시간: 20261124205001
+사용자 이름: <user>
+RunAs 사용자: <user>
+구성 이름:
+Machine: <computer> (Microsoft Windows NT 10.0.26300.0)
+호스트 응용 프로그램: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <test-root>\app\tools\install.ps1 -ConfigureOnly -InstallDir <test-root>\app -DataDir <test-root>\data -Port 3000 -TaskName GugakSignage-InnoTest-148bfabf -DesktopDir <test-root>\desktop -StartMenuDir <test-root>\start-menu -ProfileDir <test-root>\player-profile -NoStart
+프로세스 ID: 57560
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+[GugakSignage] 설치 시작
+[GugakSignage] 설치 폴더: <test-root>\app
+[GugakSignage] 데이터 폴더: <test-root>\data
+[GugakSignage] 기존 데이터 경로를 기본값으로 사용: <test-root>\data
+[GugakSignage] Node.js 확인: v24.22.2
+[GugakSignage] 재생 브라우저: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[GugakSignage] 기존 환경 설정 보존: PORT=49291
+[GugakSignage] 기존 데이터 감지로 샘플 시드 비활성화
+[GugakSignage] 바탕화면·시작 메뉴 바로가기 생성
+[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-InnoTest-148bfabf
+[GugakSignage] 설치 완료
+[GugakSignage] 관리자 화면: http://127.0.0.1:49291/admin/
+[GugakSignage] 초기 비밀번호: <test-root>\data\.env 의 ADMIN_PASSWORD (로그에는 기록하지 않음)
+[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-115001.log
+[GugakSignage] watchdog 로그: <test-root>\data\logs\watchdog.log
+**********************
+Windows PowerShell 기록 끝
+종료 시간: 20261124205003
+**********************

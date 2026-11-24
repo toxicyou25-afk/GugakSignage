@@ -1,73 +1,105 @@
 # Windows 설치·복구 검증 기록
 
-- 기준 커밋: cfc8e739b370eae855c858e8066e94843e91b602
+- 리뷰 수정 기준 커밋: 218963ea4f01f0927f2638fa21c8e522c6409892
 - 실행 일시: 2026-11-24 UTC
-- 환경: Windows 26100, Windows PowerShell 5.1, Node.js v24.22.2, Microsoft Edge
-- 설치 방식: installer\test-install.ps1가 installer\install.ps1을 별도 임시 경로에서 실행
-- 테스트 범위: 앱, 데이터, 프로필, 바탕화면, 시작 메뉴를 모두 임시 폴더로 분리하고 고유한 작업 스케줄러 이름 사용
+- 환경: Windows 26100, Windows PowerShell 5.1, Node.js v24.22.2, Microsoft Edge, Inno Setup 6.7.3
+- 설치 방식: 모든 앱·데이터·프로필·바로가기 경로와 작업 이름을 임시 고유값으로 분리
+- 기존 운영 위치: %ProgramFiles%\\GugakSignage와 %ProgramData%\\GugakSignage는 시험 전후 모두 없음
 
 ## 프로젝트 검증
 
 | 명령 | 결과 |
 |---|---|
-| npm ci | 통과, 90 packages, 취약점 0 |
-| npm run typecheck | 통과 |
-| npm run build | 통과 |
-| npm test | 12/12 통과 |
-| installer\build-installer.ps1 -SkipInstall -SkipCompile | 이식용 ZIP 생성 성공 |
+| npm ci | PASS, 90 packages, 취약점 0 |
+| npm run typecheck | PASS |
+| npm run build | PASS |
+| npm test | PASS, 15/15 |
+| PowerShell Parser | 모든 installer .ps1 PASS |
+| build-installer.ps1 -SkipInstall | PowerShell ZIP·Inno Setup EXE 생성 PASS |
 
-이식용 ZIP은 생성됐지만, 이 PC에 Inno Setup 6 ISCC.exe가 없어 GugakSignage.iss를 EXE로 컴파일하지 못했습니다. 따라서 Inno Setup 설치 EXE의 실행 검증은 **NOT_RUN**입니다.
+## 안전 가드 회귀
 
-생성된 GugakSignage-Portable-0.1.0.zip의 SHA-256은 4a3e44948a4c13e6f1b70203056609715b5d88e85169ddb05dd766b42606b86e입니다. 빌드 산출물은 .gitignore로 제외하고 PR에는 재생성 명령과 해시를 기록합니다.
+installer/test-guards.ps1 결과:
 
-## 실제 임시 설치
+- 설치 폴더와 데이터 폴더가 같은 경우: 중단 PASS
+- 데이터 폴더가 설치 폴더 내부인 경우: 중단 PASS
+- child\\.. 정규화 후 설치 폴더와 같아진 경우: 중단 PASS
+- 같은 설치·데이터 경로의 제거 요청: 중단, 기존 파일 보존 PASS
+- Windows, Program Files, 사용자 문서, 사용자 홈의 -RemoveData: 중단 PASS
+- 다른 프로그램 바로가기: 소유권 불일치로 변경 거부 PASS
+- 다른 작업 스케줄러 항목: 소유권 불일치로 변경 거부 PASS
+- PID 시작 시각 또는 실행 파일 불일치: 종료 거부 PASS
 
-설치 스크립트가 정상 종료했고 다음 항목을 확인했습니다.
+## Watchdog 회귀
 
-- Node.js 24 이상과 Edge 확인
-- 서버 파일, 운영 스크립트, 프로덕션 의존성 복사
-- 데이터 폴더와 .env 생성
-- 암호학적 난수로 관리자 비밀번호와 세션 시크릿 생성
-- 개발용 기본 비밀값 미사용
-- .env ACL 상속 차단 및 현재 사용자/SYSTEM/Administrators 권한 적용
-- 바탕화면과 시작 메뉴 바로가기 생성
-- At log on 작업 스케줄러 등록
-- 서버 상태 확인
-- 설치 로그와 watchdog 로그 생성
+- 재생 중: 현재 콘텐츠와 90초 이내 하트비트가 모두 있을 때만 정상
+- 서버 단절 캐시: offline=true와 현재 콘텐츠가 있으면 정상
+- 페어링·오류·대기: 프로세스 재시작 대상이 아닌 응답 상태로 분류
+- 실제 재생 지연: stale heartbeat 또는 플레이어 미준비를 재시작 대상으로 분류
+- 실패 한도: 3회로 줄인 시험에서 exit code 2, halted=true, 사유·구성 요소 기록
+- 로그 회전: 작은 한도 시험에서 watchdog.log.1 생성 PASS
+- 실패 한도 후 자동 재개: 없음, 수동 재시작만 가능 PASS
 
-## Watchdog 시험
+## PowerShell 설치 통합 시험
 
-| 시험 | 관찰 결과 |
+installer/test-install.ps1 결과:
+
+| 항목 | 결과 |
 |---|---|
-| 서버 프로세스 강제 종료 | 2.6초 후 새 PID로 기동, HTTP health 정상 |
-| 브라우저 프로세스 강제 종료 | 4.8초 후 새 PID로 기동, 플레이어 온라인 유지 |
-| 자동 실행 끄기 | 작업 Disabled, 서버 프로세스 종료 |
-| 자동 실행 다시 켜기 | 새 watchdog 기동, 서버 health 정상 |
-| watchdog과 서버 종료 후 서버 단절 재생 | offline=true, 마지막 캐시에서 autumn → welcome으로 재생 위치 진행 |
-| 서버 복구 | 기존 브라우저를 인수하고 video-bbb 재생 중 online=true로 복귀 |
-| 기본 제거 | 앱 폴더·바로가기·작업 제거, .env와 SQLite 데이터 보존 |
+| 신규 설치·CSPRNG 비밀값·ACL | PASS |
+| 신규 설치 SEED_SAMPLES=true | PASS |
+| 업그레이드 후 데이터 경로·DB 보존 | PASS |
+| 업그레이드 후 SEED_SAMPLES=false | PASS |
+| 업그레이드 후 바로가기·작업 이름 보존 | PASS |
+| 명시 확인 없는 데이터 경로 변경 | 중단 PASS |
+| 서버 강제 종료 후 재기동 | PASS, 2.6초 |
+| 브라우저 강제 종료 후 재기동 | PASS, 4.5초 |
+| 자동 실행 Disable/Enable | PASS |
+| watchdog 강제 종료 시 서버 고아 없음 | PASS |
+| 서버 단절 중 캐시 재생 진행 | PASS, autumn → welcome |
+| 서버 복귀 후 online 전환 | PASS |
+| set-autostart.ps1 -Restart 수동 복구 | PASS |
+| 기본 제거 후 데이터 보존 | PASS |
 
-Watchdog은 자식 프로세스를 detached로 실행해 자신이 비정상 종료되어도 서버와 재생기가 마지막 콘텐츠를 유지하게 했습니다. 새 watchdog은 기존 브라우저의 CDP 상태를 확인해 같은 프로세스를 인수합니다.
+## Inno Setup EXE
+
+- 컴파일: Inno Setup 6.7.3 ISCC.exe, PASS
+- EXE 크기: 4,994,664 bytes
+- EXE SHA-256: 952ead2b0192119b8a9f9a76f560aecfd0b2679a9131b88aa7571ea6c5785981
+- 설치 방식: /CURRENTUSER /VERYSILENT, 임시 App/Data/Desktop/Start Menu/Player Profile
+- 최초 설치: 서버 health, 실제 재생기 화면, 바로가기, At log on 작업 PASS
+- 업그레이드: /NOSTART와 /DATADIR 미지정으로 실행해 기존 install.json 경로 재사용 PASS
+- 업그레이드 DB SHA-256 동일, SEED_SAMPLES=false PASS
+- 기본 제거 관리자: 앱·바로가기·작업 제거 PASS
+- 기본 제거 후 .env·SQLite 보존 PASS
+- %ProgramFiles%\\GugakSignage와 %ProgramData%\\GugakSignage: 시험 전후 모두 없음, 미생성 PASS
+
+PowerShell 이식용 ZIP SHA-256:
+
+~~~text
+9786815bf8bea1faddd00aac084181ae64ab4361ea2f9367a34557f1335770a3
+~~~
 
 ## 증적
 
-- [설치 스크립트 실행 화면](evidence/installer-console.png)
-- [설치 후 재생기](evidence/player-installed.png)
-- [서버 단절 중 오프라인 재생기](evidence/player-offline-installed.png)
-- [기계 판독 가능한 시험 결과](evidence/installer-verification.json)
-- [전체 시험 transcript](evidence/verification-run.txt)
-- [설치 로그](evidence/installer-run.txt)
+- [PowerShell 설치 시험 결과](evidence/installer-verification.json)
+- [Inno Setup 설치·업그레이드·제거 결과](evidence/inno-install-verification.json)
+- [PowerShell 설치 화면](evidence/installer-console.png)
+- [PowerShell 설치 후 재생기](evidence/player-installed.png)
+- [서버 단절 중 캐시 재생기](evidence/player-offline-installed.png)
+- [Inno EXE 설치 후 재생기](evidence/player-inno-installed.png)
+- [Inno 설치 로그](evidence/inno-setup-log.txt)
+- [Inno 업그레이드 로그](evidence/inno-upgrade-log.txt)
+- [Inno 제거 로그](evidence/inno-uninstall-log.txt)
 - [Watchdog 로그](evidence/watchdog-run.txt)
-- [제거 로그](evidence/uninstaller-run.txt)
 
-증적 로그의 임시 경로와 사용자·장비 식별자는 공개 저장소를 위해 치환했습니다. 관리자 비밀번호와 세션 시크릿은 로그에 기록하지 않았습니다.
+증적 로그의 임시 경로와 사용자·장비 식별자는 공개 저장소를 위해 치환했습니다. 관리자 비밀번호와 세션 시크릿은 기록하지 않았습니다.
 
 ## 미검증 항목
 
-- 실제 Windows 재부팅 후 자동 로그인과 At log on 실행: **NOT_RUN**
-- 실제 현장 물리 장비와 모니터, 장시간 24시간 운영: **NOT_RUN**
-- 방화벽 규칙 생성/삭제: 시스템 설정 변경을 피하기 위해 **NOT_RUN**
-- Inno Setup EXE 컴파일과 마법사 설치: ISCC.exe 부재로 **NOT_RUN**
-- 하드웨어 그래픽 드라이버별 영상 장시간 재생: **NOT_RUN**
+- 실제 Windows 재부팅 후 자동 로그인과 At log on 실행: NOT_RUN
+- 실제 현장 물리 장비와 모니터, 24시간 연속 운영: NOT_RUN
+- 방화벽 규칙 생성·삭제: 시스템 설정 변경을 피해 NOT_RUN
+- 프로세스는 살아 있으나 CDP renderer가 실제로 멈춘 상태의 재현: NOT_RUN
 
-이 로컬 결과는 설치·복구 기능의 구현 증거이며, 현장 무인 운영 승인을 대신하지 않습니다.
+이 결과는 구현·설치·복구 기능의 로컬 증거이며 현장 무인 운영 승인을 대신하지 않습니다.

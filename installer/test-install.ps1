@@ -6,9 +6,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
+. (Join-Path $PSScriptRoot "ops\install-common.ps1")
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $installScript = Join-Path $PSScriptRoot "install.ps1"
 $verifyScript = Join-Path $PSScriptRoot "verify-browser.mjs"
+$guardScript = Join-Path $PSScriptRoot "test-guards.ps1"
+$watchdogTestScript = Join-Path $PSScriptRoot "test-watchdog.mjs"
+$watchdogHealthTest = Join-Path $PSScriptRoot "test-watchdog-health.mjs"
 $evidenceDir = Join-Path $repoRoot "docs\install\evidence"
 New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 
@@ -141,7 +145,7 @@ $report = [ordered]@{
         "실제 Windows 재부팅 및 자동 로그인",
         "24시간 연속 운영",
         "방화벽 규칙 생성(권한/시스템 변경을 피하기 위해 선택 옵션 미실행)",
-        "Inno Setup EXE 컴파일 및 설치(로컬에 ISCC.exe 없음)"
+        "프로세스는 살아 있으나 CDP가 멈춘 실제 renderer hang 재현"
     )
 }
 $uninstallCompleted = $false
@@ -152,6 +156,26 @@ Start-Transcript -LiteralPath $rawLog -Append | Out-Null
 $transcriptStarted = $true
 
 try {
+    Write-Host "[install-test] 경로·소유권 안전 가드 회귀 시험"
+    $guardOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $guardScript 2>&1 | Tee-Object -Variable guardLines
+    $guardLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "경로·소유권 안전 가드 시험이 실패했습니다." }
+    $guardJson = @($guardOutput | Where-Object { ([string]$_).TrimStart().StartsWith("{") }) | Select-Object -Last 1
+    if (-not $guardJson) { throw "안전 가드 시험 결과 JSON이 없습니다." }
+    $report.checks.guardTests = $guardJson | ConvertFrom-Json
+
+    Write-Host "[install-test] watchdog 건강 판정·영구 중단 회귀 시험"
+    $healthOutput = & $nodePath --test $watchdogHealthTest 2>&1 | Tee-Object -Variable healthLines
+    $healthLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "watchdog 건강 판정 시험이 실패했습니다." }
+    $report.checks.watchdogHealthClassificationTests = $true
+    $watchdogOutput = & $nodePath $watchdogTestScript 2>&1 | Tee-Object -Variable watchdogLines
+    $watchdogLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "watchdog 영구 중단·로그 회전 시험이 실패했습니다." }
+    $watchdogJson = @($watchdogOutput | Where-Object { ([string]$_).TrimStart().StartsWith("{") }) | Select-Object -Last 1
+    if (-not $watchdogJson) { throw "watchdog 중단 시험 결과 JSON이 없습니다." }
+    $report.checks.watchdogFailureLifecycle = $watchdogJson | ConvertFrom-Json
+
     Write-Host "[install-test] 임시 설치 시작: <test-root>"
     $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir 2>&1 | Tee-Object -Variable installLines
     $installLines | Out-Host
@@ -174,10 +198,14 @@ try {
     if ($adminMatch.Groups[1].Value.Length -lt 20 -or $sessionMatch.Groups[1].Value.Length -lt 48) {
         throw "생성된 비밀값 길이가 충분하지 않습니다."
     }
+    if ($envText -notmatch "(?m)^SEED_SAMPLES=true\s*$") {
+        throw "신규 설치가 샘플 시드를 활성화하지 않았습니다."
+    }
     $acl = Get-Acl -LiteralPath $envFile
     if (-not $acl.AreAccessRulesProtected) { throw "환경 파일 ACL 상속이 차단되지 않았습니다." }
     $report.checks.randomSecrets = $true
     $report.checks.environmentAclProtected = $true
+    $report.checks.newInstallSeedSamples = $true
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcuts = @(
@@ -209,6 +237,83 @@ try {
     $report.checks.playerRendering = $true
     $report.checks.playerInitialState = $playerInitial.state
     $report.screenshots += "docs/install/evidence/player-installed.png"
+
+    Wait-Until -TimeoutSeconds 30 -Description "브라우저 실제 재생 상태" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return ($current.lastBrowserStateKind -in @("playing", "cached"))
+    }
+
+    $configBeforeUpgrade = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
+    $databasePath = Join-Path $dataDir "signage.sqlite"
+    $shortcutPathsBefore = @($configBeforeUpgrade.shortcuts)
+    $taskNameBefore = [string]$configBeforeUpgrade.taskName
+    $watchdogPidBeforeUpgrade = [int](Read-WatchdogState -StatePath $statePath).watchdogPid
+
+    & (Join-Path $installDir "ops\stop.ps1") -Quiet
+    Wait-Until -TimeoutSeconds 20 -Description "업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
+    $databaseHashBefore = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
+    & $installScript -SourceDir $repoRoot -InstallDir $installDir -NoStart 2>&1 | Tee-Object -Variable upgradeLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "기존 설치 업그레이드가 실패했습니다." }
+    $configAfterUpgrade = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
+    $envAfterUpgrade = Get-Content -LiteralPath $envFile -Raw
+    if (-not (Test-PathEqual -Left ([string]$configAfterUpgrade.dataDir) -Right $dataDir)) {
+        throw "업그레이드가 기존 데이터 경로를 보존하지 않았습니다."
+    }
+    if (-not (Test-PathEqual -Left ([string]$configAfterUpgrade.installDir) -Right $installDir)) {
+        throw "업그레이드가 설치 경로를 변경했습니다."
+    }
+    if ([string]$configAfterUpgrade.taskName -ne $taskNameBefore) {
+        throw "업그레이드가 작업 이름을 기본값으로 덮어썼습니다."
+    }
+    $shortcutPathsAfter = @($configAfterUpgrade.shortcuts)
+    if ($shortcutPathsAfter.Count -ne $shortcutPathsBefore.Count) { throw "업그레이드가 바로가기 구성 수를 변경했습니다." }
+    for ($index = 0; $index -lt $shortcutPathsBefore.Count; $index++) {
+        if (-not (Test-PathEqual -Left ([string]$shortcutPathsBefore[$index]) -Right ([string]$shortcutPathsAfter[$index]))) {
+            throw "업그레이드가 바로가기 경로를 기본값으로 덮어썼습니다."
+        }
+    }
+    if ($envAfterUpgrade -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
+        throw "기존 데이터 업그레이드에서 샘플 시드를 비활성화하지 않았습니다."
+    }
+    $databaseHashAfter = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
+    if ($databaseHashAfter -ne $databaseHashBefore) {
+        throw "업그레이드가 기존 데이터베이스를 변경했습니다."
+    }
+    $report.checks.upgradePreservesDataDir = $true
+    $report.checks.upgradePreservesDatabase = $true
+    $report.checks.upgradePreservesShortcutsAndTask = $true
+    $report.checks.upgradeDisablesSeedSamples = $true
+
+    $changedDataDir = Join-Path $testRoot "changed-data"
+    $changeError = $null
+    try {
+        & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $changedDataDir -NoStart -NoAutoStart 2>&1 | Out-Null
+    } catch {
+        $changeError = $_.Exception.Message
+    }
+    if (-not $changeError -or $changeError -notmatch "AllowDataDirChange") {
+        throw "기존 데이터 경로 변경이 명시 확인 없이 허용되었습니다."
+    }
+    if (Test-Path -LiteralPath $changedDataDir) { throw "거부된 데이터 경로 변경에서 새 폴더가 생성되었습니다." }
+    $report.checks.dataDirChangeRequiresExplicitConfirmation = $true
+
+    Start-ScheduledTask -TaskName $taskName
+    Wait-Until -TimeoutSeconds 90 -Description "업그레이드 후 서버 시작" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return ($current.watchdogPid -and [int]$current.watchdogPid -ne $watchdogPidBeforeUpgrade -and
+            (Test-OwnedProcess -ProcessId ([int]$current.watchdogPid)) -and
+            (Test-ServerHealth -PortNumber $port))
+    }
+    $initialState = Read-WatchdogState -StatePath $statePath
+    Wait-Until -TimeoutSeconds 30 -Description "업그레이드 후 브라우저 재생 상태" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return ($current.lastBrowserStateKind -in @("playing", "cached"))
+    }
+    $initialState = Read-WatchdogState -StatePath $statePath
+    if (-not $initialState.watchdogStartedAt -or -not $initialState.serverStartedAt -or -not $initialState.browserStartedAt) {
+        throw "PID 소유권 검증에 필요한 프로세스 시작 시각이 상태 파일에 없습니다."
+    }
+    $report.checks.pidIdentityMetadataRecorded = $true
 
     $serverPidBefore = [int]$initialState.serverPid
     $serverKillAt = [DateTime]::UtcNow
@@ -258,8 +363,11 @@ try {
 
     $enabledState = Read-WatchdogState -StatePath $statePath
     Stop-Process -Id ([int]$enabledState.watchdogPid) -Force
-    Stop-Process -Id ([int]$enabledState.serverPid) -Force
     Wait-Until -TimeoutSeconds 15 -Description "서버 단절" -Condition { -not (Test-ServerHealth -PortNumber $port) }
+    Wait-Until -TimeoutSeconds 15 -Description "watchdog 강제 종료 시 서버 고아 정리" -Condition {
+        return -not (Test-OwnedProcess -ProcessId ([int]$enabledState.serverPid))
+    }
+    $report.checks.watchdogKillDoesNotOrphanServer = $true
     if (-not (Test-OwnedProcess -ProcessId ([int]$enabledState.browserPid))) {
         throw "watchdog 종료 후에도 유지되어야 할 브라우저가 함께 종료되었습니다."
     }
@@ -283,6 +391,16 @@ try {
     $recovered = Invoke-PlayerCheck -Expect "online" -Screenshot "" -Output $recoveryPath
     $report.checks.playerRecoveredAfterServerReturn = $true
     $report.checks.playerRecoveredState = $recovered.state
+
+    $watchdogBeforeManualRestart = [int](Read-WatchdogState -StatePath $statePath).watchdogPid
+    & (Join-Path $installDir "tools\set-autostart.ps1") -Restart | Out-Host
+    Wait-Until -TimeoutSeconds 60 -Description "수동 watchdog 재시작" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return ($current.watchdogPid -and [int]$current.watchdogPid -ne $watchdogBeforeManualRestart -and
+            (Test-OwnedProcess -ProcessId ([int]$current.watchdogPid)) -and
+            (Test-ServerHealth -PortNumber $port))
+    }
+    $report.checks.manualRestartRecoversWatchdog = $true
 
     & (Join-Path $installDir "tools\uninstall.ps1") | Out-Host
     $uninstallCompleted = $true
