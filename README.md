@@ -148,6 +148,24 @@ npm run dev
 
 재생기가 목록과 파일을 한 번 받은 뒤 서버를 끄면(`Ctrl+C` 또는 `docker compose stop`) 좌측 상단에 `오프라인 · 마지막 목록을 재생 중` 배지가 나타나고 이미지·동영상 순환이 계속됩니다. 서버를 다시 켜면 15초 주기로 새 버전을 확인합니다.
 
+### 집 PC에서 이어서 실행
+
+다른 PC에서는 GitHub에서 브랜치를 받아 같은 샘플로 시작할 수 있습니다.
+
+```powershell
+git clone https://github.com/toxicyou25-afk/GugakSignage.git
+cd GugakSignage
+git switch feat/signage-mvp-player
+npm ci
+npm run dev
+```
+
+- 관리 화면: <http://localhost:3000/admin/> / 초기 비밀번호 `gugak1234`
+- 샘플 기기 코드: **`GUGAK1`** (기기 메뉴 → 로비 안내 화면 카드)
+- 샘플 포스터·영상·재생목록 시드는 `seed/`에 포함되어 첫 실행 시 `data/uploads/`와 SQLite DB로 복사·생성됩니다.
+- **실제 업로드 콘텐츠, `data/signage.sqlite`, `data/uploads/`, `.env`, `node_modules/`는 Git에 포함되지 않습니다.** 새 클론은 항상 샘플 데이터로 시작하며, 기존 운영 데이터가 필요하면 별도로 백업·복원해야 합니다.
+- `.env`를 쓰려면 `.env.example`을 복사해 `ADMIN_PASSWORD`와 `SESSION_SECRET`을 변경합니다.
+
 ### 검증 결과
 
 | 명령 | 결과 |
