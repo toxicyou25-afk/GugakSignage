@@ -500,7 +500,7 @@ function deviceCardHtml(device) {
     </div>
     <div class="device-code-wrap">
       <div><span class="device-code-label">등록 코드 · 재생기 첫 화면에 입력</span><span class="device-code">${esc(device.pairingCode)}</span></div>
-      <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button><a class="btn btn-primary btn-sm" href="${esc(device.paired ? '/player/' : device.playerUrl)}" target="_blank" rel="noopener">재생기 열기</a></div>
+      <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button><a class="btn btn-primary btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">재생기 열기</a></div>
     </div>
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>

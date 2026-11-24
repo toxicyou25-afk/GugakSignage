@@ -221,7 +221,10 @@ async function loadPlayerConfig() {
 function startLoops() {
   if (runtime.started) return;
   runtime.started = true;
-  runtime.pollTimer = setInterval(() => { fetchManifest(); }, POLL_MS);
+  runtime.pollTimer = setInterval(() => {
+    reevaluateCachedSchedule();
+    fetchManifest();
+  }, POLL_MS);
   runtime.heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
   sendHeartbeat();
 }
@@ -273,6 +276,24 @@ function acceptManifest(manifest, initial) {
     return;
   }
   runtime.pendingManifest = manifest;
+}
+
+function reevaluateCachedSchedule() {
+  const manifest = runtime.manifest;
+  if (!manifest || !runtime.token || el.player.hidden) return;
+  const playlist = activePlaylist(manifest);
+  const queue = queueFor(playlist);
+  if (!playlist || queue.length === 0) {
+    if (!runtime.currentNode) return;
+    stopPlayback();
+    if (!playlist) showWaitingState(manifest);
+    else el.empty.hidden = false;
+    return;
+  }
+  const currentIsActive = queue.some((item) => item.content.id === runtime.currentContentId);
+  if (!runtime.currentNode || runtime.playlistId !== playlist.id || !currentIsActive) {
+    applyManifest(manifest, true);
+  }
 }
 
 function activePlaylist(manifest) {

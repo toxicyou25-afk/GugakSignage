@@ -167,6 +167,15 @@ try {
   await secondPlayer.screenshot({ path: path.join(evidenceDir, '19-first-run-recovered.png') });
   step('기존 연결 끊고 다시 연결 후 재생', recoveredState);
 
+  await admin.goto(`${base}/admin/#/devices`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('.device-card');
+  const pairedPlayerHref = await admin.locator('.device-card a', { hasText: '재생기 열기' }).first().getAttribute('href');
+  const pairedPlayerUrl = new URL(pairedPlayerHref, base);
+  if (pairedPlayerUrl.searchParams.get('code') !== code) {
+    throw new Error(`연결된 기기의 재생기 링크에 선택 코드가 없습니다: ${pairedPlayerHref}`);
+  }
+  step('연결된 기기의 재생기 링크에서 선택 코드 유지', { href: pairedPlayerHref });
+
   report.result = 'passed';
   report.finishedAt = new Date().toISOString();
   await firstContext.close();

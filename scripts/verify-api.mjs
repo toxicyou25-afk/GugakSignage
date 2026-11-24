@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const result = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'test/api.test.ts'], {
+const result = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'test/api.test.ts', 'test/env.test.ts'], {
   cwd: root,
   encoding: 'utf8',
   env: { ...process.env },

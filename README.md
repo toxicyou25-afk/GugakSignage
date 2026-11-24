@@ -171,10 +171,10 @@ npm run dev
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | API 10/10 통과 (업로드·기기 등록·재생목록·게시·시간표·하트비트·기존 연결 인수·게시 미디어 보호·오류 처리) |
-| `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구 |
+| `npm test` | 11/11 통과 (API 10건과 `.env` 설정 로드 1건) |
+| `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
-| `npm run verify:schedule` | 통과 — 기본 목록 없이 시간표만 있는 기기에서 08:00 대기, 09:01 예약 시작 후 첫 콘텐츠 재생 |
+| `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
 실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`에 저장합니다.

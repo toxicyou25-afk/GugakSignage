@@ -4,8 +4,10 @@ import http from 'node:http';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
+import { loadLocalEnv } from './env.js';
 import { migrateSampleCode, seedDatabase } from './seed.js';
 
+loadLocalEnv();
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(config.uploadDir, { recursive: true });

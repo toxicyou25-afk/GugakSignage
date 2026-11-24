@@ -101,13 +101,22 @@ try {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         playlistId: null,
-        schedules: [{
-          playlistId: playlist.id,
-          days: [0, 1, 2, 3, 4, 5, 6],
-          startTime: '09:00',
-          endTime: '10:00',
-          enabled: true,
-        }],
+        schedules: [
+          {
+            playlistId: playlist.id,
+            days: [0, 1, 2, 3, 4, 5, 6],
+            startTime: '09:00',
+            endTime: '10:00',
+            enabled: true,
+          },
+          {
+            playlistId: playlist.id,
+            days: [0, 1, 2, 3, 4, 5, 6],
+            startTime: '11:00',
+            endTime: '12:00',
+            enabled: true,
+          },
+        ],
       }),
     });
     const assignment = await assignmentResponse.json();
@@ -140,6 +149,20 @@ try {
   await player.waitForTimeout(1200);
   await player.screenshot({ path: path.join(evidenceDir, '23-schedule-started.png') });
   step('예약 시간 시작 후 첫 콘텐츠 재생', state);
+
+  await stopServer();
+  await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 20_000 });
+  await player.clock.fastForward(60 * 60 * 1000);
+  await player.waitForSelector('#waiting-view:not([hidden])', { timeout: 15_000 });
+  step('서버 단절 상태에서 예약 시간 종료 반영', { clock: '10:01' });
+
+  await player.clock.fastForward(60 * 60 * 1000);
+  await player.waitForSelector('body[data-current-content-id]', { timeout: 15_000 });
+  const offlineResumedState = await player.evaluate(() => window.__signagePlayer.getState());
+  if (!offlineResumedState.offline || !offlineResumedState.currentContentId) {
+    throw new Error(`서버 단절 상태에서 다음 예약 시간이 시작되지 않았습니다: ${JSON.stringify(offlineResumedState)}`);
+  }
+  step('서버 단절 상태에서 다음 예약 시간 자동 시작', offlineResumedState);
 
   report.result = 'passed';
   report.finishedAt = new Date().toISOString();
