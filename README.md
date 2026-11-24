@@ -13,7 +13,7 @@
 - 2026-11-24: 오픈소스 후보 조사, 범용 아키텍처 설계, 다중 모니터 동기화 시뮬레이션 완료
 - 2026-11-24: 국내외 실제 서비스 화면·매뉴얼·데모·KRDS 벤치마킹 착수
 - 2026-11-24: 독자 UI·UX 설계와 작동형 프로토타입 착수
-- 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 59/59, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
+- 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 61/61, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
 - 2026-11-24: **1차 동작본(관리 서버 + 윈도우 재생기) 구현·로컬 검증 완료** — SQLite, 한글 관리 화면, 콘텐츠·기기·재생목록·게시 API, 오프라인 캐시 재생기
 - 2026-11-24: **장소·다중 모니터·화면별 배정 통합** — 기존 기기를 보존하는 SQLite 마이그레이션, 4화면 관리·RenderPlan 미리보기·브라우저 캔버스 재생 확인
 - 2026-11-24: **독자 한국어 UI·UX 프로토타입 완료** (Playwright 1440·1280·768 스모크 통과, 원본 스크린샷 14장)
@@ -82,7 +82,7 @@ npm start -- --port 4174
 
 | 항목 | 결과 |
 |---|---|
-| 단위·통합 테스트 | 59/59 통과 |
+| 단위·통합 테스트 | 61/61 통과 |
 | 결정론적 시나리오 | 63/63 통과 (48개 매트릭스) |
 | 미리보기 브라우저 | 48/48 통과 |
 | 4화면 동기화 | 65.4초, 이미지 순서 불일치 0건, 최대 전환 편차 10.2ms, 최대 지연 17.6ms |
@@ -103,8 +103,8 @@ owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입
 **1) 서버 실행 — Docker Compose**
 
 ```powershell
-Copy-Item .env.example .env
-# .env에서 ADMIN_PASSWORD와 SESSION_SECRET을 반드시 바꿉니다.
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# 운영 환경에서는 관리 화면 설정에서 비밀번호를 바꾸고 SESSION_SECRET도 고유한 값으로 바꿉니다.
 docker compose up --build -d
 ```
 
@@ -117,16 +117,18 @@ npm run dev
 
 - 관리 화면: <http://localhost:3000/admin/>
 - 재생기: <http://localhost:3000/player/>
-- 기본 비밀번호: `gugak1234` — 운영 전 `ADMIN_PASSWORD`로 바꾸세요.
+- 새 DB의 테스트 기본 비밀번호: `0000` — 테스트 용도로만 사용하고 운영 전 관리 화면의 **설정**에서 변경하세요.
 - 데이터: `data/signage.sqlite`, 업로드 파일: `data/uploads/`
+
+기존 `.env`에 `ADMIN_PASSWORD`가 있거나 DB에 이미 관리자 비밀번호가 저장되어 있으면 기존 비밀번호를 유지합니다. 설정 화면에서 바꾼 비밀번호는 DB에 해시로 저장되어 서버를 다시 시작해도 유지되며, 변경할 때 모든 관리자 세션이 종료됩니다.
 
 **2) 관리 화면 로그인 → 기기에서 등록 코드 확인**
 
-1. <http://localhost:3000/admin/>에 접속합니다. 기본 비밀번호는 `gugak1234`입니다.
+1. <http://localhost:3000/admin/>에 접속합니다. 새 DB이며 `ADMIN_PASSWORD`가 지정되지 않은 테스트 환경에서는 기본 비밀번호 `0000`으로 로그인합니다.
 2. 왼쪽 **기기** 메뉴를 엽니다. 샘플 기기 **로비 안내 화면** 카드에 큰 글씨로 **등록 코드 `GUGAK1`**이 표시됩니다.
 3. 코드 옆의 `복사`를 누르거나 `재생기 열기`를 누릅니다. 새 기기를 만들었다면 그 카드의 6자리 코드를 사용합니다.
 
-개발/샘플 모드에서 관리자 비밀번호가 기본값이면 로그인 화면에 `gugak1234` 힌트가 표시됩니다. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
+테스트 기본 비밀번호를 사용하면 로그인 화면과 관리자 화면에 변경 안내가 표시됩니다. 관리자 화면의 **설정**에서 현재 비밀번호를 확인하고 새 비밀번호를 저장할 수 있습니다. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
 
 **3) 윈도우 재생기 실행**
 
@@ -172,25 +174,26 @@ npm ci
 npm run dev
 ```
 
-- 관리 화면: <http://localhost:3000/admin/> / 초기 비밀번호 `gugak1234`
+- 관리 화면: <http://localhost:3000/admin/> / 신규 테스트 DB의 기본 비밀번호 `0000`
 - 샘플 기기 코드: **`GUGAK1`** (기기 메뉴 → 로비 안내 화면 카드)
 - 샘플 포스터·영상·재생목록 시드는 `seed/`에 포함되어 첫 실행 시 `data/uploads/`와 SQLite DB로 복사·생성됩니다.
 - **실제 업로드 콘텐츠, `data/signage.sqlite`, `data/uploads/`, `.env`, `node_modules/`는 Git에 포함되지 않습니다.** 새 클론은 항상 샘플 데이터로 시작하며, 기존 운영 데이터가 필요하면 별도로 백업·복원해야 합니다.
-- `.env`를 쓰려면 `.env.example`을 복사해 `ADMIN_PASSWORD`와 `SESSION_SECRET`을 변경합니다.
+- `.env`를 쓰려면 `.env.example`을 복사합니다. 운영 전에 관리 화면에서 비밀번호를 바꾸고 `SESSION_SECRET`을 고유한 값으로 변경합니다.
 
 ### 검증 결과
 
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 16/16 통과 (기존 11건 유지 + 다중 모니터 엔진·결정적 배정·마이그레이션·API 5건) |
-| `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
+| `npm test` | 통과 — 22/22, 0 실패 |
+| `npm run verify:first-run` | 통과 — 관리자 비밀번호 경고·설정 변경·이전 비밀번호 거부·재시작 후 로그인·샘플 기기와 재생기 검증 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
-| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 배정·RenderPlan 미리보기·게시, 한 PC 4화면 캔버스, 오프라인 재로드, 모니터별 분리 창 |
+| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 콘텐츠·PC 배정·RenderPlan 미리보기·게시, URL 단독 iframe·오프라인 대체 화면, 한 PC 4화면 캔버스, 모니터별 분리 창 |
+| `npm run verify:sw-update` | 통과 — 같은 persistent Edge profile에서 v3 셸 캐시 후 같은 origin에 HEAD 배포, `registration.update()` 뒤 v4 캐시·새 player.js·URL engine 자산 사용 확인 |
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
-실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 4장을 저장합니다.
+실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 5장을 저장합니다.
 
 ### 자동 회귀 검증(CI)
 

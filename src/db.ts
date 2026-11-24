@@ -179,10 +179,12 @@ function migrate(db: DB): void {
   }
   const playlistItemColumns = db.prepare('PRAGMA table_info(playlist_items)').all() as Array<{ name: string }>;
   if (!playlistItemColumns.some((column) => column.name === 'fit_mode_override')) {
-    db.exec(`ALTER TABLE playlist_items
-      ADD COLUMN fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch'));`);
-    // Existing rows always had a materialized contain/cover/stretch choice.
-    db.exec('UPDATE playlist_items SET fit_mode_override = fit_mode WHERE fit_mode_override IS NULL;');
+    transaction(db, () => {
+      db.exec(`ALTER TABLE playlist_items
+        ADD COLUMN fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch'));`);
+      // Keep the column addition and historical value migration atomic.
+      db.exec('UPDATE playlist_items SET fit_mode_override = fit_mode WHERE fit_mode_override IS NULL;');
+    });
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);');
 }

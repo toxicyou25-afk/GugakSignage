@@ -3,6 +3,7 @@ import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import { requireAdmin } from './auth.js';
+import { adminSessionEpoch, initializeAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
 import type { DB } from './db.js';
 import { authRoutes } from './routes/auth.js';
@@ -14,6 +15,7 @@ import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
 
 export function createApp(db: DB, config: AppConfig) {
+  initializeAdminPassword(db, config);
   const app = express();
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -30,7 +32,7 @@ export function createApp(db: DB, config: AppConfig) {
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
-  const admin = requireAdmin(config.sessionSecret);
+  const admin = requireAdmin(config.sessionSecret, () => adminSessionEpoch(db));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'gugak-signage', time: new Date().toISOString() });
@@ -39,7 +41,7 @@ export function createApp(db: DB, config: AppConfig) {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ serverTime: new Date().toISOString(), serverTimeMs: Date.now() });
   });
-  app.use('/api/auth', authRoutes(config));
+  app.use('/api/auth', authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/dashboard', admin, dashboardRoutes(db, config));
   app.use('/api/contents', admin, contentRoutes(db, config));

@@ -3,6 +3,7 @@ import { Router, type Request } from 'express';
 import type { AppConfig } from '../config.js';
 import { get, run, type DB } from '../db.js';
 import { manifestForDevice } from '../publishing.js';
+import { usesTestDefaultAdminPassword } from '../admin-password.js';
 import type { DeviceRow } from '../types.js';
 import { asTrimmed, clientIp, newPlayerToken, normalizePairingCode, nowIso, parseIntRange } from '../util.js';
 
@@ -137,7 +138,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
       sampleMode: Boolean(sample),
       sampleCode: sample?.pairing_code ?? null,
       sampleDeviceName: sample?.name ?? null,
-      demoDefaultPassword: Boolean(sample) && config.adminPassword === 'gugak1234',
+      demoDefaultPassword: usesTestDefaultAdminPassword(db),
     });
   });
 

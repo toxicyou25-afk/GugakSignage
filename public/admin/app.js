@@ -28,6 +28,7 @@ const el = {
   pageEyebrow: $('#page-eyebrow'),
   modal: $('#modal'),
   toast: $('#toast'),
+  defaultPasswordWarning: $('#default-password-warning'),
 };
 
 const PAGE_META = {
@@ -36,12 +37,14 @@ const PAGE_META = {
   sites: { title: '장소·화면', eyebrow: 'SITES & DISPLAYS' },
   devices: { title: '기기', eyebrow: 'DISPLAYS' },
   playlists: { title: '재생목록', eyebrow: 'PLAYLISTS' },
+  settings: { title: '설정', eyebrow: 'ADMIN SETTINGS' },
 };
 
 class ApiError extends Error {
-  constructor(message, status = 0) {
+  constructor(message, status = 0, field = undefined) {
     super(message);
     this.status = status;
+    this.field = field;
   }
 }
 
@@ -66,7 +69,7 @@ async function api(path, options = {}) {
     if (!path.endsWith('/auth/login')) showLogin('로그인이 만료되었습니다. 다시 로그인해 주세요.');
     throw new ApiError(data?.error || '로그인이 필요합니다.', 401);
   }
-  if (!response.ok) throw new ApiError(data?.error || `요청을 처리하지 못했습니다. (${response.status})`, response.status);
+  if (!response.ok) throw new ApiError(data?.error || `요청을 처리하지 못했습니다. (${response.status})`, response.status, data?.field);
   return data;
 }
 
@@ -168,7 +171,9 @@ function showLogin(message = '') {
   setTimeout(() => el.password.focus(), 40);
 }
 
-async function enterApp() {
+async function enterApp(session = null) {
+  const currentSession = session || await api('/api/auth/me');
+  el.defaultPasswordWarning.hidden = !currentSession.defaultPasswordWarning;
   el.loginView.hidden = true;
   el.appView.hidden = false;
   await loadAll();
@@ -218,6 +223,9 @@ function setPageMeta(page) {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
+  const settingsLink = $('#settings-link');
+  if (page === 'settings') settingsLink.setAttribute('aria-current', 'page');
+  else settingsLink.removeAttribute('aria-current');
 }
 
 async function route() {
@@ -239,11 +247,49 @@ async function route() {
     return;
   }
   setPageMeta(PAGE_META[page] ? page : 'dashboard');
-  if (page === 'contents') renderContents();
+  if (page === 'settings') renderSettings();
+  else if (page === 'contents') renderContents();
   else if (page === 'devices') renderDevices();
   else if (page === 'playlists') renderPlaylists();
   else renderDashboard();
   el.view.focus({ preventScroll: true });
+}
+
+function renderSettings() {
+  el.view.innerHTML = `
+    <section class="settings-page" aria-labelledby="password-settings-title">
+      <p class="eyebrow">SECURITY</p>
+      <h2 id="password-settings-title">관리자 비밀번호</h2>
+      <p class="page-intro">현재 비밀번호를 확인한 뒤 새 비밀번호를 설정합니다. 저장하면 모든 관리자 세션이 종료되며, 새 비밀번호로 다시 로그인해야 합니다.</p>
+      <form id="change-password-form" class="card card-pad form-grid password-form" novalidate>
+        <div class="field">
+          <label for="current-password">현재 비밀번호</label>
+          <div class="password-control">
+            <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024" aria-describedby="current-password-help change-password-error" />
+            <button class="btn btn-ghost password-toggle" type="button" data-action="toggle-password" data-target="current-password" data-label="현재 비밀번호" aria-label="현재 비밀번호 표시" aria-pressed="false">표시</button>
+          </div>
+          <span id="current-password-help" class="help">변경을 확인하기 위해 현재 비밀번호가 필요합니다.</span>
+        </div>
+        <div class="field">
+          <label for="new-password">새 비밀번호</label>
+          <div class="password-control">
+            <input id="new-password" name="newPassword" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="new-password-help change-password-error" />
+            <button class="btn btn-ghost password-toggle" type="button" data-action="toggle-password" data-target="new-password" data-label="새 비밀번호" aria-label="새 비밀번호 표시" aria-pressed="false">표시</button>
+          </div>
+          <span id="new-password-help" class="help">8~128자로 입력하세요. 붙여넣기와 비밀번호 관리자를 사용할 수 있습니다.</span>
+        </div>
+        <div class="field">
+          <label for="confirm-password">새 비밀번호 확인</label>
+          <div class="password-control">
+            <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" required maxlength="128" aria-describedby="confirm-password-help change-password-error" />
+            <button class="btn btn-ghost password-toggle" type="button" data-action="toggle-password" data-target="confirm-password" data-label="새 비밀번호 확인" aria-label="새 비밀번호 확인 표시" aria-pressed="false">표시</button>
+          </div>
+          <span id="confirm-password-help" class="help">새 비밀번호를 한 번 더 입력하세요.</span>
+        </div>
+        <p id="change-password-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">비밀번호 변경</button></div>
+      </form>
+    </section>`;
 }
 
 /* ---------------- Dashboard ---------------- */
@@ -893,6 +939,14 @@ document.addEventListener('click', async (event) => {
     try {
       if (action === 'navigate') {
         if (trigger.dataset.href) location.hash = trigger.dataset.href;
+      } else if (action === 'toggle-password') {
+        const input = document.getElementById(trigger.dataset.target);
+        if (!(input instanceof HTMLInputElement)) return;
+        const visible = input.type === 'text';
+        input.type = visible ? 'password' : 'text';
+        trigger.textContent = visible ? '표시' : '숨기기';
+        trigger.setAttribute('aria-label', `${trigger.dataset.label || '비밀번호'} ${visible ? '표시' : '숨기기'}`);
+        trigger.setAttribute('aria-pressed', String(!visible));
       } else if (action === 'pick-files') {
         $('#content-file-input')?.click();
       } else if (action === 'filter-content') {
@@ -1103,6 +1157,48 @@ document.addEventListener('submit', async (event) => {
         error.textContent = errorValue.message;
         error.hidden = false;
       }
+    } else if (form.id === 'change-password-form') {
+      const data = new FormData(form);
+      const error = $('#change-password-error', form);
+      const inputs = ['currentPassword', 'newPassword', 'confirmPassword'];
+      for (const name of inputs) $(`[name="${name}"]`, form)?.removeAttribute('aria-invalid');
+      error.hidden = true;
+      const currentPassword = String(data.get('currentPassword') || '');
+      const newPassword = String(data.get('newPassword') || '');
+      const confirmPassword = String(data.get('confirmPassword') || '');
+      const fail = (field, message) => {
+        const input = $(`[name="${field}"]`, form);
+        input?.setAttribute('aria-invalid', 'true');
+        error.textContent = message;
+        error.hidden = false;
+        input?.focus();
+      };
+      if (!currentPassword) {
+        fail('currentPassword', '현재 비밀번호를 입력하세요.');
+      } else if (newPassword.length < 8 || newPassword.length > 128) {
+        fail('newPassword', '새 비밀번호는 8자 이상 128자 이하여야 합니다.');
+      } else if (newPassword !== confirmPassword) {
+        fail('confirmPassword', '새 비밀번호 확인이 일치하지 않습니다.');
+      } else {
+        try {
+          await api('/api/auth/change-password', {
+            method: 'POST',
+            body: { currentPassword, newPassword, confirmPassword },
+          });
+          form.reset();
+          el.loginDemoHint.hidden = true;
+          el.defaultPasswordWarning.hidden = true;
+          showLogin('비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인하세요.');
+        } catch (errorValue) {
+          error.textContent = errorValue.message;
+          error.hidden = false;
+          if (errorValue.field) {
+            const invalidInput = $(`[name="${errorValue.field}"]`, form);
+            invalidInput?.setAttribute('aria-invalid', 'true');
+            invalidInput?.focus();
+          }
+        }
+      }
     }
   } finally {
     setBusy(submitter, false);
@@ -1152,12 +1248,9 @@ el.modal.addEventListener('cancel', (event) => {
 
 (async function boot() {
   try {
-    try {
-      const publicConfig = await api('/api/player/config');
-      if (publicConfig?.sampleMode && publicConfig?.demoDefaultPassword) el.loginDemoHint.hidden = false;
-    } catch { /* demo hint is optional */ }
     const me = await api('/api/auth/me');
-    if (me.authenticated) await enterApp();
+    el.loginDemoHint.hidden = !me.defaultPasswordWarning;
+    if (me.authenticated) await enterApp(me);
     else showLogin();
   } catch {
     showLogin('서버에 연결하지 못했습니다. 서버 실행 상태를 확인해 주세요.');

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import path from 'node:path';
+import fs from 'node:fs';
 
 export interface AppConfig {
   rootDir: string;
@@ -8,7 +9,8 @@ export interface AppConfig {
   dataDir: string;
   dbPath: string;
   uploadDir: string;
-  adminPassword: string;
+  adminPassword: string | undefined;
+  databaseWasPresentAtStartup: boolean;
   sessionSecret: string;
   maxUploadBytes: number;
   seedSamples: boolean;
@@ -32,7 +34,8 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     dataDir,
     dbPath: path.resolve(process.env.DB_PATH || path.join(dataDir, 'signage.sqlite')),
     uploadDir: path.resolve(process.env.UPLOAD_DIR || path.join(dataDir, 'uploads')),
-    adminPassword: process.env.ADMIN_PASSWORD || 'gugak1234',
+    adminPassword: process.env.ADMIN_PASSWORD || undefined,
+    databaseWasPresentAtStartup: false,
     sessionSecret: process.env.SESSION_SECRET || 'gugak-signage-local-development-secret',
     maxUploadBytes: intFromEnv('MAX_UPLOAD_MB', 300) * 1024 * 1024,
     seedSamples: process.env.SEED_SAMPLES !== 'false',
@@ -44,6 +47,15 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   }
   if (overrides.dataDir && !overrides.uploadDir) {
     config.uploadDir = path.join(config.dataDir, 'uploads');
+  }
+  if (overrides.databaseWasPresentAtStartup !== undefined) {
+    config.databaseWasPresentAtStartup = overrides.databaseWasPresentAtStartup;
+  } else {
+    try {
+      config.databaseWasPresentAtStartup = fs.statSync(config.dbPath).size > 0;
+    } catch {
+      config.databaseWasPresentAtStartup = false;
+    }
   }
   return config;
 }

@@ -39,9 +39,6 @@ server.listen(config.port, config.host, () => {
   if (sampleCodeMigrated) {
     console.log('[signage] 기존 샘플 기기 코드를 GUGAK1로 갱신했습니다.');
   }
-  if (config.adminPassword === 'gugak1234') {
-    console.log('[signage] 개발/샘플 모드 초기 비밀번호: gugak1234 · 운영 전 ADMIN_PASSWORD를 바꾸세요.');
-  }
 });
 
 function shutdown(signal: string): void {

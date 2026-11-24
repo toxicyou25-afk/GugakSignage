@@ -46,6 +46,11 @@ button, input { font: inherit; }
 .wall-media-clip.visible { opacity: 1; }
 .wall-rotation-layer { position: absolute; transform-origin: center; }
 .wall-media { position: absolute; display: block; background: #000; transform-origin: center; }
+.wall-url-frame { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: #f2eadf; }
+.wall-url-offline { position: absolute; inset: 0; display: grid; place-items: center; padding: 8%; text-align: center; background: radial-gradient(circle at 70% 20%, #284a5c, #102639 68%); }
+.wall-url-offline strong { display: block; font-size: clamp(14px, 2vw, 30px); }
+.wall-url-offline p { margin: 8px 0 4px; font-size: clamp(10px, 1.2vw, 17px); }
+.wall-url-offline small { color: var(--muted); font-size: clamp(9px, 1vw, 14px); }
 .wall-placeholder {
   position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
   gap: 7px; padding: 8%; text-align: center; background: radial-gradient(circle at 65% 20%, #1d3c4e, #091520 70%);
