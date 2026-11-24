@@ -217,9 +217,37 @@ begin
     Result := '';
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+function PathEqualsOrInside(Path, Parent: String): Boolean;
+var
+  Candidate, Container: String;
+begin
+  Candidate := NormalizePathForCompare(Path);
+  Container := NormalizePathForCompare(Parent);
+  Result := (Candidate = Container) or
+    (Copy(Candidate, 1, Length(Container) + 1) = Container + '\');
+end;
+
+function GetSelectedDataDirForValidation(): String;
 var
   ExistingDataDir: String;
+begin
+  if DataDirWasSpecified then
+    Result := ExpandConstant('{param:DATADIR|}')
+  else if DataDirChangeConfirmed and Assigned(DataDirPage) then
+    Result := DataDirPage.Values[0]
+  else
+  begin
+    ExistingDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
+    if DataDirResolutionIsExisting then
+      Result := ExistingDataDir
+    else
+      Result := GetDefaultDataDir;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ExistingDataDir, SelectedDataDir, InstallDir: String;
 begin
   Result := '';
   if not DataDirWasSpecified then
@@ -232,6 +260,12 @@ begin
         DataDirPage.Values[0] := ExistingDataDir;
     end;
   end;
+  SelectedDataDir := GetSelectedDataDirForValidation();
+  InstallDir := ExpandConstant('{app}');
+  if (SelectedDataDir <> '') and
+     (PathEqualsOrInside(SelectedDataDir, InstallDir) or
+      PathEqualsOrInside(InstallDir, SelectedDataDir)) then
+    RaiseException('The data folder and install folder cannot be the same or contain each other. Install: ' + InstallDir + ', data: ' + SelectedDataDir);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -248,6 +282,9 @@ begin
         DataDirPage.Values[0] := ResolvedDataDir;
     end;
   end;
+  if CurStep = ssDone then
+    if not FileExists(ExpandConstant('{app}\install.json')) then
+      RaiseException('GugakSignage configuration did not complete. Check the install log and retry.');
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

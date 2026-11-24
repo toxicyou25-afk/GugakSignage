@@ -321,6 +321,19 @@ try {
         throw "경로 충돌로 중단된 업그레이드가 기존 설치 또는 데이터를 변경했습니다."
     }
     $report.checks.conflictingPathsFailClosedWithoutMutation = $true
+
+    $reverseRoot = Join-Path $testRoot "reverse-nesting"
+    $reverseApp = Join-Path $reverseRoot "app"
+    $reverseLog = Join-Path $testRoot "inno-reverse-nesting.log"
+    $reverseArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $reverseApp + '" /DATADIR="' + $reverseRoot + '" /PORT=' + $port + ' /WATCHDOGTASK="' + $taskName + '-reverse" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $reverseLog + '"'
+    $reverseRun = Start-Process -FilePath $SetupExe -ArgumentList $reverseArguments -Wait -PassThru -WindowStyle Hidden
+    if ($reverseRun.ExitCode -eq 0) { throw "reverse-nesting Inno 설치가 성공으로 종료됐습니다." }
+    if (Test-Path -LiteralPath $reverseApp) {
+        $reverseFiles = @(Get-ChildItem -LiteralPath $reverseApp -Recurse -File -ErrorAction SilentlyContinue)
+        if ($reverseFiles.Count -gt 0) { throw "reverse-nesting 실패 후 앱 파일이 남았습니다: $($reverseFiles.Count)개" }
+    }
+    if (Test-Path -LiteralPath (Join-Path $reverseApp "install.json")) { throw "reverse-nesting 실패 후 install.json이 남았습니다." }
+    $report.checks.reverseNestingAbortedBeforeFiles = $true
     [IO.File]::WriteAllText($legacyEnvPath, $legacyEnvBefore, [Text.UTF8Encoding]::new($false))
 
     & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
