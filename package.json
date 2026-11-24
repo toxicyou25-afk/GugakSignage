@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/api.test.ts test/auth.test.ts test/env.test.ts test/multimonitor.test.ts",
+    "test": "node --import tsx --test test/api.test.ts test/auth.test.ts test/env.test.ts test/multimonitor.test.ts installer/test-watchdog-health.mjs",
     "verify:ui": "node scripts/verify-ui.mjs",
     "verify:api": "node scripts/verify-api.mjs",
     "verify:first-run": "node scripts/verify-first-run.mjs",

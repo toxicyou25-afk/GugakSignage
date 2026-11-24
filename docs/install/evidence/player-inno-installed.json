@@ -1,0 +1,24 @@
+﻿{
+  "checkedAt": "2026-11-24T15:58:49.794Z",
+  "expected": "online",
+  "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
+  "state": {
+    "playerReady": true,
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 1,
+    "playlistId": "pl-sample-lobby",
+    "queueLength": 5,
+    "index": 0,
+    "currentContentId": "ct-sample-poster-autumn",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T15:58:46.999Z",
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": 0.16666666666666666,
+    "shellVersion": "v4",
+    "visibility": "visible"
+  },
+  "screenshot": "<repo>\\docs\\install\\evidence\\player-inno-installed.png"
+}

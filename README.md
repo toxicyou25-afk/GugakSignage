@@ -262,6 +262,10 @@ python -m http.server 4173 --directory prototype
 - 실제 서비스 화면 캡처는 조사 목적으로만 보관하고 배포물에 넣지 않는다.
 - 확인 없이 기존 프로그램·USB·파일을 삭제하지 않는다.
 
+## Windows 설치·무인 운영
+
+현장 PC의 설치, 로그인 후 자동 실행, watchdog 복구, 로그 위치, 자동 실행 해제와 제거 절차는 [Windows 설치·무인 운영 안내](docs/install/README.md)에 정리했습니다.
+
 ## 라이선스
 
 이 프로젝트는 **Apache License 2.0**으로 공개합니다. 전문은 [LICENSE](LICENSE)를 참고하세요.
