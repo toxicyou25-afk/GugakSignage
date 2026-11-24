@@ -106,7 +106,8 @@ function Assert-DataDirOutsideInstall {
     $normalizedInstall = Get-NormalizedPath -Path $InstallDir
     $normalizedData = Get-NormalizedPath -Path $DataDir
     if ((Test-PathEqual -Left $normalizedInstall -Right $normalizedData) -or
-        (Test-PathWithin -Path $normalizedData -Parent $normalizedInstall)) {
+        (Test-PathWithin -Path $normalizedData -Parent $normalizedInstall) -or
+        (Test-PathWithin -Path $normalizedInstall -Parent $normalizedData)) {
         throw "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: $normalizedInstall, 데이터: $normalizedData"
     }
 }
@@ -411,14 +412,8 @@ function Resolve-InstallerDataDir {
 
     if ($configuredDataDir) {
         if (-not (Test-Path -LiteralPath $configuredDataDir -PathType Container)) {
-            if (Test-DataDirHasContent -Path $normalizedDefault) {
-                $configuredDataDir = ""
-            } else {
-                throw "install.json에 기록된 데이터 폴더를 찾지 못했습니다. 새 빈 데이터베이스를 만들지 않도록 중단합니다: $configuredDataDir"
-            }
+            throw "install.json에 기록된 데이터 폴더를 찾지 못했습니다. 새 빈 데이터베이스를 만들지 않도록 중단합니다: $configuredDataDir"
         }
-    }
-    if ($configuredDataDir) {
         return [pscustomobject]@{
             DataDir = $configuredDataDir
             Source = "install.json"
@@ -440,14 +435,6 @@ function Resolve-InstallerDataDir {
     }
 
     if ($hasManifest -or $hasLegacyEnv) {
-        if (Test-DataDirHasContent -Path $normalizedDefault) {
-            return [pscustomobject]@{
-                DataDir = $normalizedDefault
-                Source = "default"
-                HasPreviousEvidence = $true
-                HasExistingData = $true
-            }
-        }
         throw "기존 설치 흔적은 있지만 데이터 경로를 확인할 수 없습니다. 새 빈 데이터베이스나 샘플을 만들지 않도록 중단합니다. install.json=$configPath, .env=$legacyEnvPath"
     }
 

@@ -1,5 +1,5 @@
 ﻿{
-  "checkedAt": "2026-11-24T15:15:46.393Z",
+  "checkedAt": "2026-11-24T16:03:15.996Z",
   "expected": "online",
   "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
@@ -12,11 +12,11 @@
     "currentContentId": "ct-sample-poster-class",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T15:15:46.174Z",
+    "lastHeartbeatAt": "2026-11-24T16:03:15.556Z",
     "wallGroupId": null,
     "wallDisplayIds": [],
     "wallPlans": {},
-    "serverOffsetMs": -0.5,
+    "serverOffsetMs": 0,
     "shellVersion": "v4",
     "visibility": "visible"
   },

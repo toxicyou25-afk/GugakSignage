@@ -85,11 +85,11 @@ try {
     Remove-Item -LiteralPath (Join-Path $legacyApp ".env") -Force
     New-Item -ItemType Directory -Path (Join-Path $defaultData "uploads") -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $defaultData "signage.sqlite"), "known-default-db")
-    $resolved = Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
-    if (-not (Test-PathEqual -Left ([string]$resolved.DataDir) -Right $defaultData)) {
-        throw "존재하지 않는 설정 경로에서 알려진 기존 기본 데이터를 찾지 못했습니다."
+    $message = Assert-Throws -Description "stale install.json missing data path" -Action {
+        Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
     }
-    $results.staleConfigFallsBackToExistingDefault = $true
+    if ($message -notmatch "찾지 못|중단|missing") { throw "stale install.json 오류가 명확하지 않습니다: $message" }
+    $results.staleConfigFailsClosedEvenWithDefaultData = $true
 
     $conflictData = Join-Path $tempRoot "conflict-data"
     New-Item -ItemType Directory -Path (Join-Path $conflictData "uploads") -Force | Out-Null
@@ -126,6 +126,13 @@ try {
     }
     if (Test-Path -LiteralPath $parentDir) { throw "내부 경로 위반인데 설치 폴더가 생성되었습니다." }
     $results.insidePathBlocked = $message
+
+    $reverseData = Join-Path $tempRoot "reverse-data"
+    $reverseApp = Join-Path $reverseData "app"
+    $message = Assert-Throws -Description "설치 폴더가 데이터 폴더 안에 있는 경로" -Action {
+        & $installScript -SourceDir $repoRoot -InstallDir $reverseApp -DataDir $reverseData -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Reverse-$suffix"
+    }
+    $results.reverseNestingBlocked = $message
 
     $dotDotDir = Join-Path $tempRoot "dotdot"
     $dotDotData = Join-Path $dotDotDir "child\.."

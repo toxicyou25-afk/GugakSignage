@@ -1,12 +1,12 @@
 ﻿**********************
 Windows PowerShell transcript start
-Start time: 20261125001437
+Start time: 20261125010143
 Username: <user>
 RunAs User: <user>
 Configuration Name:
 Machine: <computer> (Microsoft Windows NT 10.0.26300.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File installer/test-install.ps1
-Process ID: 11608
+Process ID: 46456
 PSVersion: 5.1.26100.9818
 PSEdition: Desktop
 PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
@@ -23,17 +23,17 @@ SerializationVersion: 1.1.0.1
 [GugakSignage] Node.js 확인: v24.22.2
 [GugakSignage] 재생 브라우저: C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
 [GugakSignage] 서버 파일 복사
-[GugakSignage] 기존 환경 설정 보존: PORT=65226
+[GugakSignage] 기존 환경 설정 보존: PORT=56309
 [GugakSignage] 기존 데이터 감지로 샘플 시드 비활성화
 [GugakSignage] 바탕화면·시작 메뉴 바로가기 생성
-[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-7589991b
+[GugakSignage] 작업 스케줄러 자동 실행 등록: GugakSignage-Test-fa4655f3
 [GugakSignage] 설치 완료
 [GugakSignage] 경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요
 [GugakSignage] 관리자 화면: <test-url>/admin/
 [GugakSignage] 초기 비밀번호: <test-root>\data\.env 의 ADMIN_PASSWORD (로그에는 기록하지 않음)
-[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-151437.log
+[GugakSignage] 설치 로그: <test-root>\data\logs\install-20261124-160143.log
 [GugakSignage] watchdog 로그: <test-root>\data\logs\watchdog.log
 **********************
 Windows PowerShell transcript end
-End time: 20261125001441
+End time: 20261125010146
 **********************
