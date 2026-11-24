@@ -1,0 +1,205 @@
+[signage] 서버 시작 · 2026-11-24T08:46:57.922Z
+[signage] 관리 화면: http://127.0.0.1:3123/admin/
+[signage] 재생기: http://127.0.0.1:3123/player/
+[signage] 데이터베이스: <temp>\verify.sqlite
+[signage] 업로드 폴더: <temp>\uploads
+[signage] 샘플 기기 등록 코드: GUGAK1
+[signage] 샘플 재생기 주소: http://127.0.0.1:3123/player/?code=GUGAK1
+
+
+{
+  "startedAt": "2026-11-24T08:46:57.631Z",
+  "base": "http://127.0.0.1:3123",
+  "temporaryDataDir": "<system temp>",
+  "steps": [
+    {
+      "name": "서버 시작",
+      "at": "2026-11-24T08:46:58.004Z",
+      "url": "http://127.0.0.1:3123"
+    },
+    {
+      "name": "관리 화면 로그인 페이지 확인",
+      "at": "2026-11-24T08:46:59.205Z"
+    },
+    {
+      "name": "로그인 후 대시보드 확인",
+      "at": "2026-11-24T08:46:59.933Z",
+      "title": "대시보드 · 국악원 사이니지 관리"
+    },
+    {
+      "name": "관리 화면에서 이미지·동영상 업로드",
+      "at": "2026-11-24T08:47:00.480Z",
+      "contentCards": 7
+    },
+    {
+      "name": "관리 화면에서 재생목록 생성·항목 저장",
+      "at": "2026-11-24T08:47:01.777Z",
+      "items": 3
+    },
+    {
+      "name": "관리 화면 기기 카드에서 등록 코드 GUGAK1 확인",
+      "at": "2026-11-24T08:47:02.617Z",
+      "visibleCode": "GUGAK1"
+    },
+    {
+      "name": "관리 화면에서 기기에 재생목록 배정·게시",
+      "at": "2026-11-24T08:47:02.617Z",
+      "publishedVersion": 2
+    },
+    {
+      "name": "코드 없는 재생기 첫 화면에서 관리 링크·샘플 코드 확인",
+      "at": "2026-11-24T08:47:03.415Z",
+      "adminLink": "/admin/#/devices",
+      "sampleCode": "GUGAK1"
+    },
+    {
+      "name": "잘못된 코드 404 안내 확인",
+      "at": "2026-11-24T08:47:03.613Z",
+      "message": "등록 코드를 찾을 수 없습니다. 관리 화면 → 기기 카드에서 6자리 코드를 확인해 주세요. 샘플 기기 코드는 GUGAK1입니다. 아래 ‘샘플 코드로 연결’을 눌러 바로 시작할 수 있습니다."
+    },
+    {
+      "name": "샘플 코드 버튼으로 등록·게시 목록 재생",
+      "at": "2026-11-24T08:47:04.981Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+      "queueLength": 3,
+      "index": 0,
+      "currentContentId": "2559619d-3d3f-45ae-b270-da97e4cb752b",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T08:47:03.658Z",
+      "sampleCode": "GUGAK1"
+    },
+    {
+      "name": "재생기 동영상 재생 확인",
+      "at": "2026-11-24T08:47:08.147Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+      "queueLength": 3,
+      "index": 1,
+      "currentContentId": "f58ca458-0dd1-4d2d-aad1-cc61b930e59e",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+    },
+    {
+      "name": "재생기 URL 콘텐츠 표시 확인",
+      "at": "2026-11-24T08:47:17.218Z",
+      "heading": "오늘의 안내"
+    },
+    {
+      "name": "재생기 IndexedDB 캐시 확인",
+      "at": "2026-11-24T08:47:17.220Z",
+      "cachedKeys": 2
+    },
+    {
+      "name": "서버 종료 후 오프라인 배지와 재생 지속 확인",
+      "at": "2026-11-24T08:47:33.462Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+      "queueLength": 3,
+      "index": 0,
+      "currentContentId": "2559619d-3d3f-45ae-b270-da97e4cb752b",
+      "offline": true,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+    },
+    {
+      "name": "서버 종료 후 재생 위치 진행",
+      "at": "2026-11-24T08:47:34.719Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+      "queueLength": 3,
+      "index": 1,
+      "currentContentId": "f58ca458-0dd1-4d2d-aad1-cc61b930e59e",
+      "offline": true,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+    },
+    {
+      "name": "서버 종료 후 다음 항목으로 순환",
+      "at": "2026-11-24T08:47:45.321Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+      "queueLength": 3,
+      "index": 2,
+      "currentContentId": "ct-sample-notice",
+      "offline": true,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+    }
+  ],
+  "consoleErrors": [
+    "player: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "player: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "player: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "player: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "player: Failed to load resource: net::ERR_CONNECTION_REFUSED"
+  ],
+  "pageErrors": [],
+  "playerOnline": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+    "queueLength": 3,
+    "index": 0,
+    "currentContentId": "2559619d-3d3f-45ae-b270-da97e4cb752b",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+  },
+  "playerOffline": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+    "queueLength": 3,
+    "index": 0,
+    "currentContentId": "2559619d-3d3f-45ae-b270-da97e4cb752b",
+    "offline": true,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+  },
+  "serverStoppedAt": "2026-11-24T08:47:17.220Z",
+  "cacheKeysBeforeStop": 2,
+  "beforeStopState": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+    "queueLength": 3,
+    "index": 2,
+    "currentContentId": "ct-sample-notice",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+  },
+  "offlineProgressState": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+    "queueLength": 3,
+    "index": 1,
+    "currentContentId": "f58ca458-0dd1-4d2d-aad1-cc61b930e59e",
+    "offline": true,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+  },
+  "afterOfflineState": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "cda3c91c-d8ef-42b2-a8a1-38f7672a8b6f",
+    "queueLength": 3,
+    "index": 2,
+    "currentContentId": "ct-sample-notice",
+    "offline": true,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T08:47:03.658Z"
+  },
+  "finishedAt": "2026-11-24T08:47:45.691Z",
+  "result": "passed",
+  "serverLog": "[signage] 서버 시작 · 2026-11-24T08:46:57.922Z\n[signage] 관리 화면: http://127.0.0.1:3123/admin/\n[signage] 재생기: http://127.0.0.1:3123/player/\n[signage] 데이터베이스: <temp>\\verify.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3123/player/?code=GUGAK1\n"
+}

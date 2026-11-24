@@ -1,0 +1,47 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#152b43"/>
+      <stop offset="0.62" stop-color="#1f3d5c"/>
+      <stop offset="1" stop-color="#2c4c5e"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4e9cf"/>
+      <stop offset="1" stop-color="#d9c39d"/>
+    </linearGradient>
+    <pattern id="grain" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="6" r="1" fill="#f4e9cf" opacity="0.11"/>
+      <circle cx="22" cy="19" r="1.2" fill="#f4e9cf" opacity="0.08"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#grain)"/>
+  <circle cx="1535" cy="287" r="222" fill="url(#moon)" opacity="0.96"/>
+  <circle cx="1535" cy="287" r="270" fill="none" stroke="#e8d7b5" stroke-opacity="0.2" stroke-width="2"/>
+  <path d="M0 790 C350 690 610 860 960 770 C1280 688 1510 790 1920 690 L1920 1080 L0 1080Z" fill="#0e2134" opacity="0.62"/>
+  <path d="M0 900 C390 800 690 950 1040 860 C1390 770 1630 880 1920 810 L1920 1080 L0 1080Z" fill="#091a2b" opacity="0.75"/>
+  <g opacity="0.5" stroke="#d8c39b" stroke-width="1.5" fill="none">
+    <path d="M1280 760 C1340 650 1440 620 1540 640"/>
+    <path d="M1300 800 C1370 680 1470 650 1570 675"/>
+    <path d="M1320 840 C1400 715 1500 685 1600 710"/>
+    <path d="M1340 880 C1430 750 1530 720 1630 745"/>
+    <path d="M1360 920 C1460 785 1560 755 1660 780"/>
+  </g>
+  <g fill="#e8d8b4">
+    <rect x="146" y="154" width="8" height="94"/>
+    <rect x="168" y="154" width="8" height="94"/>
+    <rect x="190" y="154" width="8" height="94"/>
+  </g>
+  <text x="146" y="316" fill="#d9c39d" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="31" letter-spacing="9">국립부산국악원</text>
+  <text x="140" y="516" fill="#f7f0df" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="128" font-weight="700" letter-spacing="-3">가을, 국악의 숨결</text>
+  <text x="146" y="598" fill="#c7d1d5" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38" letter-spacing="2">판소리와 기악이 만나는 특별한 저녁</text>
+  <line x1="146" y1="662" x2="720" y2="662" stroke="#b98a55" stroke-width="3"/>
+  <text x="146" y="741" fill="#eadfcb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="32">2026. 10. 17. (토) 오후 7시 30분</text>
+  <text x="146" y="796" fill="#eadfcb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="32">국립부산국악원 예지당</text>
+  <g transform="translate(146 880)">
+    <rect width="272" height="58" rx="29" fill="#b98a55"/>
+    <text x="136" y="39" text-anchor="middle" fill="#102338" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="25" font-weight="700">공연 예약하기</text>
+  </g>
+  <text x="1774" y="1000" text-anchor="end" fill="#8ea3ad" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="20" letter-spacing="4">INFORMATION CENTER · BUSAN</text>
+</svg>

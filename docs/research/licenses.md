@@ -378,3 +378,26 @@ MIT·ISC·BSD는 고지 유지, Apache 2.0은 라이선스·NOTICE, AGPL은 소�
 | L21 | 잇다디지털사이니지 | https://itda.ai.kr/products/itda-signage.html | 조사 참고 |
 | L22 | 개인정보 보호법 | https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EA%B0%9C%EC%9D%B8%EC%A0%95%EB%B3%B4%EB%B3%B4%ED%98%B8%EB%B2%95 | 법적 맥락 |
 | L23 | 저작권법 | https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%A0%80%EC%9E%91%EA%B6%8C%EB%B2%95 | 법적 맥락 |
+
+## 13. 1차 MVP 자산(2026-11-24)
+
+### 13.1 직접 제작한 샘플 포스터
+
+- `seed/poster-autumn.png`, `seed/poster-welcome.png`, `seed/poster-class.png`와 `seed/source/*.svg`는 이 저장소를 위해 제작한 **가상 예시**입니다.
+- 실제 국립부산국악원의 공식 공연 정보·포스터·로고가 아니며, 프로젝트와 같은 Apache-2.0으로 배포합니다.
+- 생성 방법: `seed/source/`의 SVG를 Edge 헤드리스로 1920×1080 또는 1080×1920 PNG로 렌더링했습니다. 원본 SVG를 함께 보관합니다.
+
+### 13.2 샘플 동영상
+
+| 자산 | 권리자 | 라이선스 | 출처·고지 |
+|---|---|---|---|
+| `seed/sample-video.mp4` (10초, 360p) | Blender Foundation | CC BY 3.0 | “Big Buck Bunny”, © 2008 Blender Foundation, <https://www.bigbuckbunny.org/>, <https://creativecommons.org/licenses/by/3.0/> |
+
+- 재생기 동영상 재생·캐시·오프라인 검증에만 사용합니다. 샘플 영상은 실제 운영 콘텐츠가 아닙니다.
+- 배포 시 저작자 표시와 라이선스 링크를 유지합니다. `seed/README.md`와 루트 `NOTICE`에도 같은 고지를 두었습니다.
+
+### 13.3 런타임·개발 의존성
+
+- `express`(MIT), `multer`(MIT), `image-size`(MIT), `tsx`(MIT), `playwright-core`(Apache-2.0), `typescript`(Apache-2.0). 각 패키지의 LICENSE는 `node_modules` 배포물에 포함됩니다.
+- 프로젝트는 GPL/AGPL 코드를 새 MVP 소스에 복사하지 않았습니다. `poc/`는 별도로 Apache-2.0으로 공개된 자체 PoC이며, MVP는 그 코드를 직접 가져오지 않고 용어·계약만 비교했습니다.
+- 웹 화면은 외부 폰트·아이콘·CDN을 불러오지 않고 시스템 한글 글꼴과 직접 만든 CSS/문자 아이콘을 사용합니다.

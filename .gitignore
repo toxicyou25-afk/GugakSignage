@@ -1,6 +1,8 @@
 node_modules/
 dist/
 out/
+data/
+uploads/
 *.log
 logs/
 *.db
