@@ -86,9 +86,9 @@ jobs:
         run: |
           $sourceHook = Join-Path $env:GITHUB_WORKSPACE 'scripts\runner\Assert-TrustedJob.ps1'
           $installedHook = 'C:\actions-runners\GugakSignage\admission\Assert-TrustedJob.ps1'
-          $sourceHash = (Get-FileHash -LiteralPath $sourceHook -Algorithm SHA256).Hash
-          $installedHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
-          if ($sourceHash -ne $installedHash) {
+          $sourceContent = ([IO.File]::ReadAllText($sourceHook)).Replace("`r`n", "`n")
+          $installedContent = ([IO.File]::ReadAllText($installedHook)).Replace("`r`n", "`n")
+          if (-not [string]::Equals($sourceContent, $installedContent, [StringComparison]::Ordinal)) {
             throw 'The installed runner admission hook does not match the reviewed repository hook.'
           }
       - name: Set up Node.js
