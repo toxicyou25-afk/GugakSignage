@@ -272,6 +272,32 @@ try {
   if (afterOfflineState.currentContentId === offlineStartState.currentContentId) throw new Error('서버 종료 후 재생 위치가 진행되지 않았습니다.');
   step('서버 종료 후 다음 항목으로 순환', afterOfflineState);
 
+  const serviceWorkerControlled = await player.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) return false;
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return Boolean(registration?.active && navigator.serviceWorker.controller);
+  });
+  report.serviceWorkerControlled = serviceWorkerControlled;
+  if (serviceWorkerControlled) {
+    await player.goto(`${base}/player/?code=${connectCode}`, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    await player.waitForSelector('body[data-current-content-id]', { timeout: 20_000 });
+    await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 20_000 });
+    if (await player.locator('#pair-form').isVisible()) throw new Error('오프라인 재실행에서 불필요한 연결 화면이 표시되었습니다.');
+    const reopenedState = await player.evaluate(() => window.__signagePlayer.getState());
+    if (!reopenedState.offline || !reopenedState.currentContentId) {
+      throw new Error(`오프라인 재실행 상태가 올바르지 않습니다: ${JSON.stringify(reopenedState)}`);
+    }
+    await player.waitForTimeout(1200);
+    await player.screenshot({ path: path.join(evidenceDir, '21-player-offline-reopen.png') });
+    step('서버 종료 후 같은 코드 URL로 재실행해 캐시 재생', reopenedState);
+  } else {
+    step('서비스 워커 미제어로 오프라인 재실행 검사 생략');
+  }
+
   await playerContext.close();
   await adminContext.close();
   await browser.close();

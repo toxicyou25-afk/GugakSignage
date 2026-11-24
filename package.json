@@ -17,7 +17,8 @@
     "test": "node --import tsx --test test/api.test.ts",
     "verify:ui": "node scripts/verify-ui.mjs",
     "verify:api": "node scripts/verify-api.mjs",
-    "verify:first-run": "node scripts/verify-first-run.mjs"
+    "verify:first-run": "node scripts/verify-first-run.mjs",
+    "verify:schedule": "node scripts/verify-schedule.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

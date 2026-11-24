@@ -22,6 +22,7 @@ npm run typecheck
 npm run build
 npm run verify:api
 npm run verify:first-run
+npm run verify:schedule
 npm run verify:ui
 ```
 
@@ -33,8 +34,8 @@ npm run verify:ui
 ### API 테스트
 
 - 명령: `npm run verify:api` (내부에서 `node --import tsx --test test/api.test.ts`)
-- 결과: **9/9 통과, 0 실패**.
-- 범위: 상태 확인·관리자 인증, 이미지·동영상 업로드, URL 추가, 잘못된 파일/URL 거부, 기기 코드 등록과 hardwareId 충돌, 재생목록 저장·기기 배정·게시·manifest, 시간표·하트비트, 기존 연결 인수와 이전 토큰 무효화, 사용 중 콘텐츠/재생목록 삭제 방지, 연결 해제 후 토큰 무효화.
+- 결과: **10/10 통과, 0 실패**.
+- 범위: 상태 확인·관리자 인증, 이미지·동영상 업로드, URL 추가, 잘못된 파일/URL 거부, 기기 코드 등록과 hardwareId 충돌, 재생목록 저장·기기 배정·게시·manifest, 시간표·하트비트, 기존 연결 인수와 이전 토큰 무효화, 사용 중 콘텐츠/재생목록 삭제 방지, 현재 게시 스냅샷이 참조하는 미디어 보호, 연결 해제 후 토큰 무효화.
 - 원문: [api-test-output.txt](api-test-output.txt)
 
 ## 3. 첫 실행 통합 테스트
@@ -71,6 +72,7 @@ npm run verify:ui
 10. IndexedDB에 이미지·동영상 Blob **2건** 저장 확인
 11. 서버 프로세스 종료 → 오프라인 배지 표시, 다음 이미지 재생 유지
 12. 오프라인 상태에서 다음 동영상 항목으로 진행한 뒤 URL 항목에서는 브라우저 오류 페이지 대신 안내 카드를 표시
+13. 서버가 꺼진 채 같은 `?code=GUGAK1` 주소로 다시 열어도 연결 화면으로 돌아가지 않고 캐시된 목록을 재생
 
 ### 상태 기록
 
@@ -85,9 +87,20 @@ npm run verify:ui
 
 원문 JSON: [ui-run.json](ui-run.json), 전체 로그: [ui-run.txt](ui-run.txt).
 
-검증 중 콘솔에는 **의도적으로 서버를 종료한 뒤 발생한 `ERR_CONNECTION_REFUSED` 4건**만 기록되었고, 페이지 예외(`pageerror`)는 0건이다.
+검증 중 콘솔에는 잘못된 코드 테스트의 의도적 **404 1건**과, 서버를 종료한 뒤 재생·재실행 과정에서 발생한 **`ERR_CONNECTION_REFUSED` 7건**만 기록되었고, 페이지 예외(`pageerror`)는 0건이다.
 
-## 5. 스크린샷
+## 5. 예약시간 경계 회귀 테스트
+
+`npm run verify:schedule`은 기본 재생목록 없이 **09:00–10:00 시간표만 있는 기기**를 만들고 게시한 뒤, 재생기 시계를 08:00으로 고정해 검증했다. 결과: **통과**.
+
+- 08:00: `예약 시간을 기다리는 중` 화면이 표시되고 콘텐츠는 시작하지 않음
+- 09:01로 시계를 진행: 15초 폴링의 manifest 응답이 대기 상태에서도 재적용되어 5개 항목 목록의 첫 포스터가 재생됨
+- manifest 버전이 바뀌지 않아도 재생 중인 항목/대기 상태를 함께 판단하도록 수정한 회귀 검증
+
+- 원문: [schedule-run.json](schedule-run.json), [schedule-run.txt](schedule-run.txt)
+- 스크린샷: `22-schedule-waiting.png`, `23-schedule-started.png`
+
+## 6. 스크린샷
 
 ### 첫 실행 통합 테스트
 
@@ -171,11 +184,23 @@ npm run verify:ui
 
 ![재생기 오프라인 다음 항목](evidence/09-player-offline-next.png)
 
+서버가 꺼진 채 같은 코드 URL로 재실행 — 연결 화면 없이 캐시 재생:
+
+![재생기 오프라인 재실행](evidence/21-player-offline-reopen.png)
+
+예약 시간 전 대기:
+
+![예약 시간 대기](evidence/22-schedule-waiting.png)
+
+예약 시간 시작 후 재생:
+
+![예약 시간 시작](evidence/23-schedule-started.png)
+
 실제 `start-player.cmd`로 연 Edge 전체화면 앱 창 — 창 영역 0,0–2560,1080, 주소창 없음:
 
 ![start-player.cmd 전체화면](evidence/13-start-player-kiosk.jpg)
 
-## 6. 수동 실행 확인
+## 7. 수동 실행 확인
 
 개발 서버는 `npm run serve`로도 띄워 확인했다. 시작 로그는 다음과 같다.
 
@@ -196,7 +221,7 @@ npm run verify:ui
 - `%LOCALAPPDATA%\GugakSignagePlayer` 프로필에서 Edge를 닫았다가 기본 인자(`start-player.cmd`)로 다시 열었을 때 기기 연결이 유지되고 하트비트가 다시 온라인으로 갱신됨을 확인했다. Edge `--kiosk`는 InPrivate로 열려 저장소가 지워지므로, 이 런처는 Edge 전체화면 앱 모드를 사용한다.
 - `npm run build` 후 `node dist/server.js`를 빈 데이터 폴더·포트 3311에서 실행해 `/api/health` 200, `/admin/`·`/player/` 200, 샘플 코드 `GUGAK1`, 개발 모드 비밀번호 힌트를 확인했다. Docker 이미지의 런타임 진입점과 같은 경로다.
 
-## 7. Docker
+## 8. Docker
 
 이 검증 PC에는 Docker CLI/데몬이 없어 `docker compose up --build`를 실행하지 못했다. 대신 다음을 정적으로 확인했다.
 
@@ -206,10 +231,10 @@ npm run verify:ui
 - 컴파일된 `dist/server.js`는 로컬에서 실제로 기동·응답을 확인했다. 남은 것은 Docker 이미지 빌드 자체다.
 - 실제 Docker 실행 확인은 Docker가 있는 PC에서 `docker compose up --build`로 한 번 더 필요하다.
 
-## 8. 남은 제한
+## 9. 남은 제한
 
 - 실제 물리 모니터·PC 2대 이상, Wi-Fi 단절, 장시간 소크는 검증하지 않았다.
-- 서버 종료 시 재생기 콘솔에 네트워크 오류 4건이 남는 것은 정상적인 fetch 실패 기록이다.
+- 잘못된 코드의 404 1건과 서버 종료 후의 네트워크 오류 7건은 의도한 테스트에서 발생한 fetch 실패 기록이다.
 - LAN IP의 HTTP에서는 서비스 워커가 등록되지 않는다. 이번 검증은 이미 열린 재생기 탭의 오프라인 지속 재생과 IndexedDB 캐시를 확인했다.
 - 외부 URL이 iframe 삽입을 막는 경우 실제 사이트 콘텐츠가 보이지 않을 수 있다. 샘플 내부 안내 페이지로 정상 경로를 확인했다.
 - 운영 전 `ADMIN_PASSWORD`·`SESSION_SECRET` 변경, HTTPS 적용, 방화벽·백업 정책이 필요하다.

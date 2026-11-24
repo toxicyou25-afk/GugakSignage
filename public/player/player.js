@@ -26,6 +26,8 @@ const el = {
   stage: $('#stage'),
   offline: $('#offline-badge'),
   waiting: $('#waiting-view'),
+  waitingTitle: $('#waiting-title'),
+  waitingMessage: $('#waiting-message'),
   empty: $('#empty-view'),
   error: $('#error-view'),
   errorTitle: $('#error-title'),
@@ -260,19 +262,14 @@ async function fetchManifest(options = {}) {
 }
 
 function acceptManifest(manifest, initial) {
-  if (!runtime.manifest || initial) {
+  if (!runtime.manifest || initial || !runtime.currentNode || runtime.queue.length === 0) {
     applyManifest(manifest, true);
     return;
   }
-  const currentPlaylist = activePlaylist(runtime.manifest);
   const nextPlaylist = activePlaylist(manifest);
-  const samePlayingPlaylist = currentPlaylist?.id && currentPlaylist.id === nextPlaylist?.id;
+  const samePlayingPlaylist = runtime.playlistId && runtime.playlistId === nextPlaylist?.id;
   if (manifest.version === runtime.manifest.version && samePlayingPlaylist) {
     runtime.manifest = manifest;
-    return;
-  }
-  if (!runtime.currentNode || !runtime.queue.length) {
-    applyManifest(manifest, true);
     return;
   }
   runtime.pendingManifest = manifest;
@@ -320,14 +317,14 @@ function applyManifest(manifest, restart) {
   safeSet(STORAGE.deviceId, manifest.device?.id || runtime.deviceId || '');
   if (manifest.version === 0 && !manifest.defaultPlaylist && !(manifest.schedules || []).length) {
     stopPlayback();
-    el.waiting.hidden = false;
+    showWaitingState(manifest);
     return;
   }
   const playlist = activePlaylist(manifest);
   const queue = queueFor(playlist);
   if (!playlist || queue.length === 0) {
     stopPlayback();
-    if (!playlist) el.waiting.hidden = false;
+    if (!playlist) showWaitingState(manifest);
     else el.empty.hidden = false;
     return;
   }
@@ -360,6 +357,18 @@ function showError(title, message) {
   el.error.hidden = false;
 }
 
+function showWaitingState(manifest) {
+  const scheduled = (manifest?.schedules || []).some((schedule) => schedule.enabled);
+  if (manifest?.version === 0 || !scheduled) {
+    el.waitingTitle.textContent = '관리자 게시를 기다리는 중';
+    el.waitingMessage.textContent = '관리 화면에서 재생목록을 기기에 배정하고 게시를 눌러 주세요.';
+  } else {
+    el.waitingTitle.textContent = '예약 시간을 기다리는 중';
+    el.waitingMessage.textContent = '현재 시간에 해당하는 예약 재생목록이 없습니다. 예약 시간이 되면 자동으로 시작합니다.';
+  }
+  el.waiting.hidden = false;
+}
+
 function stopPlayback() {
   runtime.playToken += 1;
   clearTimeout(runtime.timer);
@@ -384,7 +393,8 @@ function advance() {
   const playlist = activePlaylist(runtime.manifest);
   if (!playlist) {
     stopPlayback();
-    if (runtime.manifest?.version === 0) el.waiting.hidden = false;
+    if ((runtime.manifest?.schedules || []).some((schedule) => schedule.enabled)) showWaitingState(runtime.manifest);
+    else if (runtime.manifest?.version === 0) showWaitingState(runtime.manifest);
     else el.empty.hidden = false;
     return;
   }
@@ -711,10 +721,19 @@ async function prefetchAssets(manifest) {
       for (const id of stale) store.delete(id);
       await transactionPromise(tx);
     }
+    revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
   } catch (error) {
     console.warn('[signage] 콘텐츠 캐시를 준비하지 못했습니다.', error);
   } finally {
     runtime.prefetching = false;
+  }
+}
+
+function revokeUnusedObjectUrls(activeIds, keepContentId) {
+  for (const [contentId, objectUrl] of runtime.objectUrls) {
+    if (activeIds.has(contentId) || contentId === keepContentId) continue;
+    URL.revokeObjectURL(objectUrl);
+    runtime.objectUrls.delete(contentId);
   }
 }
 
@@ -820,7 +839,9 @@ async function init() {
     showPlayer();
     applyManifest(cached, true);
   }
-  if (code) {
+  const storedCode = safeGet(STORAGE.lastCode);
+  const codeMatchesPairedDevice = Boolean(runtime.token) && (!storedCode || storedCode === code.toUpperCase());
+  if (code && !codeMatchesPairedDevice) {
     showPair('', code);
     await pair(code, true);
     return;

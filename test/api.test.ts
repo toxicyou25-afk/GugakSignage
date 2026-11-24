@@ -328,4 +328,30 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(regenerate.status, 200);
     assert.notEqual(regenerate.body.device.pairingCode, created.pairingCode);
   });
+
+  await t.test('현재 게시 스냅샷이 참조하는 미디어 삭제를 막는다', async () => {
+    const update = await admin(`/api/playlists/${created.playlistId}`, {
+      method: 'PUT',
+      body: {
+        name: '검증 재생목록',
+        description: '이미지를 빼고 다시 게시하기 전 상태',
+        items: [
+          { contentId: created.videoId, durationSeconds: 10, fitMode: 'cover', transitionMs: 300, enabled: true },
+          { contentId: created.urlId, durationSeconds: 8, fitMode: 'contain', transitionMs: 0, enabled: true },
+        ],
+      },
+    });
+    assert.equal(update.status, 200, JSON.stringify(update.body));
+
+    const blocked = await admin(`/api/contents/${created.imageId}`, { method: 'DELETE' });
+    assert.equal(blocked.status, 409);
+    assert.match(blocked.body.error, /게시 버전/);
+
+    const publish = await admin(`/api/devices/${created.deviceId}/publish`, { method: 'POST' });
+    assert.equal(publish.status, 200);
+    assert.equal(publish.body.version, 3);
+
+    const removed = await admin(`/api/contents/${created.imageId}`, { method: 'DELETE' });
+    assert.equal(removed.status, 200);
+  });
 });

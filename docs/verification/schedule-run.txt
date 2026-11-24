@@ -1,0 +1,49 @@
+[signage] 서버 시작 · 2026-11-24T09:05:05.711Z
+[signage] 관리 화면: http://127.0.0.1:3125/admin/
+[signage] 재생기: http://127.0.0.1:3125/player/
+[signage] 데이터베이스: <temp>\schedule.sqlite
+[signage] 업로드 폴더: <temp>\uploads
+[signage] 샘플 기기 등록 코드: GUGAK1
+[signage] 샘플 재생기 주소: http://127.0.0.1:3125/player/?code=GUGAK1
+
+
+{
+  "startedAt": "2026-11-24T09:05:05.436Z",
+  "base": "http://127.0.0.1:3125",
+  "steps": [
+    {
+      "name": "서버 시작",
+      "at": "2026-11-24T09:05:05.763Z"
+    },
+    {
+      "name": "기본 목록 없이 시간표만 있는 기기 게시",
+      "at": "2026-11-24T09:05:07.035Z",
+      "code": "HSK2MF",
+      "playlistId": "pl-sample-lobby",
+      "version": 1
+    },
+    {
+      "name": "예약 시간 전 재생 대기 확인",
+      "at": "2026-11-24T09:05:07.395Z",
+      "clock": "08:00",
+      "schedule": "09:00-10:00"
+    },
+    {
+      "name": "예약 시간 시작 후 첫 콘텐츠 재생",
+      "at": "2026-11-24T09:05:08.752Z",
+      "deviceId": "2e0d17d9-915e-41fa-9c67-2485ef2526ec",
+      "manifestVersion": 1,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-autumn",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T00:01:00.139Z"
+    }
+  ],
+  "pageErrors": [],
+  "result": "passed",
+  "finishedAt": "2026-11-24T09:05:08.753Z",
+  "serverLog": "[signage] 서버 시작 · 2026-11-24T09:05:05.711Z\n[signage] 관리 화면: http://127.0.0.1:3125/admin/\n[signage] 재생기: http://127.0.0.1:3125/player/\n[signage] 데이터베이스: <temp>\\schedule.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3125/player/?code=GUGAK1\n"
+}

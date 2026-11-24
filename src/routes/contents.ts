@@ -7,8 +7,9 @@ import multer from 'multer';
 import { imageSize } from 'image-size';
 import type { AppConfig } from '../config.js';
 import { all, get, run, transaction, type DB } from '../db.js';
-import type { ContentKind, ContentRow } from '../types.js';
-import { asTrimmed, id, isHttpUrl, nowIso } from '../util.js';
+import type { Snapshot } from '../publishing.js';
+import type { ContentKind, ContentRow, ManifestPlaylist } from '../types.js';
+import { asTrimmed, id, isHttpUrl, nowIso, safeJsonParse } from '../util.js';
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/ogg']);
@@ -62,6 +63,30 @@ function removeQuietly(filePath: string): void {
   } catch {
     // File may already be gone.
   }
+}
+
+function playlistReferencesContent(playlist: ManifestPlaylist | null | undefined, contentId: string): boolean {
+  return Boolean(playlist?.items?.some((item) => item.content?.id === contentId));
+}
+
+function publishedDeviceNamesUsingContent(db: DB, contentId: string): string[] {
+  const rows = all<{ name: string; snapshot: string }>(
+    db,
+    `SELECT d.name, p.snapshot
+       FROM devices d
+       JOIN publications p ON p.device_id = d.id AND p.version = d.published_version`,
+  );
+  const names = new Set<string>();
+  for (const row of rows) {
+    const snapshot = safeJsonParse<Snapshot>(row.snapshot);
+    if (!snapshot) continue;
+    const usesDefault = playlistReferencesContent(snapshot.defaultPlaylist, contentId);
+    const usesSchedule = (snapshot.schedules || []).some((schedule) =>
+      playlistReferencesContent(schedule.playlist, contentId),
+    );
+    if (usesDefault || usesSchedule) names.add(row.name);
+  }
+  return [...names];
 }
 
 export function contentRoutes(db: DB, config: AppConfig): Router {
@@ -219,6 +244,15 @@ export function contentRoutes(db: DB, config: AppConfig): Router {
         error: `이 콘텐츠는 ${used.map((row) => `‘${row.name}’`).join(', ')} 재생목록에서 사용 중입니다. 먼저 재생목록에서 빼 주세요.`,
       });
       return;
+    }
+    if (content.stored_name) {
+      const publishedUsage = publishedDeviceNamesUsingContent(db, content.id);
+      if (publishedUsage.length > 0) {
+        res.status(409).json({
+          error: `이 콘텐츠는 ${publishedUsage.map((name) => `‘${name}’`).join(', ')}의 현재 게시 버전에서 사용 중입니다. 재생목록에서 빼고 다시 게시한 뒤 삭제해 주세요.`,
+        });
+        return;
+      }
     }
     run(db, 'DELETE FROM contents WHERE id = ?', content.id);
     if (content.stored_name) removeQuietly(path.join(config.uploadDir, content.stored_name));
