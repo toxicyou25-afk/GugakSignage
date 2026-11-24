@@ -25,6 +25,8 @@ $toolCacheDirectory = Join-Path $runnerRoot '_toolcache'
 $npmCacheDirectory = Join-Path $runnerRoot '_cache\npm'
 $playwrightCacheDirectory = Join-Path $runnerRoot '_cache\ms-playwright'
 $homeDirectory = Join-Path $runnerRoot 'home'
+$admissionDirectory = Join-Path $runnerRoot 'admission'
+$admissionHook = Join-Path $admissionDirectory 'Assert-TrustedJob.ps1'
 
 function Assert-RunnerRootIsIsolated {
     $fullRunnerRoot = [IO.Path]::GetFullPath($runnerRoot).TrimEnd('\')
@@ -80,6 +82,7 @@ function Ensure-RunnerFiles {
         $npmCacheDirectory,
         $playwrightCacheDirectory,
         (Join-Path $runnerRoot '_logs'),
+        $admissionDirectory,
         (Join-Path $homeDirectory 'AppData\Roaming'),
         (Join-Path $homeDirectory 'AppData\Local')
     )) {
@@ -103,6 +106,12 @@ function Ensure-RunnerFiles {
     if (-not (Test-Path -LiteralPath (Join-Path $runnerDirectory 'run.cmd'))) {
         throw 'The downloaded runner package is missing run.cmd.'
     }
+
+    $hookSource = Join-Path $PSScriptRoot 'Assert-TrustedJob.ps1'
+    if (-not (Test-Path -LiteralPath $hookSource)) {
+        throw 'The repository runner admission hook is missing from scripts/runner.'
+    }
+    Copy-Item -LiteralPath $hookSource -Destination $admissionHook -Force
 }
 
 function Set-ServiceProcessEnvironment {
@@ -140,6 +149,7 @@ function Set-ServiceProcessEnvironment {
         "RUNNER_TOOL_CACHE=$toolCacheDirectory",
         "NPM_CONFIG_CACHE=$npmCacheDirectory",
         "PLAYWRIGHT_BROWSERS_PATH=$playwrightCacheDirectory",
+        "ACTIONS_RUNNER_HOOK_JOB_STARTED=$admissionHook",
         'GH_TOKEN=',
         'GITHUB_TOKEN=',
         'OPENAI_API_KEY=',
@@ -187,7 +197,13 @@ if ($Mode -eq 'ValidateOnly') {
     if ($archiveHash -ne 'not-present' -and $archiveHash -ne $runnerSha256) {
         throw 'The cached runner archive checksum does not match the pinned release digest.'
     }
-    Write-Output "PASS: runner root, pinned release, and isolated directory layout validated for $runnerName ($runnerLabel)."
+    $admissionTest = Join-Path $PSScriptRoot 'Test-GugakSignageRunnerAdmission.ps1'
+    try {
+        & $admissionTest -HookPath $admissionHook
+    } catch {
+        throw "Runner admission hook tests failed: $($_.Exception.Message)"
+    }
+    Write-Output "PASS: runner root, pinned release, isolated layout, and admission hook validated for $runnerName ($runnerLabel)."
     exit 0
 }
 

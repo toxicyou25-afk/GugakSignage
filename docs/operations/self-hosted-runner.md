@@ -4,7 +4,9 @@
 
 The existing `CI` workflow and `validate` job remain named as before; the displayed job check is still `Validate on Windows`. Pushes and same-repository pull requests select the repository runner with labels `self-hosted`, `Windows`, `X64`, and `gugaksignage-ci`. Fork-origin pull requests select `windows-latest`. The workflow-dispatch path and any event not explicitly admitted to the runner also select `windows-latest`.
 
-The fork check compares `github.event.pull_request.head.repo.full_name` with `github.repository`. A missing head repository fails closed to `windows-latest`. Keep this condition intact in `.github/workflows/ci.yml`. Fork PRs must not be approved to run on this PC's runner. Review changes to the CI workflow as part of the same-repository trust boundary.
+The workflow compares `github.event.pull_request.head.repo.full_name` with `github.repository`. A missing head repository selects `windows-latest`. This expression routes ordinary fork PRs to hosted Windows, but it is not the security boundary because a fork can edit the workflow definition used by its `pull_request` event.
+
+The runner therefore installs an immutable job-started hook at `C:\actions-runners\GugakSignage\admission\Assert-TrustedJob.ps1` and sets `ACTIONS_RUNNER_HOOK_JOB_STARTED` in the Windows service environment. The hook reads `GITHUB_EVENT_PATH` before workflow steps. It allows only a push to this repository or a pull request whose head and base are both `toxicyou25-afk/GugakSignage`; every other event, repository, malformed payload, or missing payload exits nonzero and fails the job in `Set up runner`. A fork PR cannot remove or alter this local hook by changing the workflow file. Do not register the runner until the hook is installed and its fixture tests pass.
 
 CI keeps workflow-level `permissions: contents: read`, and checkout uses `persist-credentials: false`. The workflow does not reference repository secrets. The Pages deployment stays on `ubuntu-latest` with its existing `github-pages` environment and `pages: write` / `id-token: write` permissions.
 
@@ -46,5 +48,5 @@ Use `-Mode ValidateOnly` to verify the pinned runner package and directory layou
 | Actions run and job IDs | Pending |
 | Conclusion and executed steps | Pending |
 | Required-check names | `CI / Validate on Windows` (workflow and job names unchanged) |
-| Fork selection | Fork PRs use `windows-latest`; no fork PR was created or run |
+| Fork selection | Workflow routes fork PRs to `windows-latest`; runner admission hook denies them before steps; no fork PR was created or run |
 | Service elevation | Not available in the current non-elevated session; the owner must run the elevated bootstrap above |

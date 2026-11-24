@@ -51,13 +51,19 @@ jobs:
             'RUNNER_TEMP',
             'RUNNER_TOOL_CACHE',
             'NPM_CONFIG_CACHE',
-            'PLAYWRIGHT_BROWSERS_PATH'
+            'PLAYWRIGHT_BROWSERS_PATH',
+            'ACTIONS_RUNNER_HOOK_JOB_STARTED'
           )
           foreach ($name in $isolatedVariables) {
             $value = [Environment]::GetEnvironmentVariable($name, 'Process')
             if ([string]::IsNullOrWhiteSpace($value) -or -not $value.StartsWith("$runnerRoot\", [StringComparison]::OrdinalIgnoreCase)) {
               throw "Environment variable is not isolated under the GugakSignage runner root: $name"
             }
+          }
+
+          $expectedHook = Join-Path $runnerRoot 'admission\Assert-TrustedJob.ps1'
+          if (-not $env:ACTIONS_RUNNER_HOOK_JOB_STARTED.Equals($expectedHook, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'The repository runner admission hook is not configured.'
           }
 
       - name: Checkout
