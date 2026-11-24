@@ -8,4 +8,6 @@ data
 test
 scripts
 docs
+prototype
+poc
 *.log

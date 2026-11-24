@@ -4,6 +4,8 @@
 
 공개 저장소: <https://github.com/toxicyou25-afk/GugakSignage>
 
+공개 데모(설치 없이 화면 보기): <https://toxicyou25-afk.github.io/GugakSignage/>
+
 ## 현재 단계
 
 - 2026-11-24: 오픈소스 후보 조사, 범용 아키텍처 설계, 다중 모니터 동기화 시뮬레이션 완료
@@ -11,6 +13,7 @@
 - 2026-11-24: 독자 UI·UX 설계와 작동형 프로토타입 착수
 - 2026-11-24: **범용 엔진·서버·브라우저 플레이어·가상 미리보기 PoC 완료** (단위·통합 59/59, 시나리오 63/63, 미리보기 48/48, 4화면 브라우저 65초 불일치 0건)
 - 2026-11-24: **1차 동작본(관리 서버 + 윈도우 재생기) 구현·로컬 검증 완료** — SQLite, 한글 관리 화면, 콘텐츠·기기·재생목록·게시 API, 오프라인 캐시 재생기
+- 2026-11-24: **독자 한국어 UI·UX 프로토타입 완료** (Playwright 1440·1280·768 스모크 통과, 원본 스크린샷 14장)
 - 2026-11-24: **Apache-2.0 오픈소스로 공개**
 - 장비 모델·운영체제·연결 방식·기존 프로그램 정보는 담당 직원 확인 대기
 
@@ -40,6 +43,7 @@
 - [PoC 실행·검증](poc/README.md)
 - [MVP 실행·구성](docs/design/mvp-runtime.md)
 - [MVP 검증 기록](docs/verification/mvp.md)
+- [UI 프로토타입](prototype/README.md)
 - [오픈소스 운영 원칙](docs/OPEN_SOURCE.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 정책](SECURITY.md)
@@ -51,7 +55,7 @@
 - `seed/` — 첫 실행 시 들어가는 샘플 포스터·영상·재생목록
 - `test/`, `scripts/` — API 테스트와 로컬 브라우저 검증
 - `start-player.cmd` — 윈도우 Edge/Chrome 전체화면 재생기 실행 스크립트
-- `prototype/` — 독자 UI·UX 작동형 프로토타입(작성 예정)
+- `prototype/` — 독자 한국어 UI·UX 작동형 프로토타입
 - `poc/` — 범용 재생 엔진·서버·브라우저 플레이어·가상 미리보기 PoC
 - `tools/` — 현장 장비 정보 수집·진단 도구(작성 예정)
 
@@ -180,6 +184,34 @@ MVP는 외부 DB 설치 없이 실행되도록 SQLite 단일 파일(`node:sqlite
 - 자체 코드·문서·샘플 포스터는 Apache-2.0입니다.
 - `seed/sample-video.mp4`는 **Big Buck Bunny** (© 2008 Blender Foundation, [bigbuckbunny.org](https://www.bigbuckbunny.org/))의 10초 360p 클립이며 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) 조건으로 포함했습니다. 재생기 동작 확인용이며 실제 운영 콘텐츠가 아닙니다.
 - 자세한 고지는 [docs/research/licenses.md](docs/research/licenses.md), [seed/README.md](seed/README.md), [NOTICE](NOTICE)에 있습니다.
+
+## UI 프로토타입
+
+일반 행정·홍보 담당자가 이미지 등록부터 게시까지 한 흐름으로 연습할 수 있는 한국어 관리 화면입니다. 서버 없이 브라우저 저장 공간만 쓰는 설계 검증용이며, 실제 운영 시스템이 아닙니다.
+
+![UI 프로토타입 홈](prototype/screenshots/01-dashboard.png)
+
+### 실행
+
+```powershell
+python -m http.server 4173 --directory prototype
+```
+
+<http://127.0.0.1:4173/>에서 확인합니다. 자세한 화면 경로·시나리오·검증 방법은 [prototype/README.md](prototype/README.md)에 있습니다.
+
+### 구현·검증 범위
+
+- 홈, 장소·유연 배치, 화면 등록(이 브라우저 테스트 → 6자리 코드 → 등록 대기 → 승인), 이미지 보관함, 재생 설정, 가상 미리보기, 상태·오류 복구, 6단계 첫 설정
+- 이미지 수≠모니터 수 패턴 표, 네 가지 재생 방식, 비상 이미지, 초안 저장·이어하기
+- Playwright로 1440·1280·768 화면 스모크 통과, 외부 네트워크 요청 0건, 원본 스크린샷 14장
+- 키보드 포커스·건너뛰기·모달 트랩·ESC·오류 요약·첫 오류 포커스·44px 터치 영역
+
+### 용어와 가정
+
+- UI에서는 화면에 내보내는 행위를 **게시**로 통일했습니다. 기술 문서의 **송출**과 같은 동작을 가리킵니다.
+- 시나리오의 B센터 2대는 데모 기본값입니다. 장소 상세에서 화면 추가·해제가 가능하며 제품 제약이 아닙니다.
+- 이미지 0장은 게시를 막고, 오류 화면에서는 비상 이미지를 사용합니다. 오프라인은 마지막 이미지를 유지합니다.
+- 이 프로토타입 자체에는 백엔드·실제 플레이어·자동 안전 영역 탐지가 없습니다. 실제 서버·재생기는 같은 저장소의 [1차 동작본](#1차-동작본mvp-관리-서버--윈도우-재생기)에서 구현했습니다.
 
 ## 원칙
 
