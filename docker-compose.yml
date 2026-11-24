@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-gugak1234}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-change-this-session-secret-before-use}
       DATA_DIR: /data
       DB_PATH: /data/signage.sqlite
