@@ -25,6 +25,10 @@ CI keeps workflow-level `permissions: contents: read`, and checkout uses `persis
 
 The root ACL grants access only to the installing account, SYSTEM, Administrators, and `NT AUTHORITY\LOCAL SERVICE`; the runner service uses LocalService and starts automatically. Its service environment uses a synthetic profile and the isolated temp, tool, npm, and Playwright paths. Sensitive machine-level environment variable names are explicitly blanked. The installer downloads the official Actions runner v2.338.2 and checks its SHA-256 digest before extraction; the binary, token, credentials, and logs stay outside the repository.
 
+`InstallService` is safe to retry over a precreated dedicated root. It first resets stale DACLs across only `C:\actions-runners\GugakSignage`, preserving every file and directory, then reapplies the restricted root policy. Existing `_work`, `_toolcache`, runner binaries, and cache contents remain in place. It then repairs the `admission` directory and hook file before replacing the hook, so a protected empty DACL on an old `Assert-TrustedJob.ps1` cannot block the copy. It reuses an existing LocalService runner service and does not request a new registration token when the local runner is already configured.
+
+The first elevated retry on this PC failed because the precreated root contained an old hook with a protected empty DACL. The failure was reproduced locally, the same ACL reset was applied, and validation then passed with the cached archive checksum and admission tests intact. Because no local runner configuration or service was created, retry the same bootstrap command; it will not duplicate registration.
+
 One runner process handles one job at a time. Keep the home-PC total at no more than three concurrent jobs, with at most one runner for each of DBrainPlus, TossPaperLab, and GugakSignage. Do not register a second GugakSignage runner or launch another runner process for this registration.
 
 ## Elevated bootstrap
@@ -47,6 +51,7 @@ Use `-Mode ValidateOnly` to verify the pinned runner package and directory layou
 | PR head SHA | Pending |
 | Actions run and job IDs | Pending |
 | Conclusion and executed steps | Pending |
+| Precreated-root ACL repair | `D:PAI` reproduced on the old hook and cached archive; dedicated-root reset preserved both; archive SHA-256 and admission tests passed |
 | Required-check names | `CI / Validate on Windows` (workflow and job names unchanged) |
 | Fork selection | Workflow routes fork PRs to `windows-latest`; runner admission hook denies them before steps; no fork PR was created or run |
-| Service elevation | Not available in the current non-elevated session; the owner must run the elevated bootstrap above |
+| Service elevation | The owner already approved UAC for the bootstrap; retry the command above for GugakSignage after pulling this branch |

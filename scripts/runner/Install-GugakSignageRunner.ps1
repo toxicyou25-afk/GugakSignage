@@ -54,6 +54,15 @@ function Get-MachineGitDirectory {
 function Set-RunnerRootPermissions {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     $icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+
+    # Reset only files below the dedicated runner root so protected empty or
+    # stale DACLs cannot block cached runner data or admission installation.
+    # /reset changes ACLs only; existing files and directories remain intact.
+    & $icacls $runnerRoot '/reset' '/T' '/Q' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not reset stale ACLs below C:\actions-runners\GugakSignage.'
+    }
+
     $arguments = @(
         $runnerRoot,
         '/inheritance:r',
@@ -61,13 +70,33 @@ function Set-RunnerRootPermissions {
         "$identity`:(OI)(CI)F",
         'NT AUTHORITY\SYSTEM:(OI)(CI)F',
         'BUILTIN\Administrators:(OI)(CI)F',
-        'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M',
-        '/T',
-        '/C'
+        'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M'
     )
     & $icacls @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not apply the runner-only ACL to C:\actions-runners\GugakSignage.'
+    }
+}
+
+function Reset-IsolatedAcl {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Cannot repair the ACL because the path does not exist: $Path"
+    }
+    $icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+    & $icacls $Path /reset | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not restore the dedicated runner ACL on: $Path"
+    }
+}
+
+function Repair-AdmissionAcl {
+    if (Test-Path -LiteralPath $admissionDirectory) {
+        Reset-IsolatedAcl -Path $admissionDirectory
+    }
+    if (Test-Path -LiteralPath $admissionHook) {
+        Reset-IsolatedAcl -Path $admissionHook
     }
 }
 
@@ -111,7 +140,9 @@ function Ensure-RunnerFiles {
     if (-not (Test-Path -LiteralPath $hookSource)) {
         throw 'The repository runner admission hook is missing from scripts/runner.'
     }
+    Repair-AdmissionAcl
     Copy-Item -LiteralPath $hookSource -Destination $admissionHook -Force
+    Reset-IsolatedAcl -Path $admissionHook
 }
 
 function Set-ServiceProcessEnvironment {
@@ -227,7 +258,9 @@ if (Test-Path -LiteralPath (Join-Path $runnerDirectory '.runner')) {
         throw 'The configured runner service does not use NT AUTHORITY\LOCAL SERVICE.'
     }
 
+    New-Item -ItemType Directory -Path $runnerRoot -Force | Out-Null
     Set-RunnerRootPermissions
+    Ensure-RunnerFiles
     Set-ServiceProcessEnvironment -ServiceName $existingServiceName
     Set-Service -Name $existingServiceName -StartupType Automatic
     if ($existingService.State -eq 'Running') {
@@ -244,6 +277,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'GitHub CLI must be authenticated as a repository administrator before installing the runner.'
 }
 
+New-Item -ItemType Directory -Path $runnerRoot -Force | Out-Null
 Set-RunnerRootPermissions
 Ensure-RunnerFiles
 
