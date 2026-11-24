@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import fs from 'node:fs';
 import path from 'node:path';
+import { migrateLegacyTopology } from './topology-migration.js';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
 export type DB = DatabaseSync;
@@ -12,6 +13,7 @@ export function openDatabase(dbPath: string): DB {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA busy_timeout = 5000;');
   migrate(db);
+  migrateLegacyTopology(db);
   return db;
 }
 
@@ -20,6 +22,15 @@ function migrate(db: DB): void {
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sites (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'Asia/Seoul',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS contents (
@@ -51,12 +62,27 @@ function migrate(db: DB): void {
       position INTEGER NOT NULL,
       duration_seconds INTEGER NOT NULL DEFAULT 10,
       fit_mode TEXT NOT NULL DEFAULT 'contain' CHECK (fit_mode IN ('contain', 'cover', 'stretch')),
+      fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch')),
       transition_ms INTEGER NOT NULL DEFAULT 400,
       enabled INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist
       ON playlist_items(playlist_id, position);
+
+    CREATE TABLE IF NOT EXISTS layouts (
+      id TEXT PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('single', 'row', 'column', 'grid', 'custom')),
+      canvas_width INTEGER NOT NULL,
+      canvas_height INTEGER NOT NULL,
+      gap REAL NOT NULL DEFAULT 0.01,
+      bezel REAL NOT NULL DEFAULT 0,
+      slots_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS devices (
       id TEXT PRIMARY KEY,
@@ -78,9 +104,48 @@ function migrate(db: DB): void {
       notes TEXT,
       reported_width INTEGER,
       reported_height INTEGER,
+      site_id TEXT REFERENCES sites(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS display_groups (
+      id TEXT PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      layout_id TEXT NOT NULL REFERENCES layouts(id) ON DELETE RESTRICT,
+      playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL,
+      playback_mode TEXT NOT NULL DEFAULT 'synchronized-cycle'
+        CHECK (playback_mode IN ('individual', 'synchronized-cycle', 'mirror', 'canvas')),
+      epoch TEXT NOT NULL,
+      dwell_ms INTEGER NOT NULL DEFAULT 10000,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS displays (
+      id TEXT PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES display_groups(id) ON DELETE CASCADE,
+      device_id TEXT REFERENCES devices(id) ON DELETE SET NULL,
+      playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      orientation TEXT NOT NULL DEFAULT 'landscape' CHECK (orientation IN ('landscape', 'portrait')),
+      rotation INTEGER NOT NULL DEFAULT 0 CHECK (rotation IN (0, 90, 180, 270)),
+      fit_mode TEXT NOT NULL DEFAULT 'contain' CHECK (fit_mode IN ('contain', 'cover', 'stretch')),
+      slot_id TEXT NOT NULL,
+      start_index INTEGER NOT NULL DEFAULT 0,
+      step INTEGER NOT NULL DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_display_groups_site ON display_groups(site_id);
+    CREATE INDEX IF NOT EXISTS idx_displays_group ON displays(group_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_displays_device ON displays(device_id);
 
     CREATE TABLE IF NOT EXISTS schedules (
       id TEXT PRIMARY KEY,
@@ -107,6 +172,19 @@ function migrate(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_publications_device
       ON publications(device_id, version DESC);
   `);
+
+  const columns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'site_id')) {
+    db.exec('ALTER TABLE devices ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE SET NULL;');
+  }
+  const playlistItemColumns = db.prepare('PRAGMA table_info(playlist_items)').all() as Array<{ name: string }>;
+  if (!playlistItemColumns.some((column) => column.name === 'fit_mode_override')) {
+    db.exec(`ALTER TABLE playlist_items
+      ADD COLUMN fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch'));`);
+    // Existing rows always had a materialized contain/cover/stretch choice.
+    db.exec('UPDATE playlist_items SET fit_mode_override = fit_mode WHERE fit_mode_override IS NULL;');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);');
 }
 
 export function all<T>(db: DB, sql: string, ...params: SQLInputValue[]): T[] {

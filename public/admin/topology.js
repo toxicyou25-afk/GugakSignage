@@ -1,0 +1,313 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+(function () {
+  'use strict';
+
+  let active = { siteId: '', detail: null, preview: null };
+
+  const page = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+
+  async function request(path, options = {}) {
+    const requestOptions = { ...options, headers: { ...(options.headers || {}) } };
+    if (options.body && typeof options.body !== 'string' && !(options.body instanceof FormData)) {
+      requestOptions.body = JSON.stringify(options.body);
+      requestOptions.headers['Content-Type'] = 'application/json';
+    }
+    const response = await fetch(path, requestOptions);
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* plain response */ }
+    if (response.status === 401) {
+      if (window.showLogin) window.showLogin('로그인이 만료되었습니다. 다시 로그인해 주세요.');
+      throw new Error('로그인이 필요합니다.');
+    }
+    if (!response.ok) throw new Error(data?.error || `요청을 처리하지 못했습니다. (${response.status})`);
+    return data;
+  }
+
+  function toast(message) {
+    if (window.toast) window.toast(message);
+  }
+
+  function errorToast(error) {
+    console.error(error);
+    if (window.toast) window.toast(error.message || '요청을 처리하지 못했습니다.', 'error');
+  }
+
+  function dateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ko-KR');
+  }
+
+  function modeLabel(mode) {
+    return ({
+      individual: '화면별 순환',
+      'synchronized-cycle': '서버 시각 동기',
+      mirror: '동시 복제',
+      canvas: '통합 캔버스',
+    })[mode] || mode || '—';
+  }
+
+  async function render(siteId, view) {
+    active = { siteId, detail: null, preview: null };
+    view.innerHTML = '<div class="loading">장소와 화면 배치를 불러오는 중…</div>';
+    try {
+      if (!siteId) await renderList(view);
+      else await renderEditor(view, siteId);
+    } catch (error) {
+      view.innerHTML = `<div class="empty"><div class="empty-mark">!</div><h3>화면 관리 정보를 열 수 없습니다</h3><p>${page(error.message)}</p><button class="btn btn-primary" type="button" data-topology-action="reload">다시 시도</button></div>`;
+    }
+  }
+
+  async function renderList(view) {
+    const data = await request('/api/sites');
+    view.innerHTML = `
+      <div class="stack">
+        <section class="card card-pad topology-intro">
+          <div class="card-head" style="margin:0">
+            <div><p class="eyebrow" style="margin:0 0 5px">SITE → GROUP → DISPLAY</p><h2>장소별 다중 모니터</h2><p class="muted" style="margin:7px 0 0">PC 기기 한 대에 여러 모니터를 붙이거나, 모니터마다 다른 PC를 연결할 수 있습니다.</p></div>
+            <a class="btn btn-ghost" href="#/devices">PC 기기 관리</a>
+          </div>
+        </section>
+        <section class="card card-pad">
+          <div class="card-head"><div><h3>새 장소</h3><span class="tiny muted">기본 1개 화면과 단일 배치가 함께 만들어집니다.</span></div></div>
+          <form class="form-grid topology-create" data-topology-form="create-site">
+            <label class="field"><span>장소 이름</span><input name="name" maxlength="120" required placeholder="예: 1층 로비" /></label>
+            <label class="field"><span>시간대</span><input name="timezone" value="Asia/Seoul" maxlength="80" /></label>
+            <label class="field topology-wide"><span>메모 <span class="muted">(선택)</span></span><input name="notes" maxlength="1000" placeholder="설치 위치나 운영 메모" /></label>
+            <div class="form-actions topology-wide"><button class="btn btn-primary" type="submit">장소 만들기</button></div>
+          </form>
+        </section>
+        <section>
+          <div class="card-head"><div><h3>등록된 장소</h3><span class="tiny muted">장소 → 화면 그룹 → 모니터 순서로 구성됩니다.</span></div><span class="tag">${data.sites.length}개 장소</span></div>
+          ${data.sites.length ? `<div class="site-grid">${data.sites.map((site) => `
+            <a class="card site-card" href="#/sites/${encodeURIComponent(site.id)}">
+              <span class="site-card-mark">▤</span>
+              <div><h3>${page(site.name)}</h3><p>${page(site.timezone)} · ${site.displayCount}개 모니터</p></div>
+              <dl><dt>화면 그룹</dt><dd>${site.groupCount}</dd><dt>연결 PC</dt><dd>${site.assignedDeviceCount}</dd></dl>
+              <span class="site-card-open">배치 열기 →</span>
+            </a>`).join('')}</div>` : `
+            <div class="empty"><div class="empty-mark">▤</div><h3>아직 장소가 없습니다</h3><p>장소를 만들고 모니터 수·해상도·배치를 정하세요. 기존 기기도 첫 실행 시 기본 장소로 자동 이전됩니다.</p></div>`}
+        </section>
+      </div>`;
+  }
+
+  async function renderEditor(view, siteId) {
+    const [detail, playlists] = await Promise.all([
+      request(`/api/sites/${encodeURIComponent(siteId)}`),
+      request('/api/playlists'),
+    ]);
+    active = { siteId, detail, preview: active.preview };
+    const group = detail.groups[0];
+    if (!group) {
+      view.innerHTML = '<div class="empty"><h3>화면 그룹이 없습니다</h3><p>장소 정보를 확인하거나 다시 만들어 주세요.</p></div>';
+      return;
+    }
+    const first = group.displays[0] || { width: 1920, height: 1080, rotation: 0, fit_mode: 'contain' };
+    const playlistOptions = (selected, noneLabel) => `<option value="">${page(noneLabel)}</option>${playlists.playlists.map((playlist) => `<option value="${page(playlist.id)}" ${playlist.id === selected ? 'selected' : ''}>${page(playlist.name)}</option>`).join('')}`;
+    const deviceOptions = (selected) => `<option value="">PC 연결 안 함</option>${detail.devices.map((device) => `<option value="${page(device.id)}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`).join('')}`;
+    const assignedDevice = group.displays.find((display) => display.device_id)?.device_id || '';
+
+    view.innerHTML = `
+      <div class="topology-head">
+        <div><a class="btn btn-ghost btn-sm" href="#/sites">← 장소 목록</a><h2>${page(detail.site.name)}</h2><p class="muted">${page(detail.site.timezone)} · PC 기기 ${detail.devices.length}대 · 모니터 ${group.displays.length}개</p></div>
+        <div class="button-row"><button class="btn btn-ghost" type="button" data-topology-action="refresh-preview">미리보기 새로고침</button><button class="btn btn-primary" type="button" data-topology-action="publish" data-group-id="${page(group.id)}">게시</button></div>
+      </div>
+
+      <div class="topology-layout">
+        <div class="stack">
+          <section class="card card-pad">
+            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">1. MONITORS & LAYOUT</p><h3>모니터와 배치</h3><span class="tiny muted">화면 수는 1~256개 범위에서 자유롭게 정할 수 있습니다. 저장 전에는 실제 송출이 바뀌지 않습니다.</span></div><span class="tag">${page(modeLabel(group.playback_mode))}</span></div>
+            <form class="form-grid topology-config" data-topology-form="configure-group" data-group-id="${page(group.id)}">
+              <label class="field"><span>PC 기기</span><select name="deviceId">${deviceOptions(assignedDevice)}</select><span class="help">같은 PC의 여러 모니터는 한 창의 캔버스로 표시됩니다.</span></label>
+              <label class="field"><span>모니터 수</span><input name="displayCount" type="number" min="1" max="256" value="${group.displays.length}" required /></label>
+              <label class="field"><span>해상도</span><div class="resolution-fields"><input name="width" type="number" min="320" max="16384" value="${first.width}" aria-label="가로 픽셀" /><span>×</span><input name="height" type="number" min="320" max="16384" value="${first.height}" aria-label="세로 픽셀" /></div></label>
+              <label class="field"><span>화면 방향</span><select name="orientation"><option value="landscape" ${first.orientation !== 'portrait' ? 'selected' : ''}>가로</option><option value="portrait" ${first.orientation === 'portrait' ? 'selected' : ''}>세로</option></select></label>
+              <label class="field"><span>회전</span><select name="rotation">${[0,90,180,270].map((rotation) => `<option value="${rotation}" ${Number(first.rotation) === rotation ? 'selected' : ''}>${rotation}°</option>`).join('')}</select></label>
+              <label class="field"><span>원본 맞춤</span><select name="fitMode"><option value="contain" ${first.fit_mode === 'contain' ? 'selected' : ''}>전체 보이기</option><option value="cover" ${first.fit_mode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${first.fit_mode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
+              <label class="field"><span>배치</span><select name="layoutType">${['row','column','grid'].map((type) => `<option value="${type}" ${group.layout?.type === type ? 'selected' : ''}>${{row:'가로 한 줄',column:'세로 한 줄',grid:'격자'}[type]}</option>`).join('')}</select></label>
+              <label class="field"><span>열 <span class="muted">(격자 선택 시)</span></span><input name="columns" type="number" min="1" max="256" placeholder="자동" /></label>
+              <label class="field"><span>행 <span class="muted">(격자 선택 시)</span></span><input name="rows" type="number" min="1" max="256" placeholder="자동" /></label>
+              <label class="field"><span>화면 간격</span><input name="gap" type="number" min="0" max="0.25" step="0.005" value="${group.layout?.gap ?? 0.01}" /></label>
+              <label class="field"><span>재생 모드</span><select name="playbackMode"><option value="individual" ${group.playback_mode === 'individual' ? 'selected' : ''}>화면별 순환</option><option value="synchronized-cycle" ${group.playback_mode === 'synchronized-cycle' ? 'selected' : ''}>서버 시각 동기 순환</option><option value="mirror" ${group.playback_mode === 'mirror' ? 'selected' : ''}>동시 복제</option><option value="canvas" ${group.playback_mode === 'canvas' ? 'selected' : ''}>하나의 캔버스</option></select></label>
+              <label class="field"><span>전환 간격(초)</span><input name="dwellSeconds" type="number" min="1" max="3600" value="${Math.round(group.dwell_ms / 1000)}" /></label>
+              <label class="field"><span>그룹 기본 재생목록</span><select name="playlistId">${playlistOptions(group.playlist_id, '지정 안 함')}</select></label>
+              <label class="field checkbox-field"><span>&nbsp;</span><span><input name="resetEpoch" type="checkbox" /> 저장 시 동기 기준 시각 새로 시작</span></label>
+              <div class="form-actions topology-wide"><button class="btn btn-primary" type="submit">모니터·배치 저장</button></div>
+            </form>
+          </section>
+
+          <section class="card card-pad">
+            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">2. SCREEN ASSIGNMENT</p><h3>화면별 이미지 배정</h3><span class="tiny muted">재생목록을 화면마다 지정합니다. 비워 두면 그룹 기본 재생목록을 씁니다.</span></div></div>
+            <div class="screen-assignment-list">
+              ${group.displays.map((display, index) => `
+                <div class="screen-assignment" data-display-id="${page(display.id)}">
+                  <div class="screen-assignment-name"><span>${index + 1}</span><div><strong>${page(display.name)}</strong><small>${display.width}×${display.height} · ${page(display.deviceName || 'PC 미연결')}</small></div></div>
+                  <label><span>재생목록</span><select data-screen-playlist>${playlistOptions(display.playlist_id, '그룹 기본 사용')}</select></label>
+                  <label><span>회전</span><select data-screen-rotation>${[0,90,180,270].map((rotation) => `<option value="${rotation}" ${display.rotation === rotation ? 'selected' : ''}>${rotation}°</option>`).join('')}</select></label>
+                  <label><span>맞춤</span><select data-screen-fit><option value="contain" ${display.fit_mode === 'contain' ? 'selected' : ''}>전체</option><option value="cover" ${display.fit_mode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${display.fit_mode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
+                  <button class="btn btn-ghost btn-sm" type="button" data-topology-action="save-screen">배정 저장</button>
+                </div>`).join('')}
+            </div>
+          </section>
+        </div>
+
+        <aside class="stack">
+          <section class="card card-pad topology-preview-card">
+            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">3. RENDERPLAN PREVIEW</p><h3>게시 전 미리보기</h3><span class="tiny muted">송출과 같은 순수 엔진의 RenderPlan을 사용합니다.</span></div></div>
+            <div id="topology-preview"><div class="loading">미리보기를 계산하는 중…</div></div>
+          </section>
+          <section class="card card-pad">
+            <div class="card-head"><h3>게시 정보</h3><span class="badge badge-plain">캐시 유지</span></div>
+            <dl class="topology-facts"><dt>장소</dt><dd>${page(detail.site.name)}</dd><dt>모니터</dt><dd>${group.displays.length}개</dd><dt>배치</dt><dd>${page(group.layout?.type || '—')}</dd><dt>동기 기준</dt><dd>${dateTime(group.epoch)}</dd></dl>
+            <p class="tiny muted">게시하면 배치·화면별 재생목록·해상도·회전이 불변 스냅샷으로 저장됩니다. 기존 게시본은 새 게시가 성공할 때까지 유지됩니다.</p>
+            <button class="btn btn-primary btn-block" type="button" data-topology-action="publish" data-group-id="${page(group.id)}">이 배치를 게시</button>
+          </section>
+        </aside>
+      </div>`;
+    await refreshPreview(view);
+  }
+
+  function planCard(plan, display, slot) {
+    const portrait = plan.viewport.height > plan.viewport.width;
+    const source = plan.sourceRect || {
+      x: 0,
+      y: 0,
+      w: plan.image?.width || plan.viewport.width,
+      h: plan.image?.height || plan.viewport.height,
+    };
+    const destination = plan.destinationRect;
+    const imageWidth = plan.image?.width || source.w;
+    const imageHeight = plan.image?.height || source.h;
+    const rotatedQuarter = plan.rotation === 90 || plan.rotation === 270;
+    const layerStyle = rotatedQuarter
+      ? `left:${(destination.w - destination.h) / 2 / destination.w * 100}%;top:${(destination.h - destination.w) / 2 / destination.h * 100}%;width:${destination.h / destination.w * 100}%;height:${destination.w / destination.h * 100}%;transform:rotate(${plan.rotation}deg)`
+      : `inset:0;transform:${plan.rotation ? `rotate(${plan.rotation}deg)` : 'none'}`;
+    const mediaStyle = `left:${-source.x / source.w * 100}%;top:${-source.y / source.h * 100}%;width:${imageWidth / source.w * 100}%;height:${imageHeight / source.h * 100}%`;
+    const body = plan.placeholder
+      ? '<div class="preview-placeholder">배정된 이미지 없음</div>'
+      : `<div class="preview-media-clip" style="left:${destination.x / plan.viewport.width * 100}%;top:${destination.y / plan.viewport.height * 100}%;width:${destination.w / plan.viewport.width * 100}%;height:${destination.h / plan.viewport.height * 100}%"><div class="preview-rotation-layer" style="${layerStyle}"><img src="${page(plan.imageUrl)}" alt="" style="${mediaStyle}" /></div></div>`;
+    const style = slot
+      ? `left:${slot.x * 100}%;top:${slot.y * 100}%;width:${slot.w * 100}%;height:${slot.h * 100}%`
+      : 'inset:0';
+    return `<div class="preview-screen ${portrait ? 'portrait' : ''}" data-display-id="${page(display.id)}" style="${style}">${body}<span class="preview-screen-label">${page(display.name)} · ${plan.viewport.width}×${plan.viewport.height} · ${plan.rotation}°</span></div>`;
+  }
+
+  async function refreshPreview(view) {
+    const group = active.detail?.groups[0];
+    const target = view.querySelector('#topology-preview');
+    if (!group || !target) return;
+    target.innerHTML = '<div class="loading">미리보기를 계산하는 중…</div>';
+    try {
+      const preview = await request(`/api/groups/${encodeURIComponent(group.id)}/preview`);
+      active.preview = preview;
+      const wall = preview.wall;
+      const slots = new Map((wall.layout?.slots || []).map((slot) => [slot.id, slot]));
+      const displays = new Map(wall.displays.map((display) => [display.id, display]));
+      target.innerHTML = `
+        <div class="preview-meta"><span>${page(modeLabel(wall.group.playbackMode))}</span><span>서버 시각 ${dateTime(preview.serverTime)}</span></div>
+        <div class="preview-canvas" style="--preview-aspect:${wall.layout.canvasWidth / Math.max(1, wall.layout.canvasHeight)}">
+          ${preview.plans.map((plan) => planCard(plan, displays.get(plan.displayId), slots.get(plan.slotId))).join('')}
+        </div>
+        <div class="preview-plans">${preview.plans.map((plan) => `<div><span>${page(plan.displayName)}</span><strong>${plan.placeholder ? '대기' : `이미지 ${plan.imageIndex + 1}/${plan.imageCount}`}</strong><small>다음 전환 ${plan.nextChangeAt ? dateTime(plan.nextChangeAt) : '고정'}</small></div>`).join('')}</div>`;
+    } catch (error) {
+      target.innerHTML = `<p class="form-error">${page(error.message)}</p>`;
+    }
+  }
+
+  async function createSite(form) {
+    const data = new FormData(form);
+    const result = await request('/api/sites', {
+      method: 'POST',
+      body: {
+        name: data.get('name'),
+        timezone: data.get('timezone'),
+        notes: data.get('notes'),
+      },
+    });
+    location.hash = `#/sites/${result.site.id}`;
+    toast('장소와 기본 화면을 만들었습니다.');
+  }
+
+  async function configureGroup(form) {
+    const data = new FormData(form);
+    const groupId = form.dataset.groupId;
+    await request(`/api/groups/${encodeURIComponent(groupId)}/configuration`, {
+      method: 'PUT',
+      body: {
+        displayCount: Number(data.get('displayCount')),
+        width: Number(data.get('width')),
+        height: Number(data.get('height')),
+        orientation: data.get('orientation'),
+        rotation: Number(data.get('rotation')),
+        layoutType: data.get('layoutType'),
+        columns: data.get('columns') ? Number(data.get('columns')) : undefined,
+        rows: data.get('rows') ? Number(data.get('rows')) : undefined,
+        gap: Number(data.get('gap')),
+        deviceId: data.get('deviceId') || null,
+        playlistId: data.get('playlistId') || null,
+        playbackMode: data.get('playbackMode'),
+        dwellMs: Number(data.get('dwellSeconds')) * 1000,
+        fitMode: data.get('fitMode'),
+        resetEpoch: data.get('resetEpoch') === 'on',
+      },
+    });
+    toast('모니터와 배치를 저장했습니다.');
+    await renderEditor(document.querySelector('#view'), active.siteId);
+  }
+
+  async function saveScreen(row) {
+    const displayId = row.dataset.displayId;
+    await request(`/api/displays/${encodeURIComponent(displayId)}`, {
+      method: 'PUT',
+      body: {
+        playlistId: row.querySelector('[data-screen-playlist]').value || null,
+        rotation: Number(row.querySelector('[data-screen-rotation]').value),
+        fitMode: row.querySelector('[data-screen-fit]').value,
+      },
+    });
+    toast('화면 배정을 저장했습니다.');
+    await renderEditor(document.querySelector('#view'), active.siteId);
+  }
+
+  async function publish(groupId) {
+    const result = await request(`/api/groups/${encodeURIComponent(groupId)}/publish`, { method: 'POST' });
+    toast(`${result.deviceIds.length}대 PC에 v${result.version} 배치를 게시했습니다.`);
+    await renderEditor(document.querySelector('#view'), active.siteId);
+  }
+
+  document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('[data-topology-form]');
+    if (!form) return;
+    event.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    if (button) button.disabled = true;
+    try {
+      if (form.dataset.topologyForm === 'create-site') await createSite(form);
+      else if (form.dataset.topologyForm === 'configure-group') await configureGroup(form);
+    } catch (error) {
+      errorToast(error);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
+  document.addEventListener('click', async (event) => {
+    const trigger = event.target.closest('[data-topology-action]');
+    if (!trigger) return;
+    event.preventDefault();
+    try {
+      const action = trigger.dataset.topologyAction;
+      if (action === 'save-screen') await saveScreen(trigger.closest('[data-display-id]'));
+      else if (action === 'publish') await publish(trigger.dataset.groupId);
+      else if (action === 'refresh-preview') await refreshPreview(document.querySelector('#view'));
+      else if (action === 'reload') await render(active.siteId, document.querySelector('#view'));
+    } catch (error) {
+      errorToast(error);
+    }
+  });
+
+  window.GugakTopology = { render };
+})();

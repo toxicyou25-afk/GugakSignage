@@ -15,8 +15,12 @@ function parseItems(raw: unknown): PlaylistItemInput[] | { error: string } {
     const value = item as Record<string, unknown>;
     const contentId = asTrimmed(value.contentId, 100);
     if (!contentId) return { error: `${index + 1}번째 항목의 콘텐츠를 선택해 주세요.` };
-    const fitMode = String(value.fitMode ?? 'contain') as FitMode;
-    if (!FITS.has(fitMode)) return { error: `${index + 1}번째 항목의 맞춤 방식이 올바르지 않습니다.` };
+    const fitMode = value.fitMode === undefined || value.fitMode === null || value.fitMode === ''
+      ? null
+      : String(value.fitMode) as FitMode;
+    if (fitMode !== null && !FITS.has(fitMode)) {
+      return { error: `${index + 1}번째 항목의 맞춤 방식이 올바르지 않습니다.` };
+    }
     items.push({
       contentId,
       durationSeconds: parseIntRange(value.durationSeconds, 10, 3, 3600),
@@ -34,7 +38,7 @@ function itemDto(row: PlaylistItemRow) {
     contentId: row.content_id,
     position: row.position,
     durationSeconds: row.duration_seconds,
-    fitMode: row.fit_mode,
+    fitMode: row.fit_mode_override,
     transitionMs: row.transition_ms,
     enabled: Boolean(row.enabled),
     content: {
@@ -143,13 +147,15 @@ export function playlistRoutes(db: DB): Router {
       parsed.forEach((item, index) => {
         run(
           db,
-          `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode, transition_ms, enabled)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode,
+                                      fit_mode_override, transition_ms, enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id(),
           playlist.id,
           item.contentId,
           index + 1,
           item.durationSeconds,
+          'contain',
           item.fitMode,
           item.transitionMs,
           item.enabled ? 1 : 0,
@@ -175,10 +181,20 @@ export function playlistRoutes(db: DB): Router {
       `SELECT DISTINCT d.name FROM schedules s JOIN devices d ON d.id = s.device_id WHERE s.playlist_id = ?`,
       playlist.id,
     );
+    const topologyUsage = Number(get<{ n: number }>(
+      db,
+      `SELECT
+         (SELECT COUNT(*) FROM display_groups WHERE playlist_id = ?) +
+         (SELECT COUNT(*) FROM displays WHERE playlist_id = ?) AS n`,
+      playlist.id,
+      playlist.id,
+    )?.n ?? 0);
     const usage = [...new Map([...devices, ...scheduled].map((row) => [row.name, row])).keys()];
-    if (usage.length > 0) {
+    if (usage.length > 0 || topologyUsage > 0) {
       res.status(409).json({
-        error: `이 재생목록은 ${usage.map((name) => `‘${name}’`).join(', ')} 기기에서 사용 중입니다. 기기의 재생 설정을 바꾼 뒤 삭제해 주세요.`,
+        error: usage.length > 0
+          ? `이 재생목록은 ${usage.map((name) => `‘${name}’`).join(', ')} 기기에서 사용 중입니다. 기기의 재생 설정을 바꾼 뒤 삭제해 주세요.`
+          : '이 재생목록은 장소·화면 배치에서 사용 중입니다. 화면별 배정과 그룹 기본 재생목록을 바꾼 뒤 삭제해 주세요.',
       });
       return;
     }
