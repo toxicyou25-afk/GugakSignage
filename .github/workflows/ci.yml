@@ -26,6 +26,16 @@ jobs:
       NPM_CONFIG_CACHE: 'C:\actions-runners\GugakSignage\_cache\npm'
       PLAYWRIGHT_BROWSERS_PATH: 'C:\actions-runners\GugakSignage\_cache\ms-playwright'
     steps:
+      - name: Verify runner process identity
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+          Write-Output "Runner process identity: $identity"
+          if ($identity -ne 'NT AUTHORITY\LOCAL SERVICE') {
+            throw "The self-hosted job is not running as NT AUTHORITY\LOCAL SERVICE: $identity"
+          }
+
       - name: Verify isolated runner environment
         if: ${{ runner.environment == 'self-hosted' }}
         shell: powershell
