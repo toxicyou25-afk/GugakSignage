@@ -111,7 +111,7 @@ export function buildWallSnapshot(
   if (!site || !layoutRow) throw new Error('장소 또는 배치를 찾을 수 없습니다.');
   const displays = all<DisplayRow>(
     db,
-    'SELECT * FROM displays WHERE group_id = ? AND enabled = 1 ORDER BY start_index, created_at, id',
+    'SELECT * FROM displays WHERE group_id = ? AND enabled = 1 ORDER BY start_index, created_at, rowid',
     group.id,
   );
   const getPlaylist = playlistCache(db);
@@ -166,65 +166,8 @@ export function buildWallSnapshot(
   };
 }
 
-function enginePlaylist(screen: WallScreen | undefined, groupId: string) {
-  const source = screen?.playlist ?? emptyPlaylist(groupId);
-  const playable = source.items.filter(
-    (item) => item.enabled && item.content.url && item.content.width && item.content.width > 0 && item.content.height && item.content.height > 0,
-  );
-  return {
-    playlist: {
-      id: source.id,
-      name: source.name,
-      items: playable.map((item) => ({
-        id: item.id,
-        imageId: item.content.id,
-        durationMs: Math.max(1, item.durationSeconds) * 1000,
-        fitMode: item.fitMode,
-        transitionMs: item.transitionMs,
-        enabled: item.enabled,
-      })),
-    },
-    images: playable.map((item) => ({
-      id: item.content.id,
-      filename: item.content.name,
-      width: item.content.width!,
-      height: item.content.height!,
-      mime: item.content.mime ?? 'application/octet-stream',
-      displayUrl: item.content.url!,
-    })),
-  };
-}
-
 export function engineSnapshotForWall(wall: WallSnapshot, displayId: string): Record<string, unknown> {
-  const screen = wall.screens.find((candidate) => candidate.displayId === displayId);
-  const assigned = enginePlaylist(screen, wall.group.id);
-  return {
-    site: {
-      id: wall.site.id,
-      name: wall.site.name,
-      timezone: wall.site.timezone,
-      notes: wall.site.notes,
-      publication: { version: 0, epoch: wall.group.epoch },
-    },
-    group: {
-      id: wall.group.id,
-      siteId: wall.group.siteId,
-      name: wall.group.name,
-      layoutId: wall.group.layoutId,
-      playlistId: screen?.playlistId ?? wall.group.playlistId,
-      playbackMode: wall.group.playbackMode,
-      epoch: wall.group.epoch,
-      settings: wall.group.settings,
-    },
-    layout: wall.layout,
-    playlist: assigned.playlist,
-    images: assigned.images,
-    displays: wall.displays,
-    mode: wall.group.playbackMode,
-    epoch: wall.group.epoch,
-    dwellMs: wall.dwellMs,
-    settings: wall.group.settings,
-  };
+  return engine.wallScreenInput(wall as unknown as Record<string, unknown>, displayId);
 }
 
 export function buildWallPlans(wall: WallSnapshot, atMs = Date.now()): RenderPlan[] {
@@ -416,7 +359,7 @@ export function configureGroupDisplays(
     linkDeviceToGroup(db, input.deviceId, group.site_id, group.id);
     const existing = all<DisplayRow>(
       db,
-      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, id',
+      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, rowid',
       group.id,
     );
     if (existing.length > input.displayCount) {
@@ -474,7 +417,7 @@ export function configureGroupDisplays(
     );
     const displays = all<DisplayRow>(
       db,
-      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, id',
+      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, rowid',
       group.id,
     );
     displays.forEach((display, index) => {
@@ -574,15 +517,15 @@ export function updateDisplay(
 }
 
 export function siteSummary(db: DB) {
-  const sites = all<SiteRow>(db, 'SELECT * FROM sites ORDER BY created_at, id').map((site) => {
+  const sites = all<SiteRow>(db, 'SELECT * FROM sites ORDER BY created_at, rowid').map((site) => {
     const groups = all<DisplayGroupRow>(
       db,
-      'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, id',
+      'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid',
       site.id,
     );
     const displays = all<DisplayRow>(
       db,
-      'SELECT * FROM displays WHERE site_id = ? ORDER BY group_id, start_index, created_at, id',
+      'SELECT * FROM displays WHERE site_id = ? ORDER BY group_id, start_index, created_at, rowid',
       site.id,
     );
     return {
@@ -601,13 +544,13 @@ export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
   if (!site) return null;
   const groups = all<DisplayGroupRow>(
     db,
-    'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, id',
+    'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid',
     siteId,
   ).map((group) => {
     const layout = get<LayoutRow>(db, 'SELECT * FROM layouts WHERE id = ?', group.layout_id);
     const displays = all<DisplayRow>(
       db,
-      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, id',
+      'SELECT * FROM displays WHERE group_id = ? ORDER BY start_index, created_at, rowid',
       group.id,
     ).map((display) => {
       const status = deviceStatusFor(db, heartbeatOnlineMs, display.device_id);
@@ -630,7 +573,7 @@ export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
   });
   const devices = all<DeviceRow>(
     db,
-    'SELECT * FROM devices WHERE site_id = ? OR site_id IS NULL ORDER BY created_at, id',
+    'SELECT * FROM devices WHERE site_id = ? OR site_id IS NULL ORDER BY created_at, rowid',
     siteId,
   ).map((device) => ({
     id: device.id,

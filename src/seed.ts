@@ -144,13 +144,15 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
       if (!contentId) return;
       run(
         db,
-        `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode, transition_ms, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode,
+                                    fit_mode_override, transition_ms, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         `pli-sample-${index + 1}`,
         playlistId,
         contentId,
         index + 1,
         duration,
+        fit,
         fit,
         transition,
         enabled,

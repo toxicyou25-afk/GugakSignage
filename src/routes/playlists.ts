@@ -15,8 +15,12 @@ function parseItems(raw: unknown): PlaylistItemInput[] | { error: string } {
     const value = item as Record<string, unknown>;
     const contentId = asTrimmed(value.contentId, 100);
     if (!contentId) return { error: `${index + 1}번째 항목의 콘텐츠를 선택해 주세요.` };
-    const fitMode = String(value.fitMode ?? 'contain') as FitMode;
-    if (!FITS.has(fitMode)) return { error: `${index + 1}번째 항목의 맞춤 방식이 올바르지 않습니다.` };
+    const fitMode = value.fitMode === undefined || value.fitMode === null || value.fitMode === ''
+      ? null
+      : String(value.fitMode) as FitMode;
+    if (fitMode !== null && !FITS.has(fitMode)) {
+      return { error: `${index + 1}번째 항목의 맞춤 방식이 올바르지 않습니다.` };
+    }
     items.push({
       contentId,
       durationSeconds: parseIntRange(value.durationSeconds, 10, 3, 3600),
@@ -34,7 +38,7 @@ function itemDto(row: PlaylistItemRow) {
     contentId: row.content_id,
     position: row.position,
     durationSeconds: row.duration_seconds,
-    fitMode: row.fit_mode,
+    fitMode: row.fit_mode_override,
     transitionMs: row.transition_ms,
     enabled: Boolean(row.enabled),
     content: {
@@ -143,13 +147,15 @@ export function playlistRoutes(db: DB): Router {
       parsed.forEach((item, index) => {
         run(
           db,
-          `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode, transition_ms, enabled)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO playlist_items(id, playlist_id, content_id, position, duration_seconds, fit_mode,
+                                      fit_mode_override, transition_ms, enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id(),
           playlist.id,
           item.contentId,
           index + 1,
           item.durationSeconds,
+          'contain',
           item.fitMode,
           item.transitionMs,
           item.enabled ? 1 : 0,

@@ -22,6 +22,8 @@ const report = {
   adminPreview: null,
   player: null,
   perMonitorWindow: null,
+  offlineReload: null,
+  testingOffline: false,
   physicalMonitors: 'NOT_RUN',
   finishedAt: null,
   result: 'running',
@@ -123,7 +125,7 @@ try {
       body: JSON.stringify({
         name: created.playlist.name,
         description: created.playlist.description,
-        items: [{ contentId: image.id, durationSeconds: 3, fitMode: 'cover', transitionMs: 250, enabled: true }],
+        items: [{ contentId: image.id, durationSeconds: 3, transitionMs: 250, enabled: true }],
       }),
     });
     if (!updatedResponse.ok) throw new Error(await updatedResponse.text());
@@ -187,7 +189,10 @@ try {
 
   const player = await context.newPage();
   player.on('console', (message) => {
-    if (message.type() === 'error' && !message.text().includes('favicon')) report.consoleErrors.push(`player: ${message.text()}`);
+    const expectedOffline = report.testingOffline && /Failed to fetch|ERR_INTERNET_DISCONNECTED|net::ERR/.test(message.text());
+    if (message.type() === 'error' && !message.text().includes('favicon') && !expectedOffline) {
+      report.consoleErrors.push(`player: ${message.text()}`);
+    }
   });
   player.on('pageerror', (error) => report.pageErrors.push(`player: ${error.message}`));
   await player.goto(`${base}/player/?code=GUGAK1`, { waitUntil: 'networkidle' });
@@ -212,6 +217,50 @@ try {
   step('서버 시각 기준 3초 전환 관찰', { changed, serverOffsetMs: afterBoundary.serverOffsetMs });
 
   const firstDisplayId = report.player.wallDisplayIds[0];
+  report.testingOffline = true;
+  await context.setOffline(true);
+  await player.reload({ waitUntil: 'domcontentloaded' });
+  await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 15_000 });
+  await player.waitForSelector('.wall-surface .wall-screen', { timeout: 20_000 });
+  await player.waitForFunction(() => document.querySelectorAll('.wall-screen .wall-media').length === 4, null, { timeout: 20_000 });
+  report.offlineReload = await player.evaluate(async () => {
+    const shared = await import('/engine/index.js');
+    const manifest = JSON.parse(localStorage.getItem('signage.player.manifest.v1'));
+    const state = window.__signagePlayer.getState();
+    const storedOffset = Number(localStorage.getItem('signage.player.manifestOffsetMs'));
+    const expected = Object.fromEntries(manifest.wall.displays
+      .filter((display) => display.deviceId === state.deviceId)
+      .map((display) => {
+        const actual = state.wallPlans[display.id];
+        const plan = shared.buildRenderPlan(
+          shared.wallScreenInput(manifest.wall, display.id),
+          display.id,
+          actual.atMs,
+        );
+        return [display.id, { imageId: plan.imageId, nextChangeAtMs: plan.nextChangeAtMs }];
+      }));
+    return {
+      offsetNow: state.serverOffsetMs,
+      storedOffset,
+      offsetDriftMs: Math.abs(state.serverOffsetMs - storedOffset),
+      cacheAgeMs: Date.now() - Number(localStorage.getItem('signage.player.manifestCachedAt')),
+      screenCount: document.querySelectorAll('.wall-screen').length,
+      plansMatchSharedInput: Object.entries(state.wallPlans).every(([displayId, plan]) =>
+        plan.imageId === expected[displayId]?.imageId &&
+        plan.nextChangeAtMs === expected[displayId]?.nextChangeAtMs),
+      expected,
+      actual: state.wallPlans,
+    };
+  });
+  await player.waitForTimeout(700);
+  await player.screenshot({ path: path.join(evidenceDir, 'multimonitor-05-player-offline-reload.png') });
+  step('오프라인 재로드에서 캐시 오프셋과 공유 RenderPlan 유지', report.offlineReload);
+  if (report.offlineReload.offsetDriftMs > 50 || !report.offlineReload.plansMatchSharedInput) {
+    throw new Error('오프라인 재로드 시각 보정이 캐시 시점과 다릅니다.');
+  }
+  await context.setOffline(false);
+  report.testingOffline = false;
+
   await player.goto(`${base}/player/?display=${encodeURIComponent(firstDisplayId)}`, { waitUntil: 'networkidle' });
   await player.waitForSelector('.wall-surface.is-single .wall-screen', { timeout: 30_000 });
   await player.waitForSelector('.wall-surface .wall-media', { timeout: 30_000 });

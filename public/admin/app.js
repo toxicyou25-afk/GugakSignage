@@ -693,7 +693,7 @@ function syncEditorFields() {
     const item = state.editor.items[index];
     if (!item) return;
     item.durationSeconds = Number($('[data-item-duration]', row).value) || 10;
-    item.fitMode = $('[data-item-fit]', row).value;
+    item.fitMode = $('[data-item-fit]', row).value || null;
     item.transitionMs = Number($('[data-item-transition]', row).value) || 0;
     item.enabled = $('[data-item-enabled]', row).checked;
   });
@@ -713,7 +713,7 @@ function renderEditorItems() {
           <p class="playlist-item-title">${index + 1}. ${esc(item.content.name)}</p>
           <div class="playlist-item-fields">
             <label>표시 시간(초)<input type="number" data-item-duration min="3" max="3600" value="${item.durationSeconds}" /></label>
-            <label>화면 맞춤<select data-item-fit><option value="contain" ${item.fitMode === 'contain' ? 'selected' : ''}>전체 보이기</option><option value="cover" ${item.fitMode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${item.fitMode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
+            <label>화면 맞춤<select data-item-fit><option value="" ${!item.fitMode ? 'selected' : ''}>화면 설정 사용</option><option value="contain" ${item.fitMode === 'contain' ? 'selected' : ''}>전체 보이기</option><option value="cover" ${item.fitMode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${item.fitMode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
             <label>전환(ms)<input type="number" data-item-transition min="0" max="3000" step="100" value="${item.transitionMs}" /></label>
             <label style="justify-content:end"><span>&nbsp;</span><span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#48565d"><input type="checkbox" data-item-enabled ${item.enabled ? 'checked' : ''} style="width:auto;min-height:0" /> 사용</span></label>
           </div>
@@ -968,7 +968,7 @@ document.addEventListener('click', async (event) => {
         const select = $('#add-content-select');
         const content = state.contents.find((item) => item.id === select?.value);
         if (!content) return;
-        state.editor.items.push({ contentId: content.id, content, durationSeconds: content.kind === 'url' ? 15 : 10, fitMode: 'contain', transitionMs: 400, enabled: true });
+        state.editor.items.push({ contentId: content.id, content, durationSeconds: content.kind === 'url' ? 15 : 10, fitMode: null, transitionMs: 400, enabled: true });
         renderEditorItems();
       } else if (action === 'remove-playlist-item') {
         syncEditorFields();

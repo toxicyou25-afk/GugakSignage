@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { buildRenderPlan } from '/engine/index.js';
+import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
 
 const STORAGE = {
   token: 'signage.player.token',
   hardwareId: 'signage.player.hardwareId',
   deviceId: 'signage.player.deviceId',
   manifest: 'signage.player.manifest.v1',
+  manifestOffsetMs: 'signage.player.manifestOffsetMs',
+  manifestCachedAt: 'signage.player.manifestCachedAt',
   lastCode: 'signage.player.lastCode',
 };
 const POLL_MS = 15_000;
@@ -181,6 +183,8 @@ async function pair(code, auto = false, options = {}) {
     safeSet(STORAGE.lastCode, normalized);
     if (previousDevice && previousDevice !== runtime.deviceId) {
       safeRemove(STORAGE.manifest);
+      safeRemove(STORAGE.manifestOffsetMs);
+      safeRemove(STORAGE.manifestCachedAt);
       runtime.manifest = null;
       runtime.pendingManifest = null;
       await clearMediaCache();
@@ -279,7 +283,11 @@ async function fetchManifest(options = {}) {
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
     setOffline(false);
+    const serverMs = Date.parse(manifest.serverTime);
+    if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
     safeSet(STORAGE.manifest, JSON.stringify(manifest));
+    safeSet(STORAGE.manifestOffsetMs, String(runtime.serverOffsetMs));
+    safeSet(STORAGE.manifestCachedAt, String(Date.now()));
     el.error.hidden = true;
     acceptManifest(manifest, Boolean(options.initial));
     prefetchAssets(manifest);
@@ -289,8 +297,8 @@ async function fetchManifest(options = {}) {
     if (!runtime.manifest) {
       const cached = loadCachedManifest();
       if (cached) {
-        runtime.manifest = cached;
-        applyManifest(cached, true);
+        runtime.manifest = cached.manifest;
+        applyManifest(cached.manifest, true, { serverOffsetMs: cached.serverOffsetMs });
       } else {
         showError('서버에 연결하지 못했습니다', '캐시된 재생목록이 없습니다. 네트워크와 서버 상태를 확인한 뒤 다시 연결해 주세요.');
       }
@@ -375,14 +383,16 @@ function queueFor(playlist) {
   return (playlist?.items || []).filter((item) => item.enabled && item.content?.url);
 }
 
-function applyManifest(manifest, restart) {
+function applyManifest(manifest, restart, clock = {}) {
   runtime.manifest = manifest;
   runtime.pendingManifest = null;
   hideCenter();
   el.error.hidden = true;
   el.deviceLabel.textContent = manifest.device?.name || '';
   safeSet(STORAGE.deviceId, manifest.device?.id || runtime.deviceId || '');
-  if (manifest.serverTime) {
+  if (Number.isFinite(clock.serverOffsetMs)) {
+    runtime.serverOffsetMs = clock.serverOffsetMs;
+  } else if (manifest.serverTime) {
     const serverMs = Date.parse(manifest.serverTime);
     if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
   }
@@ -418,42 +428,6 @@ function applyManifest(manifest, restart) {
     runtime.index = 0;
     playCurrent();
   }
-}
-
-function wallPlaylistSnapshot(wall, screen) {
-  const items = (screen.playlist?.items || []).filter((item) =>
-    item.enabled && item.content?.url && item.content?.width > 0 && item.content?.height > 0,
-  );
-  return {
-    site: { ...wall.site, publication: { epoch: wall.group.epoch } },
-    group: { ...wall.group, settings: wall.group.settings || { dwellMs: wall.dwellMs } },
-    layout: wall.layout,
-    playlist: {
-      id: screen.playlist?.id || `empty-${screen.displayId}`,
-      name: screen.playlist?.name || '배정 없음',
-      items: items.map((item) => ({
-        id: item.id,
-        imageId: item.content.id,
-        durationMs: Math.max(1, item.durationSeconds) * 1000,
-        fitMode: item.fitMode,
-        transitionMs: item.transitionMs,
-        enabled: true,
-      })),
-    },
-    images: items.map((item) => ({
-      id: item.content.id,
-      filename: item.content.name,
-      width: item.content.width,
-      height: item.content.height,
-      mime: item.content.mime || 'application/octet-stream',
-      displayUrl: item.content.url,
-    })),
-    displays: wall.displays,
-    mode: wall.group.playbackMode,
-    epoch: wall.group.epoch,
-    dwellMs: wall.dwellMs,
-    settings: wall.group.settings || {},
-  };
 }
 
 function visibleWallDisplays(wall) {
@@ -616,12 +590,7 @@ function renderWallFrame() {
   const visible = visibleWallDisplays(wall);
   const plans = [];
   for (const display of visible) {
-    const screen = wall.screens.find((candidate) => candidate.displayId === display.id) || {
-      displayId: display.id,
-      playlistId: null,
-      playlist: { id: 'empty', name: '배정 없음', items: [] },
-    };
-    const plan = buildRenderPlan(wallPlaylistSnapshot(wall, screen), display.id, now);
+    const plan = buildRenderPlan(wallScreenInput(wall, display.id), display.id, now);
     runtime.wallPlans.set(display.id, plan);
     plans.push(plan);
     updateWallScreen(display.id, plan, wall);
@@ -918,7 +887,19 @@ function loadCachedManifest() {
   if (!raw) return null;
   try {
     const manifest = JSON.parse(raw);
-    if (manifest && Array.isArray(manifest.schedules)) return manifest;
+    if (manifest && Array.isArray(manifest.schedules)) {
+      const storedOffsetRaw = safeGet(STORAGE.manifestOffsetMs);
+      const cachedAtRaw = safeGet(STORAGE.manifestCachedAt);
+      const storedOffset = storedOffsetRaw === null ? Number.NaN : Number(storedOffsetRaw);
+      const cachedAt = cachedAtRaw === null ? Number.NaN : Number(cachedAtRaw);
+      const manifestServerTime = Date.parse(manifest.serverTime);
+      const serverOffsetMs = Number.isFinite(storedOffset)
+        ? storedOffset
+        : Number.isFinite(cachedAt) && Number.isFinite(manifestServerTime)
+          ? manifestServerTime - cachedAt
+          : 0;
+      return { manifest, serverOffsetMs };
+    }
   } catch { /* ignore */ }
   return null;
 }
@@ -1104,6 +1085,8 @@ el.disconnect.addEventListener('click', async () => {
   if (!confirm('이 재생기의 연결 정보와 캐시를 지울까요? 관리 화면에서 기기를 다시 연결해야 합니다.')) return;
   safeRemove(STORAGE.token);
   safeRemove(STORAGE.manifest);
+  safeRemove(STORAGE.manifestOffsetMs);
+  safeRemove(STORAGE.manifestCachedAt);
   safeRemove(STORAGE.deviceId);
   runtime.token = null;
   runtime.manifest = null;
@@ -1141,6 +1124,7 @@ window.__signagePlayer = {
         : [],
       wallPlans: Object.fromEntries([...runtime.wallPlans].map(([displayId, plan]) => [displayId, {
         imageId: plan.imageId,
+        atMs: plan.atMs,
         fit: plan.fit,
         rotation: plan.rotation,
         nextChangeAtMs: plan.nextChangeAtMs,
@@ -1156,9 +1140,9 @@ async function init() {
   await loadPlayerConfig();
   const cached = loadCachedManifest();
   if (cached && runtime.token) {
-    runtime.manifest = cached;
+    runtime.manifest = cached.manifest;
     showPlayer();
-    applyManifest(cached, true);
+    applyManifest(cached.manifest, true, { serverOffsetMs: cached.serverOffsetMs });
   }
   const storedCode = safeGet(STORAGE.lastCode);
   const codeMatchesPairedDevice = Boolean(runtime.token) && (!storedCode || storedCode === code.toUpperCase());

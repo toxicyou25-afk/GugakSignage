@@ -38,6 +38,9 @@ jobs:
       - name: Verify schedule and offline playback
         if: ${{ !cancelled() }}
         run: npm run verify:schedule
+      - name: Verify multimonitor administration and playback
+        if: ${{ !cancelled() }}
+        run: npm run verify:multimonitor
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7

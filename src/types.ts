@@ -36,6 +36,7 @@ export interface PlaylistItemRow {
   position: number;
   duration_seconds: number;
   fit_mode: FitMode;
+  fit_mode_override: FitMode | null;
   transition_ms: number;
   enabled: number;
   name: string;
@@ -142,7 +143,7 @@ export interface ScheduleRow {
 export interface PlaylistItemInput {
   contentId: string;
   durationSeconds: number;
-  fitMode: FitMode;
+  fitMode: FitMode | null;
   transitionMs: number;
   enabled: boolean;
 }
@@ -169,7 +170,7 @@ export interface ManifestItem {
   id: string;
   position: number;
   durationSeconds: number;
-  fitMode: FitMode;
+  fitMode?: FitMode;
   transitionMs: number;
   enabled: boolean;
   content: ManifestContent;

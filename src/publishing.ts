@@ -65,7 +65,7 @@ export function buildPlaylist(db: DB, playlistId: string): ManifestPlaylist | nu
     id: row.id,
     position: row.position,
     durationSeconds: row.duration_seconds,
-    fitMode: row.fit_mode,
+    ...(row.fit_mode_override ? { fitMode: row.fit_mode_override } : {}),
     transitionMs: row.transition_ms,
     enabled: Boolean(row.enabled),
     content: {

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 'use strict';
 
-const CACHE = 'gugak-signage-shell-v2';
+const CACHE = 'gugak-signage-shell-v3';
 const SHELL = [
   './', './index.html', './styles.css', './player.js',
   '/engine/index.js',
@@ -13,6 +13,7 @@ const SHELL = [
   '/engine/src/render-plan.js',
   '/engine/src/patterns.js',
   '/engine/src/snapshot.js',
+  '/engine/src/wall-input.js',
 ];
 
 self.addEventListener('install', (event) => {

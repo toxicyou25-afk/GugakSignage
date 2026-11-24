@@ -183,11 +183,11 @@ npm run dev
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 15/15 통과 (기존 11건 유지 + 다중 모니터 엔진·마이그레이션·API 4건) |
+| `npm test` | 16/16 통과 (기존 11건 유지 + 다중 모니터 엔진·결정적 배정·마이그레이션·API 5건) |
 | `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
 | `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
-| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 배정·RenderPlan 미리보기·게시, 한 PC 4화면 캔버스, 모니터별 분리 창 |
+| `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 배정·RenderPlan 미리보기·게시, 한 PC 4화면 캔버스, 오프라인 재로드, 모니터별 분리 창 |
 | `docker compose` | 로컬 검증 PC에 Docker가 없어 실행하지 못함. Compose YAML 파싱과 Dockerfile 구성을 검토했으며 Node 실행 경로로 전체 기능을 검증 |
 
 실행 로그·스크린샷과 재현 방법은 [docs/verification/mvp.md](docs/verification/mvp.md)에 있습니다. `npm run verify:api`는 테스트 출력을 `docs/verification/api-test-output.txt`, `npm run verify:first-run`은 `docs/verification/first-run.json`, `npm run verify:schedule`은 `docs/verification/schedule-run.json`, `npm run verify:multimonitor`는 `docs/verification/multimonitor-run.json`과 화면 캡처 4장을 저장합니다.

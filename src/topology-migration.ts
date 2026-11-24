@@ -50,7 +50,7 @@ function buildDefaultLayout(db: DB, siteId: string, displayCount: number, width:
 }
 
 function ensureDefaultSite(db: DB): { site: SiteRow; groupId: string; layout: LayoutRow } {
-  let site = get<SiteRow>(db, 'SELECT * FROM sites ORDER BY created_at, id LIMIT 1');
+  let site = get<SiteRow>(db, 'SELECT * FROM sites ORDER BY created_at, rowid LIMIT 1');
   const now = nowIso();
   if (!site) {
     const siteId = id();
@@ -69,7 +69,7 @@ function ensureDefaultSite(db: DB): { site: SiteRow; groupId: string; layout: La
   }
   let group = get<{ id: string; layout_id: string }>(
     db,
-    'SELECT id, layout_id FROM display_groups WHERE site_id = ? ORDER BY created_at, id LIMIT 1',
+    'SELECT id, layout_id FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid LIMIT 1',
     site.id,
   );
   let layout: LayoutRow;
@@ -102,7 +102,7 @@ function ensureDefaultSite(db: DB): { site: SiteRow; groupId: string; layout: La
  */
 export function migrateLegacyTopology(db: DB): boolean {
   if (getMeta(db, 'topology_schema_version') === '2') return false;
-  const devices = db.prepare('SELECT id, name, playlist_id, width, height, orientation, site_id FROM devices ORDER BY created_at, id')
+  const devices = db.prepare('SELECT id, name, playlist_id, width, height, orientation, site_id FROM devices ORDER BY created_at, rowid')
     .all() as unknown as Array<DevicePlaylistRow & { site_id: string | null }>;
   if (devices.length === 0) {
     setMeta(db, 'topology_schema_version', '2');
@@ -137,7 +137,10 @@ export function migrateLegacyTopology(db: DB): boolean {
       );
     }
 
-    const displays = db.prepare('SELECT * FROM displays WHERE group_id = ? ORDER BY created_at, id')
+    const displays = db.prepare(`SELECT d.* FROM displays d
+      LEFT JOIN devices dev ON dev.id = d.device_id
+      WHERE d.group_id = ?
+      ORDER BY dev.created_at, dev.rowid, d.created_at, d.rowid`)
       .all(defaults.groupId) as unknown as DisplayRow[];
     const layout = engine.buildLayout({
       id: defaults.layout.id,
@@ -198,7 +201,7 @@ export function ensureDeviceTopology(db: DB, deviceId: string): void {
   if (site) {
     groupId = get<{ id: string }>(
       db,
-      'SELECT id FROM display_groups WHERE site_id = ? ORDER BY created_at, id LIMIT 1',
+      'SELECT id FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid LIMIT 1',
       site.id,
     )?.id;
   }
@@ -208,7 +211,11 @@ export function ensureDeviceTopology(db: DB, deviceId: string): void {
     groupId = defaults.groupId;
   }
   run(db, 'UPDATE devices SET site_id = ? WHERE id = ?', site.id, deviceId);
-  const existing = get<{ id: string }>(db, 'SELECT id FROM displays WHERE device_id = ? ORDER BY created_at, id LIMIT 1', deviceId);
+  const existing = get<{ id: string }>(
+    db,
+    'SELECT id FROM displays WHERE device_id = ? ORDER BY start_index, created_at, rowid LIMIT 1',
+    deviceId,
+  );
   if (existing) return;
   const group = get<{ layout_id: string }>(db, 'SELECT layout_id FROM display_groups WHERE id = ?', groupId);
   if (!group) return;
@@ -238,12 +245,26 @@ export function ensureDeviceTopology(db: DB, deviceId: string): void {
     now,
     layoutRow.id,
   );
-  const displays = db.prepare('SELECT id FROM displays WHERE group_id = ? ORDER BY created_at, id')
-    .all(groupId) as unknown as Array<{ id: string }>;
-  displays.forEach((display, index) => {
-    run(db, 'UPDATE displays SET slot_id = ?, start_index = ?, updated_at = ? WHERE id = ?',
-      layout.slots[index]?.id ?? '', index, now, display.id);
-  });
+  const displays = db.prepare(`SELECT id, slot_id, start_index FROM displays
+      WHERE group_id = ? ORDER BY start_index, created_at, rowid`)
+    .all(groupId) as unknown as Array<{ id: string; slot_id: string; start_index: number }>;
+  const validSlotIds = new Set(layout.slots.map((slot) => slot.id));
+  const usedSlotIds = new Set<string>();
+  const freeSlots = layout.slots.filter((slot) => !displays.some((display) =>
+    display.slot_id === slot.id && !usedSlotIds.has(display.slot_id),
+  ));
+  for (const display of displays) {
+    if (display.slot_id && validSlotIds.has(display.slot_id) && !usedSlotIds.has(display.slot_id)) {
+      usedSlotIds.add(display.slot_id);
+      continue;
+    }
+    const replacement = freeSlots.shift();
+    if (!replacement) break;
+    usedSlotIds.add(replacement.id);
+    run(db, 'UPDATE displays SET slot_id = ?, updated_at = ? WHERE id = ?', replacement.id, now, display.id);
+  }
+  const nextSlot = layout.slots.find((slot) => !usedSlotIds.has(slot.id)) ?? layout.slots.at(-1);
+  const nextStartIndex = Math.max(-1, ...displays.map((display) => display.start_index)) + 1;
   const displayId = id();
   run(
     db,
@@ -260,8 +281,8 @@ export function ensureDeviceTopology(db: DB, deviceId: string): void {
     device.width,
     device.height,
     device.orientation,
-    layout.slots[count - 1]?.id ?? '',
-    count - 1,
+    nextSlot?.id ?? '',
+    nextStartIndex,
     now,
     now,
   );

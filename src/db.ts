@@ -62,6 +62,7 @@ function migrate(db: DB): void {
       position INTEGER NOT NULL,
       duration_seconds INTEGER NOT NULL DEFAULT 10,
       fit_mode TEXT NOT NULL DEFAULT 'contain' CHECK (fit_mode IN ('contain', 'cover', 'stretch')),
+      fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch')),
       transition_ms INTEGER NOT NULL DEFAULT 400,
       enabled INTEGER NOT NULL DEFAULT 1
     );
@@ -175,6 +176,13 @@ function migrate(db: DB): void {
   const columns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'site_id')) {
     db.exec('ALTER TABLE devices ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE SET NULL;');
+  }
+  const playlistItemColumns = db.prepare('PRAGMA table_info(playlist_items)').all() as Array<{ name: string }>;
+  if (!playlistItemColumns.some((column) => column.name === 'fit_mode_override')) {
+    db.exec(`ALTER TABLE playlist_items
+      ADD COLUMN fit_mode_override TEXT CHECK (fit_mode_override IN ('contain', 'cover', 'stretch'));`);
+    // Existing rows always had a materialized contain/cover/stretch choice.
+    db.exec('UPDATE playlist_items SET fit_mode_override = fit_mode WHERE fit_mode_override IS NULL;');
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);');
 }

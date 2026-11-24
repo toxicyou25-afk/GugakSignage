@@ -33,6 +33,8 @@ sites
 | `devices.site_id` | 기존 PC 기기를 장소에 연결 | 기존 기기 행과 토큰·시간표는 변경하지 않음 |
 | `publications.snapshot` | 게시 시점의 기존 재생 계약 + `wall` 확장 | 게시 후 DB 설정이 바뀌어도 기존 JSON은 바뀌지 않음 |
 
+재생목록 항목의 `fit_mode_override`가 비어 있으면 화면별 `fit_mode`를 사용한다. 과거 DB 행은 기존에 선택한 값을 명시 설정으로 backfill해 동작을 보존한다.
+
 한 모니터 수를 코드에 고정하지 않는다. API는 정수 모니터 수를 받아 엔진이 슬롯을 생성하며, 테스트는 1·2·4·8대와 0·1·3·10장 조합을 확인한다. 운영 안전 범위는 요청당 1~256개 모니터다.
 
 ## 3. 관리 API
@@ -56,7 +58,7 @@ sites
 
 ## 4. RenderPlan과 미리보기
 
-서버는 `poc/packages/engine/src/layout.js`의 `buildLayout`, `render-plan.js`의 `buildRenderPlan`을 호출한다. 별도 배치·자르기 엔진은 만들지 않는다.
+서버는 `poc/packages/engine/src/layout.js`의 `buildLayout`, `render-plan.js`의 `buildRenderPlan`을 호출한다. 별도 배치·자르기 엔진은 만들지 않는다. 게시 wall에서 RenderPlan 입력을 만드는 변환은 `poc/packages/engine/src/wall-input.js`의 `wallScreenInput` 하나를 서버와 브라우저가 함께 사용한다.
 
 - `contain`: 원본 전체를 유지하고 남는 영역은 레터박스
 - `cover`: 표시 영역 비율에 맞춰 중앙 크롭
@@ -70,6 +72,7 @@ sites
 - 게시 시 그룹 `epoch`, `dwell_ms`, `playback_mode`를 고정한다.
 - 재생기는 `/api/time`을 5회 측정해 가장 짧은 왕복 절반의 평균 오프셋을 쓰고 30초마다 다시 맞춘다.
 - 서버 단절 시 마지막 오프셋과 게시 epoch로 계속 계산하며 화면 간 공통 전환 시점을 유지한다.
+- manifest 캐시에는 마지막 서버 오프셋과 캐시 시각을 함께 보존한다. 오프라인 재로드 때 낡은 `serverTime`을 현재 시각과 다시 빼지 않고 같은 offset으로 경과 시간을 계산한다.
 - 한 PC가 여러 모니터를 구동할 때 기본 `/player/?code=...`는 모든 모니터를 한 캔버스에 배치한다.
 - 모니터마다 브라우저 창을 쓰면 `/player/?code=...&display=<id>`로 한 화면만 연다.
 - 모니터마다 PC가 다르면 각 PC가 같은 기기 그룹 스냅샷을 받되, `deviceId`가 일치하는 자기 모니터만 표시한다.
@@ -93,6 +96,7 @@ sites
 1. 장소가 없으면 `기본 장소`를 만든다.
 2. 기본 화면 그룹과 엔진 기반 배치를 만든다.
 3. 기존 `devices`마다 PC 포인터가 있는 모니터 1대를 만들고 기기의 해상도·방향·재생목록을 복사한다.
+   기기 순서는 `created_at`과 SQLite `rowid`를 함께 써서 같은 입력의 삽입 순서를 안정적으로 보존한다.
 4. `devices.site_id`만 연결하고 기기·재생목록·시간표·게시 JSON은 변경하지 않는다.
 5. 마이그레이션 버전을 기록해 재실행 시 중복 생성하지 않는다.
 
@@ -116,7 +120,9 @@ npm run verify:multimonitor
 - 4모니터 API 저장 → 4번 화면 다른 재생목록 → 미리보기 → 게시 → 재생기 manifest
 - 4화면을 두 PC로 나누고 각 manifest가 자기 화면 배정만 받는지 확인
 - 4→2모니터 변경 뒤 기존 게시 JSON과 버전 불변 확인
-- Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 재생목록, 게시, 한 PC 4화면, 3초 전환, 한 화면 분리 창
+- 5기기 레거시 DB 20회 마이그레이션에서 장치→슬롯 매핑 동일성, 새 기기 추가 후 기존 slot/start index 보존
+- 항목 fit 미지정 + 화면 fit `cover` → RenderPlan `cover`, 항목 fit `contain` → RenderPlan `contain`
+- Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 재생목록, 게시, 한 PC 4화면, 3초 전환, 오프라인 재로드 offset, 한 화면 분리 창
 
 브라우저 스크린샷과 콘솔 로그는 `docs/verification/evidence/multimonitor-*.png`, `docs/verification/multimonitor-run.json`에 있다.
 
@@ -127,3 +133,11 @@ npm run verify:multimonitor
 - 여러 물리 PC와 실제 LAN 스위치에서 장시간 시계 오차·재연결: `NOT_RUN`
 - 4K/8K 장시간 재생과 브라우저 메모리 상한: `NOT_RUN`
 - 프로젝터·TV의 overscan·색 프로파일 자동 보정: 범위 밖
+
+## 10. 리뷰 회귀 보강
+
+- fit 우선순위: `playlist_items.fit_mode_override`는 미지정을 NULL로 보존한다. 게시 변환은 명시값만 `fitMode`로 내보내므로 item → display → group → contain 순서의 엔진 선택이 실제로 동작한다. 기존 행은 최초 마이그레이션에서 `fit_mode` 값으로 backfill한다.
+- 슬롯 결정성: 레거시 기기는 생성 시각과 SQLite 삽입 순서(`rowid`)로 정렬하고 `start_index`를 고정한다. 새 기기 등록은 기존 `slot_id`를 유지하고 비어 있는 슬롯만 배정한다.
+- 오프라인 시각: manifest, 캐시 시각, 마지막 서버 offset을 함께 저장한다. 재로드 후 `Date.now() + offset`으로 경과 시간을 계산하며 낡은 manifest `serverTime`을 현재 시각과 다시 빼지 않는다.
+- 공유 변환: `poc/packages/engine/src/wall-input.js`의 `wallScreenInput`을 서버 미리보기와 브라우저 재생기가 공통 사용한다.
+- CI: `.github/workflows/ci.yml`의 Windows 검증 단계에 `npm run verify:multimonitor`를 추가했다.

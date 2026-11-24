@@ -7,3 +7,4 @@ export * from './src/image.js';
 export * from './src/render-plan.js';
 export * from './src/patterns.js';
 export * from './src/snapshot.js';
+export * from './src/wall-input.js';

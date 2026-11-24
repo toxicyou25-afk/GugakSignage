@@ -69,6 +69,7 @@ interface EngineApi {
   ): EngineLayoutSlot | null;
   validateLayout(layout: Record<string, unknown>, options?: Record<string, unknown>): unknown;
   validateSnapshot(snapshot: Record<string, unknown>, options?: Record<string, unknown>): unknown;
+  wallScreenInput(wall: Record<string, unknown>, displayId: string): Record<string, unknown>;
 }
 
 const localRequire = createRequire(import.meta.url);

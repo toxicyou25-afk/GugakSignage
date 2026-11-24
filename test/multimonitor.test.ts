@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -10,18 +11,62 @@ import test from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { all, get, openDatabase, run, type DB } from '../src/db.js';
-import { buildWallPlans } from '../src/topology.js';
+import { buildWallPlans, engineSnapshotForWall } from '../src/topology.js';
+import { ensureDeviceTopology } from '../src/topology-migration.js';
 
 const require = createRequire(import.meta.url);
 const engine = require('../poc/packages/engine/index.js') as {
   buildLayout(options: Record<string, unknown>): any;
   buildRenderPlan(snapshot: Record<string, unknown>, displayId: string, atMs: number): any;
+  wallScreenInput(wall: Record<string, unknown>, displayId: string): Record<string, unknown>;
 };
 const fixtures = require('../poc/test-support/fixtures.js') as {
   makeSite(options?: Record<string, unknown>): any;
   timeAtSlot(snapshot: Record<string, unknown>, slot: number): number;
   withMode(snapshot: Record<string, unknown>, mode: string): Record<string, unknown>;
 };
+
+function createLegacyDatabase(dbPath: string, deviceNames: string[]): void {
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE contents (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, mime TEXT,
+      stored_name TEXT, external_url TEXT, file_size INTEGER, width INTEGER, height INTEGER,
+      checksum TEXT, created_at TEXT NOT NULL);
+    CREATE TABLE playlists (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE playlist_items (id TEXT PRIMARY KEY, playlist_id TEXT NOT NULL, content_id TEXT NOT NULL,
+      position INTEGER NOT NULL, duration_seconds INTEGER NOT NULL, fit_mode TEXT NOT NULL,
+      transition_ms INTEGER NOT NULL, enabled INTEGER NOT NULL);
+    CREATE TABLE devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT,
+      orientation TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, pairing_code TEXT NOT NULL,
+      hardware_id TEXT, player_token TEXT, playlist_id TEXT, published_version INTEGER NOT NULL,
+      published_at TEXT, last_seen TEXT, last_ip TEXT, player_state TEXT, last_error TEXT, notes TEXT,
+      reported_width INTEGER, reported_height INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE schedules (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, playlist_id TEXT NOT NULL,
+      days TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, enabled INTEGER NOT NULL,
+      created_at TEXT NOT NULL);
+    CREATE TABLE publications (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, version INTEGER NOT NULL,
+      snapshot TEXT NOT NULL, published_at TEXT NOT NULL, UNIQUE(device_id, version));
+  `);
+  const insert = legacy.prepare(`INSERT INTO devices(
+    id, name, location, orientation, width, height, pairing_code, hardware_id, player_token, playlist_id,
+    published_version, published_at, last_seen, last_ip, player_state, last_error, notes,
+    reported_width, reported_height, created_at, updated_at
+  ) VALUES (?, ?, '로비', 'landscape', 1920, 1080, ?, NULL, NULL, NULL, 0, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL, NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
+  deviceNames.forEach((name, index) => insert.run(crypto.randomUUID(), name, `LEGACY${index + 1}`));
+  legacy.close();
+}
+
+function slotMapping(db: DB): Array<{ device: string; slotId: string; startIndex: number }> {
+  return all<{ device: string; slotId: string; startIndex: number }>(
+    db,
+    `SELECT dev.name AS device, d.slot_id AS slotId, d.start_index AS startIndex
+       FROM displays d JOIN devices dev ON dev.id = d.device_id
+      ORDER BY d.start_index, d.rowid`,
+  );
+}
 
 test('다중 모니터 RenderPlan은 1·2·4·8대, 이미지 0·1·3·10장, 방향·회전·배치·모드를 모두 처리한다', () => {
   const modes = ['individual', 'synchronized-cycle', 'mirror', 'canvas'];
@@ -111,10 +156,71 @@ test('게시 스냅샷과 미리보기는 같은 wall 입력에서 같은 Render
   };
   const at = fixtures.timeAtSlot(base.snapshot, 1);
   const publishedPlans = buildWallPlans(wall, at);
-  const previewPlans = buildWallPlans(structuredClone(wall), at);
+  const previewPlans = wall.screens.map((screen: any) =>
+    engine.buildRenderPlan(engine.wallScreenInput(structuredClone(wall), screen.displayId), screen.displayId, at),
+  );
   assert.deepEqual(previewPlans, publishedPlans);
+  assert.deepEqual(
+    engineSnapshotForWall(wall, wall.displays[0].id),
+    engine.wallScreenInput(wall, wall.displays[0].id),
+  );
   assert.equal(new Set(publishedPlans.map((plan) => plan.imageId)).size, 1);
   assert.equal(new Set(publishedPlans.map((plan) => plan.slotId)).size, 4);
+});
+
+test('5기기 마이그레이션은 20회 실행해도 같은 장치→슬롯을 만들고 새 기기는 기존 배정을 보존한다', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-topology-order-'));
+  const deviceNames = ['Lobby A', 'Lobby B', 'Lobby C', 'Lobby D', 'Lobby E'];
+  const mappings: string[] = [];
+  try {
+    for (let run = 0; run < 20; run += 1) {
+      const runDir = path.join(root, String(run));
+      fs.mkdirSync(runDir);
+      const dbPath = path.join(runDir, 'legacy.sqlite');
+      createLegacyDatabase(dbPath, deviceNames);
+      const db = openDatabase(dbPath);
+      try {
+        mappings.push(JSON.stringify(slotMapping(db)));
+        assert.equal(mappings.at(-1) && JSON.parse(mappings.at(-1)!).length, 5);
+      } finally {
+        db.close();
+      }
+    }
+    assert.equal(new Set(mappings).size, 1, mappings.join('\n'));
+
+    const dbPath = path.join(root, 'append.sqlite');
+    createLegacyDatabase(dbPath, deviceNames.slice(0, 3));
+    const db = openDatabase(dbPath);
+    try {
+      const before = slotMapping(db);
+      const siteId = get<{ site_id: string }>(db, 'SELECT site_id FROM devices LIMIT 1')!.site_id;
+      const newDeviceId = crypto.randomUUID();
+      run(
+        db,
+        `INSERT INTO devices(
+          id, name, location, orientation, width, height, pairing_code, hardware_id, player_token,
+          playlist_id, published_version, published_at, last_seen, last_ip, player_state, last_error,
+          notes, reported_width, reported_height, site_id, created_at, updated_at)
+         VALUES (?, 'Lobby New', '로비', 'landscape', 1920, 1080, 'LEGACYNEW', NULL, NULL, NULL,
+          0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
+        newDeviceId,
+        siteId,
+        '2026-01-02T00:00:00.000Z',
+        '2026-01-02T00:00:00.000Z',
+      );
+      ensureDeviceTopology(db, newDeviceId);
+      const after = slotMapping(db);
+      const original = after.filter((row) => row.device !== 'Lobby New');
+      assert.deepEqual(original, before);
+      const added = after.find((row) => row.device === 'Lobby New');
+      assert(added);
+      assert.equal(before.some((row) => row.slotId === added.slotId), false);
+    } finally {
+      db.close();
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이그레이션된다', () => {
@@ -142,6 +248,9 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
     CREATE TABLE publications (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, version INTEGER NOT NULL,
       snapshot TEXT NOT NULL, published_at TEXT NOT NULL, UNIQUE(device_id, version));
     INSERT INTO playlists VALUES ('playlist-old', '기존 목록', NULL, '2026-01-01', '2026-01-01');
+    INSERT INTO contents VALUES ('content-old', '기존 이미지', 'image', 'image/png', 'old.png', NULL,
+      1, 1920, 1080, NULL, '2026-01-01');
+    INSERT INTO playlist_items VALUES ('item-old', 'playlist-old', 'content-old', 1, 10, 'contain', 300, 1);
     INSERT INTO devices VALUES ('device-old', '기존 로비 PC', '로비', 'landscape', 1920, 1080, 'OLD001',
       NULL, NULL, 'playlist-old', 7, '2026-01-02', NULL, NULL, 'playing', NULL, NULL, NULL, NULL,
       '2026-01-01', '2026-01-02');
@@ -156,6 +265,10 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
   assert.equal(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays')?.n, 1);
   assert.equal(get<{ site_id: string }>(db, 'SELECT site_id FROM devices WHERE id = ?', 'device-old')?.site_id?.length, 36);
   assert.equal(get<{ playlist_id: string }>(db, 'SELECT playlist_id FROM displays WHERE device_id = ?', 'device-old')?.playlist_id, 'playlist-old');
+  assert.equal(
+    get<{ fit_mode_override: string }>(db, 'SELECT fit_mode_override FROM playlist_items WHERE id = ?', 'item-old')?.fit_mode_override,
+    'contain',
+  );
   assert.equal(get<{ snapshot: string }>(db, 'SELECT snapshot FROM publications WHERE id = ?', 'publication-old')?.snapshot.includes('기존 목록'), true);
   db.close();
 
@@ -260,6 +373,43 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     assert.equal(displayUpdate.body.preview.plans.length, 4);
     assert.equal(displayUpdate.body.preview.plans[3].imageId, 'image-2');
     assert.equal(displayUpdate.body.preview.plans[0].imageId, 'image-1');
+    assert.equal(displayUpdate.body.preview.plans[3].fit, 'cover');
+
+    const unspecifiedItemFit = await request('/api/playlists/playlist-2', {
+      method: 'PUT',
+      body: {
+        name: '오른쪽 전용',
+        description: null,
+        items: [{ contentId: 'image-2', durationSeconds: 10, transitionMs: 300, enabled: true }],
+      },
+    });
+    assert.equal(unspecifiedItemFit.status, 200, JSON.stringify(unspecifiedItemFit.body));
+    assert.equal(unspecifiedItemFit.body.items[0].fitMode, null);
+    const itemFallbackPreview = await request(`/api/groups/${groupId}/preview`);
+    const itemFallbackPlan = itemFallbackPreview.body.plans.find((plan: any) => plan.displayId === displays[3].id);
+    assert.equal(itemFallbackPlan.fit, 'cover');
+
+    const explicitItemFit = await request('/api/playlists/playlist-2', {
+      method: 'PUT',
+      body: {
+        name: '오른쪽 전용',
+        description: null,
+        items: [{ contentId: 'image-2', durationSeconds: 10, fitMode: 'contain', transitionMs: 300, enabled: true }],
+      },
+    });
+    assert.equal(explicitItemFit.status, 200, JSON.stringify(explicitItemFit.body));
+    const explicitPreview = await request(`/api/groups/${groupId}/preview`);
+    const explicitPlan = explicitPreview.body.plans.find((plan: any) => plan.displayId === displays[3].id);
+    assert.equal(explicitPlan.fit, 'contain');
+
+    await request('/api/playlists/playlist-2', {
+      method: 'PUT',
+      body: {
+        name: '오른쪽 전용',
+        description: null,
+        items: [{ contentId: 'image-2', durationSeconds: 10, transitionMs: 300, enabled: true }],
+      },
+    });
 
     const published = await request(`/api/groups/${groupId}/publish`, { method: 'POST' });
     assert.equal(published.status, 200, JSON.stringify(published.body));
@@ -268,6 +418,11 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const frozen = get<{ snapshot: string }>(db, 'SELECT snapshot FROM publications WHERE device_id = ? AND version = 1', device.body.device.id)!.snapshot;
     assert(frozen.includes('"schemaVersion":2'));
     assert(frozen.includes('"playlistId":"playlist-2"'));
+    const frozenWall = JSON.parse(frozen).wall;
+    const frozenDisplay = frozenWall.displays.find((display: any) => display.id === displays[3].id);
+    const frozenScreen = frozenWall.screens.find((screen: any) => screen.displayId === displays[3].id);
+    assert.equal(frozenDisplay.fit, 'cover');
+    assert.equal(Object.hasOwn(frozenScreen.playlist.items[0], 'fitMode'), false);
 
     const registration = await request('/api/player/register', {
       method: 'POST',
