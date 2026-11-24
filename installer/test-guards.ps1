@@ -27,6 +27,91 @@ function Assert-Throws {
 }
 
 try {
+    $hangulDataName = [string]::Concat([char]0xAE30, [char]0xAD00, " ", [char]0xB370, [char]0xC774, [char]0xD130)
+    $legacyApp = Join-Path $tempRoot "legacy-app"
+    $legacyData = Join-Path (Join-Path $tempRoot $hangulDataName) "Gugak Signage"
+    $defaultData = Join-Path $tempRoot "default-data"
+    New-Item -ItemType Directory -Path $legacyApp, (Join-Path $legacyData "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $legacyData "signage.sqlite"), "legacy-db")
+    $escapedLegacyData = $legacyData.Replace("\", "\\")
+    $legacyEnv = "DATA_DIR=`"$escapedLegacyData`"`r`nADMIN_PASSWORD=0000`r`nSEED_SAMPLES=true`r`n"
+    [IO.File]::WriteAllText((Join-Path $legacyApp ".env"), $legacyEnv, [Text.UTF8Encoding]::new($false))
+
+    $resolved = Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
+    if (-not (Test-PathEqual -Left ([string]$resolved.DataDir) -Right $legacyData)) {
+        throw "install.json 없는 legacy DATA_DIR를 찾지 못했습니다: $($resolved.DataDir)"
+    }
+    if ([string]$resolved.Source -ne "install-env") {
+        throw "legacy 데이터 경로의 출처가 잘못되었습니다: $($resolved.Source)"
+    }
+    if (Test-Path -LiteralPath $defaultData) { throw "legacy 경로 검색이 기본 데이터 폴더를 만들었습니다." }
+    $results.legacyEnvOnlyDataDirResolved = $true
+    $results.legacyEscapedUnicodePathResolved = $true
+    $argumentValues = @(Get-DataDirArgumentValues -Arguments ('watchdog.exe -DataDir "' + $escapedLegacyData + '" /PORT=3000'))
+    if ($argumentValues.Count -ne 1 -or -not (Test-PathEqual -Left ([string]$argumentValues[0]) -Right $legacyData)) {
+        throw "legacy 작업/바로가기 인자의 DATA_DIR를 해석하지 못했습니다."
+    }
+    $results.legacyTaskShortcutArgumentParsed = $true
+
+    $resolverOutputFile = Join-Path $tempRoot "resolver-output.txt"
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "ops\resolve-data-dir.ps1") -InstallDir $legacyApp -DefaultDataDir $defaultData -OutputFile $resolverOutputFile
+    if ($LASTEXITCODE -ne 0) { throw "공유 경로 resolver helper가 실패했습니다." }
+    $resolverTransport = [IO.File]::ReadAllText($resolverOutputFile)
+    if ($resolverTransport -notmatch '^OK\|([0-9A-F]+)\|1$') { throw "공유 경로 resolver helper 응답이 잘못되었습니다: $resolverTransport" }
+    $hex = $Matches[1]
+    $bytes = [byte[]]::new($hex.Length / 2)
+    for ($index = 0; $index -lt $bytes.Length; $index++) { $bytes[$index] = [Convert]::ToByte($hex.Substring($index * 2, 2), 16) }
+    $transportDataDir = [Text.Encoding]::Unicode.GetString($bytes)
+    if (-not (Test-PathEqual -Left $transportDataDir -Right $legacyData)) { throw "공유 경로 resolver의 Unicode 전달이 잘못되었습니다." }
+    $results.innoSharedResolverTransportPreservesUnicode = $true
+
+    $manifestPath = Join-Path $legacyApp "install.json"
+    $relativeData = Join-Path $tempRoot "relative-data"
+    New-Item -ItemType Directory -Path (Join-Path $relativeData "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $relativeData "signage.sqlite"), "relative-db")
+    $relativeConfig = [ordered]@{ dataDir = "..\relative-data" }
+    [IO.File]::WriteAllText($manifestPath, ($relativeConfig | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    $relativeEnv = "DATA_DIR=`"..\relative-data`"`r`n"
+    [IO.File]::WriteAllText((Join-Path $legacyApp ".env"), $relativeEnv, [Text.UTF8Encoding]::new($false))
+    $resolved = Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
+    if (-not (Test-PathEqual -Left ([string]$resolved.DataDir) -Right $relativeData) -or
+        [string]$resolved.Source -ne "install.json") {
+        throw "상대 install.json 데이터 경로를 우선 해석하지 못했습니다."
+    }
+    $results.relativeInstallConfigHasPriority = $true
+
+    $staleConfig = [ordered]@{ dataDir = "..\missing-legacy-data" }
+    [IO.File]::WriteAllText($manifestPath, ($staleConfig | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    Remove-Item -LiteralPath (Join-Path $legacyApp ".env") -Force
+    New-Item -ItemType Directory -Path (Join-Path $defaultData "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $defaultData "signage.sqlite"), "known-default-db")
+    $resolved = Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
+    if (-not (Test-PathEqual -Left ([string]$resolved.DataDir) -Right $defaultData)) {
+        throw "존재하지 않는 설정 경로에서 알려진 기존 기본 데이터를 찾지 못했습니다."
+    }
+    $results.staleConfigFallsBackToExistingDefault = $true
+
+    $conflictData = Join-Path $tempRoot "conflict-data"
+    New-Item -ItemType Directory -Path (Join-Path $conflictData "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $conflictData "signage.sqlite"), "conflict-db")
+    $conflictConfig = [ordered]@{ dataDir = $relativeData }
+    [IO.File]::WriteAllText($manifestPath, ($conflictConfig | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $legacyApp ".env"), ("DATA_DIR=`"$conflictData`"`r`n"), [Text.UTF8Encoding]::new($false))
+    $message = Assert-Throws -Description "install.json/.env 경로 충돌" -Action {
+        Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
+    }
+    if ($message -notmatch "충돌|conflict") { throw "경로 충돌 오류가 명확하지 않습니다: $message" }
+    $results.configEnvConflictBlocked = $true
+
+    $insideConfig = [ordered]@{ dataDir = ".\data" }
+    [IO.File]::WriteAllText($manifestPath, ($insideConfig | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $legacyApp ".env"), "", [Text.UTF8Encoding]::new($false))
+    $message = Assert-Throws -Description "install 폴더 내부 legacy 데이터 경로" -Action {
+        Resolve-InstallerDataDir -InstallDir $legacyApp -DefaultDataDir $defaultData
+    }
+    if ($message -notmatch "설치 폴더|install") { throw "내부 데이터 경로 오류가 명확하지 않습니다: $message" }
+    $results.legacyDataInsideInstallBlocked = $true
+
     $equalDir = Join-Path $tempRoot "equal"
     $message = Assert-Throws -Description "설치 폴더와 같은 데이터 폴더" -Action {
         & $installScript -SourceDir $repoRoot -InstallDir $equalDir -DataDir $equalDir -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Equal-$suffix"

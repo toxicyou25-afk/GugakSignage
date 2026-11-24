@@ -9,7 +9,7 @@ $configPath = Join-Path $installDir "install.json"
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
-$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$config = Read-JsonFile -Path $configPath
 $logDir = Get-NormalizedPath -Path ([string]$config.logDir)
 $statePath = Join-Path $logDir "watchdog-state.json"
 $controlDir = Join-Path (Get-NormalizedPath -Path ([string]$config.dataDir)) "control"
@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
 Set-Content -LiteralPath $stopRequest -Value ([DateTime]::UtcNow.ToString("o")) -Encoding ascii
 
 if (Test-Path -LiteralPath $statePath) {
-    $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $state = Read-JsonFile -Path $statePath
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while ([DateTime]::UtcNow -lt $deadline) {
         $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")

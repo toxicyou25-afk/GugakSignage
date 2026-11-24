@@ -1,188 +1,188 @@
-# Relevant sanitized excerpt from the Inno Setup 6.7.3 execution log.
-2026-11-24 21:37:20.763   Log opened. (Time zone: UTC+09:00)
-2026-11-24 21:37:20.763   Setup version: Inno Setup version 6.7.3
-2026-11-24 21:37:20.763   Original Uninstall EXE: <test-root>\app\unins000.exe
-2026-11-24 21:37:20.763   Uninstall DAT: <test-root>\app\unins000.dat
-2026-11-24 21:37:20.763   Current Uninstall EXE: C:\Users\<user>\AppData\Local\Temp\is-A2CJNMRLA6-uninstall.tmp\_unins.tmp
-2026-11-24 21:37:20.763   Uninstall command line: /SECONDPHASE="<test-root>\app\unins000.exe" /FIRSTPHASEWND=$AF0F32 /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="<test-root>\inno-uninstall.log"
-2026-11-24 21:37:20.764   Windows version: 10.0.26300
-2026-11-24 21:37:20.764   Windows architecture: x64 (64-bit)
-2026-11-24 21:37:20.764   Machine types supported by system: x86 x64
-2026-11-24 21:37:20.764   User privileges: None
-2026-11-24 21:37:20.766   Administrative install mode: No
-2026-11-24 21:37:20.766   Install mode root key: HKEY_CURRENT_USER
-2026-11-24 21:37:20.766   RedirectionGuard status for current process: Enabled in enforcing mode
-2026-11-24 21:37:20.766   Cleaning up any residual temporary files from previous Uninstall runs.
-2026-11-24 21:37:20.767   Deleted file: C:\Users\<user>\AppData\Local\Temp\is-8OU4JAYCPX-uninstall.tmp\_unins.tmp
-2026-11-24 21:37:20.767   Cleanup finished (2 directories found, 2 directories checked, 1 files deleted).
-2026-11-24 21:37:20.769   Created temporary directory: C:\Users\<user>\AppData\Local\Temp\is-NGK1Z8LWVC.tmp
-2026-11-24 21:37:20.797   Starting the uninstallation process.
-2026-11-24 21:37:20.798   Running Exec filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
-2026-11-24 21:37:20.798   Running Exec parameters: -NoLogo -NoProfile -ExecutionPolicy Bypass -File "<test-root>\app\tools\uninstall.ps1" -InnoUninstall
-2026-11-24 21:37:29.842   Process exit code: 0
-2026-11-24 21:37:29.842   Skipping RunOnceId "GugakSignageCleanup" filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
-2026-11-24 21:37:29.843   Deleting registry key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1
-2026-11-24 21:37:29.843   Deleting file: <test-root>\app\docs\README.md
-2026-11-24 21:37:29.844   Deleting file: <test-root>\app\tools\set-autostart.ps1
-2026-11-24 21:37:29.844   Deleting file: <test-root>\app\tools\uninstall.ps1
-2026-11-24 21:37:29.845   Deleting file: <test-root>\app\tools\install.ps1
-2026-11-24 21:37:29.845   Deleting file: <test-root>\app\ops\watchdog.mjs
-2026-11-24 21:37:29.846   Deleting file: <test-root>\app\ops\watchdog-health.mjs
-2026-11-24 21:37:29.846   Deleting file: <test-root>\app\ops\stop.ps1
-2026-11-24 21:37:29.847   Deleting file: <test-root>\app\ops\install-common.ps1
-2026-11-24 21:37:29.847   Deleting file: <test-root>\app\seed\source\poster-welcome.svg
-2026-11-24 21:37:29.848   Deleting file: <test-root>\app\seed\source\poster-class.svg
-2026-11-24 21:37:29.848   Deleting file: <test-root>\app\seed\source\poster-autumn.svg
-2026-11-24 21:37:29.849   Deleting file: <test-root>\app\seed\sample-video.mp4
-2026-11-24 21:37:29.849   Deleting file: <test-root>\app\seed\README.md
-2026-11-24 21:37:29.850   Deleting file: <test-root>\app\seed\poster-welcome.png
-2026-11-24 21:37:29.850   Deleting file: <test-root>\app\seed\poster-class.png
-2026-11-24 21:37:29.851   Deleting file: <test-root>\app\seed\poster-autumn.png
-2026-11-24 21:37:29.851   Deleting file: <test-root>\app\public\sample\notice.html
-2026-11-24 21:37:29.852   Deleting file: <test-root>\app\public\player\sw.js
-2026-11-24 21:37:29.852   Deleting file: <test-root>\app\public\player\styles.css
-2026-11-24 21:37:29.853   Deleting file: <test-root>\app\public\player\player.js
-2026-11-24 21:37:29.853   Deleting file: <test-root>\app\public\player\index.html
-2026-11-24 21:37:29.853   Deleting file: <test-root>\app\public\admin\topology.js
-2026-11-24 21:37:29.853   Deleting file: <test-root>\app\public\admin\styles.css
-2026-11-24 21:37:29.854   Deleting file: <test-root>\app\public\admin\index.html
-2026-11-24 21:37:29.854   Deleting file: <test-root>\app\public\admin\app.js
-2026-11-24 21:37:29.855   Deleting file: <test-root>\app\poc\packages\engine\test\validation.test.js
-2026-11-24 21:37:29.855   Deleting file: <test-root>\app\poc\packages\engine\test\timeline.test.js
-2026-11-24 21:37:29.856   Deleting file: <test-root>\app\poc\packages\engine\test\render-plan.test.js
-2026-11-24 21:37:29.856   Deleting file: <test-root>\app\poc\packages\engine\test\patterns.test.js
-2026-11-24 21:37:29.857   Deleting file: <test-root>\app\poc\packages\engine\test\layout.test.js
-2026-11-24 21:37:29.857   Deleting file: <test-root>\app\poc\packages\engine\src\wall-input.js
-2026-11-24 21:37:29.858   Deleting file: <test-root>\app\poc\packages\engine\src\validation.js
-2026-11-24 21:37:29.858   Deleting file: <test-root>\app\poc\packages\engine\src\timeline.js
-2026-11-24 21:37:29.859   Deleting file: <test-root>\app\poc\packages\engine\src\snapshot.js
-2026-11-24 21:37:29.859   Deleting file: <test-root>\app\poc\packages\engine\src\render-plan.js
-2026-11-24 21:37:29.860   Deleting file: <test-root>\app\poc\packages\engine\src\patterns.js
-2026-11-24 21:37:29.860   Deleting file: <test-root>\app\poc\packages\engine\src\layout.js
-2026-11-24 21:37:29.962   Deleting file: <test-root>\app\node_modules\multer\lib\multer-error.js
-2026-11-24 21:37:30.092   Deleting file: <test-root>\app\node_modules\http-errors\README.md
-2026-11-24 21:37:30.092   Deleting file: <test-root>\app\node_modules\http-errors\package.json
-2026-11-24 21:37:30.093   Deleting file: <test-root>\app\node_modules\http-errors\LICENSE
-2026-11-24 21:37:30.093   Deleting file: <test-root>\app\node_modules\http-errors\index.js
-2026-11-24 21:37:30.094   Deleting file: <test-root>\app\node_modules\http-errors\HISTORY.md
-2026-11-24 21:37:30.151   Deleting file: <test-root>\app\node_modules\es-errors\test\index.js
-2026-11-24 21:37:30.151   Deleting file: <test-root>\app\node_modules\es-errors\.github\FUNDING.yml
-2026-11-24 21:37:30.152   Deleting file: <test-root>\app\node_modules\es-errors\uri.js
-2026-11-24 21:37:30.152   Deleting file: <test-root>\app\node_modules\es-errors\uri.d.ts
-2026-11-24 21:37:30.153   Deleting file: <test-root>\app\node_modules\es-errors\type.js
-2026-11-24 21:37:30.153   Deleting file: <test-root>\app\node_modules\es-errors\type.d.ts
-2026-11-24 21:37:30.154   Deleting file: <test-root>\app\node_modules\es-errors\tsconfig.json
-2026-11-24 21:37:30.154   Deleting file: <test-root>\app\node_modules\es-errors\syntax.js
-2026-11-24 21:37:30.154   Deleting file: <test-root>\app\node_modules\es-errors\syntax.d.ts
-2026-11-24 21:37:30.155   Deleting file: <test-root>\app\node_modules\es-errors\ref.js
-2026-11-24 21:37:30.155   Deleting file: <test-root>\app\node_modules\es-errors\ref.d.ts
-2026-11-24 21:37:30.156   Deleting file: <test-root>\app\node_modules\es-errors\README.md
-2026-11-24 21:37:30.156   Deleting file: <test-root>\app\node_modules\es-errors\range.js
-2026-11-24 21:37:30.156   Deleting file: <test-root>\app\node_modules\es-errors\range.d.ts
-2026-11-24 21:37:30.157   Deleting file: <test-root>\app\node_modules\es-errors\package.json
-2026-11-24 21:37:30.157   Deleting file: <test-root>\app\node_modules\es-errors\LICENSE
-2026-11-24 21:37:30.158   Deleting file: <test-root>\app\node_modules\es-errors\index.js
-2026-11-24 21:37:30.158   Deleting file: <test-root>\app\node_modules\es-errors\index.d.ts
-2026-11-24 21:37:30.158   Deleting file: <test-root>\app\node_modules\es-errors\eval.js
-2026-11-24 21:37:30.159   Deleting file: <test-root>\app\node_modules\es-errors\eval.d.ts
-2026-11-24 21:37:30.159   Deleting file: <test-root>\app\node_modules\es-errors\CHANGELOG.md
-2026-11-24 21:37:30.160   Deleting file: <test-root>\app\node_modules\es-errors\.eslintrc
-2026-11-24 21:37:30.311   Deleting directory: <test-root>\app\node_modules\http-errors
-2026-11-24 21:37:30.335   Deleting directory: <test-root>\app\node_modules\es-errors\test
-2026-11-24 21:37:30.336   Deleting directory: <test-root>\app\node_modules\es-errors\.github
-2026-11-24 21:37:30.338   Deleting directory: <test-root>\app\node_modules\es-errors
-2026-11-24 21:37:30.888   Uninstallation process succeeded.
-2026-11-24 21:37:30.888   Removed all? Yes
-2026-11-24 21:37:30.888   Need to restart Windows? No
-2026-11-24 21:37:30.300   Deleting directory: <test-root>\app\node_modules\image-size\dist\esm\types
-2026-11-24 21:37:30.301   Deleting directory: <test-root>\app\node_modules\image-size\dist\esm
-2026-11-24 21:37:30.302   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs\utils
-2026-11-24 21:37:30.305   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs\types
-2026-11-24 21:37:30.306   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs
-2026-11-24 21:37:30.307   Deleting directory: <test-root>\app\node_modules\image-size\dist
-2026-11-24 21:37:30.307   Deleting directory: <test-root>\app\node_modules\image-size\bin
-2026-11-24 21:37:30.308   Deleting directory: <test-root>\app\node_modules\image-size
-2026-11-24 21:37:30.308   Deleting directory: <test-root>\app\node_modules\iconv-lite\lib
-2026-11-24 21:37:30.309   Deleting directory: <test-root>\app\node_modules\iconv-lite\encodings\tables
-2026-11-24 21:37:30.310   Deleting directory: <test-root>\app\node_modules\iconv-lite\encodings
-2026-11-24 21:37:30.311   Deleting directory: <test-root>\app\node_modules\iconv-lite
-2026-11-24 21:37:30.312   Deleting directory: <test-root>\app\node_modules\hasown\.github
-2026-11-24 21:37:30.313   Deleting directory: <test-root>\app\node_modules\hasown
-2026-11-24 21:37:30.313   Deleting directory: <test-root>\app\node_modules\has-symbols\test\shams
-2026-11-24 21:37:30.314   Deleting directory: <test-root>\app\node_modules\has-symbols\test
-2026-11-24 21:37:30.314   Deleting directory: <test-root>\app\node_modules\has-symbols\.github
-2026-11-24 21:37:30.315   Deleting directory: <test-root>\app\node_modules\has-symbols
-2026-11-24 21:37:30.315   Deleting directory: <test-root>\app\node_modules\gopd\test
-2026-11-24 21:37:30.316   Deleting directory: <test-root>\app\node_modules\gopd\.github
-2026-11-24 21:37:30.317   Deleting directory: <test-root>\app\node_modules\gopd
-2026-11-24 21:37:30.318   Deleting directory: <test-root>\app\node_modules\get-proto\test
-2026-11-24 21:37:30.318   Deleting directory: <test-root>\app\node_modules\get-proto\.github
-2026-11-24 21:37:30.320   Deleting directory: <test-root>\app\node_modules\get-proto
-2026-11-24 21:37:30.320   Deleting directory: <test-root>\app\node_modules\get-intrinsic\test
-2026-11-24 21:37:30.320   Deleting directory: <test-root>\app\node_modules\get-intrinsic\.github
-2026-11-24 21:37:30.322   Deleting directory: <test-root>\app\node_modules\get-intrinsic
-2026-11-24 21:37:30.323   Deleting directory: <test-root>\app\node_modules\function-bind\test
-2026-11-24 21:37:30.323   Deleting directory: <test-root>\app\node_modules\function-bind\.github
-2026-11-24 21:37:30.324   Deleting directory: <test-root>\app\node_modules\function-bind
-2026-11-24 21:37:30.325   Deleting directory: <test-root>\app\node_modules\fresh
-2026-11-24 21:37:30.326   Deleting directory: <test-root>\app\node_modules\forwarded
-2026-11-24 21:37:30.327   Deleting directory: <test-root>\app\node_modules\finalhandler
-2026-11-24 21:37:30.328   Deleting directory: <test-root>\app\node_modules\express\lib\router
-2026-11-24 21:37:30.328   Deleting directory: <test-root>\app\node_modules\express\lib\middleware
-2026-11-24 21:37:30.329   Deleting directory: <test-root>\app\node_modules\express\lib
-2026-11-24 21:37:30.330   Deleting directory: <test-root>\app\node_modules\express
-2026-11-24 21:37:30.331   Deleting directory: <test-root>\app\node_modules\etag
-2026-11-24 21:37:30.332   Deleting directory: <test-root>\app\node_modules\escape-html
-2026-11-24 21:37:30.333   Deleting directory: <test-root>\app\node_modules\es-object-atoms\test
-2026-11-24 21:37:30.333   Deleting directory: <test-root>\app\node_modules\es-object-atoms\.github
-2026-11-24 21:37:30.335   Deleting directory: <test-root>\app\node_modules\es-object-atoms
-2026-11-24 21:37:30.338   Deleting directory: <test-root>\app\node_modules\es-define-property\test
-2026-11-24 21:37:30.339   Deleting directory: <test-root>\app\node_modules\es-define-property\.github
-2026-11-24 21:37:30.340   Deleting directory: <test-root>\app\node_modules\es-define-property
-2026-11-24 21:37:30.340   Deleting directory: <test-root>\app\node_modules\encodeurl
-2026-11-24 21:37:30.341   Deleting directory: <test-root>\app\node_modules\ee-first
-2026-11-24 21:37:30.342   Deleting directory: <test-root>\app\node_modules\dunder-proto\test
-2026-11-24 21:37:30.342   Deleting directory: <test-root>\app\node_modules\dunder-proto\.github
-2026-11-24 21:37:30.344   Deleting directory: <test-root>\app\node_modules\dunder-proto
-2026-11-24 21:37:30.344   Deleting directory: <test-root>\app\node_modules\destroy
-2026-11-24 21:37:30.345   Deleting directory: <test-root>\app\node_modules\depd\lib\browser
-2026-11-24 21:37:30.345   Deleting directory: <test-root>\app\node_modules\depd\lib
-2026-11-24 21:37:30.346   Deleting directory: <test-root>\app\node_modules\depd
-2026-11-24 21:37:30.347   Deleting directory: <test-root>\app\node_modules\debug\src
-2026-11-24 21:37:30.348   Deleting directory: <test-root>\app\node_modules\debug
-2026-11-24 21:37:30.349   Deleting directory: <test-root>\app\node_modules\cookie-signature
-2026-11-24 21:37:30.349   Deleting directory: <test-root>\app\node_modules\cookie
-2026-11-24 21:37:30.350   Deleting directory: <test-root>\app\node_modules\content-type
-2026-11-24 21:37:30.351   Deleting directory: <test-root>\app\node_modules\content-disposition
-2026-11-24 21:37:30.352   Deleting directory: <test-root>\app\node_modules\call-bound\test
-2026-11-24 21:37:30.352   Deleting directory: <test-root>\app\node_modules\call-bound\.github
-2026-11-24 21:37:30.353   Deleting directory: <test-root>\app\node_modules\call-bound
-2026-11-24 21:37:30.354   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers\test
-2026-11-24 21:37:30.354   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers\.github
-2026-11-24 21:37:30.356   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers
-2026-11-24 21:37:30.356   Deleting directory: <test-root>\app\node_modules\bytes
-2026-11-24 21:37:30.357   Deleting directory: <test-root>\app\node_modules\busboy\test
-2026-11-24 21:37:30.358   Deleting directory: <test-root>\app\node_modules\busboy\lib\types
-2026-11-24 21:37:30.358   Deleting directory: <test-root>\app\node_modules\busboy\lib
-2026-11-24 21:37:30.359   Deleting directory: <test-root>\app\node_modules\busboy\bench
-2026-11-24 21:37:30.359   Deleting directory: <test-root>\app\node_modules\busboy\.github\workflows
-2026-11-24 21:37:30.360   Deleting directory: <test-root>\app\node_modules\busboy\.github
-2026-11-24 21:37:30.360   Deleting directory: <test-root>\app\node_modules\busboy
-2026-11-24 21:37:30.361   Deleting directory: <test-root>\app\node_modules\body-parser\lib\types
-2026-11-24 21:37:30.361   Deleting directory: <test-root>\app\node_modules\body-parser\lib
-2026-11-24 21:37:30.362   Deleting directory: <test-root>\app\node_modules\body-parser
-2026-11-24 21:37:30.363   Deleting directory: <test-root>\app\node_modules\array-flatten
-2026-11-24 21:37:30.363   Deleting directory: <test-root>\app\node_modules\append-field\test
-2026-11-24 21:37:30.364   Deleting directory: <test-root>\app\node_modules\append-field\lib
-2026-11-24 21:37:30.364   Deleting directory: <test-root>\app\node_modules\append-field
-2026-11-24 21:37:30.365   Deleting directory: <test-root>\app\node_modules\accepts
-2026-11-24 21:37:30.366   Deleting directory: <test-root>\app\node_modules\.bin
-2026-11-24 21:37:30.367   Deleting directory: <test-root>\app\node_modules
-2026-11-24 21:37:30.368   Deleting directory: <test-root>\app\dist\routes
-2026-11-24 21:37:30.369   Deleting directory: <test-root>\app\dist
-2026-11-24 21:37:30.370   Deleting directory: <test-root>\app
-2026-11-24 21:37:30.370   Failed to delete directory (145). Will retry later.
-2026-11-24 21:37:30.370   Deleting Uninstall data files.
-2026-11-24 21:37:30.371   Creating "_unins-done.tmp" file.
-2026-11-24 21:37:30.888   Deleting directory: <test-root>\app
-2026-11-24 21:37:30.890   Log closed.
+﻿# Relevant sanitized excerpt from the Inno Setup 6.7.3 execution log.
+2026-11-24 23:48:40.382   Log opened. (Time zone: UTC+09:00)
+2026-11-24 23:48:40.382   Setup version: Inno Setup version 6.7.3
+2026-11-24 23:48:40.382   Original Uninstall EXE: <test-root>\app\unins000.exe
+2026-11-24 23:48:40.382   Uninstall DAT: <test-root>\app\unins000.dat
+2026-11-24 23:48:40.382   Current Uninstall EXE: C:\Users\<user>\AppData\Local\Temp\is-PJ3FMHM20B-uninstall.tmp\_unins.tmp
+2026-11-24 23:48:40.382   Uninstall command line: /SECONDPHASE="<test-root>\app\unins000.exe" /FIRSTPHASEWND=$2914AA /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="<test-root>\inno-uninstall.log"
+2026-11-24 23:48:40.383   Windows version: 10.0.26300
+2026-11-24 23:48:40.383   Windows architecture: x64 (64-bit)
+2026-11-24 23:48:40.383   Machine types supported by system: x86 x64
+2026-11-24 23:48:40.383   User privileges: None
+2026-11-24 23:48:40.386   Administrative install mode: No
+2026-11-24 23:48:40.386   Install mode root key: HKEY_CURRENT_USER
+2026-11-24 23:48:40.386   RedirectionGuard status for current process: Enabled in enforcing mode
+2026-11-24 23:48:40.386   Cleaning up any residual temporary files from previous Uninstall runs.
+2026-11-24 23:48:40.388   Deleted file: C:\Users\<user>\AppData\Local\Temp\is-EOOCK2AFB1-uninstall.tmp\_unins.tmp
+2026-11-24 23:48:40.388   Cleanup finished (2 directories found, 2 directories checked, 1 files deleted).
+2026-11-24 23:48:40.390   Created temporary directory: C:\Users\<user>\AppData\Local\Temp\is-HY4NVP5466.tmp
+2026-11-24 23:48:40.422   Starting the uninstallation process.
+2026-11-24 23:48:40.422   Running Exec filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
+2026-11-24 23:48:40.423   Running Exec parameters: -NoLogo -NoProfile -ExecutionPolicy Bypass -File "<test-root>\app\tools\uninstall.ps1" -InnoUninstall
+2026-11-24 23:48:50.529   Process exit code: 0
+2026-11-24 23:48:50.529   Skipping RunOnceId "GugakSignageCleanup" filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
+2026-11-24 23:48:50.530   Skipping RunOnceId "GugakSignageCleanup" filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
+2026-11-24 23:48:50.531   Deleting registry key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1
+2026-11-24 23:48:50.531   Deleting file: <test-root>\app\docs\README.md
+2026-11-24 23:48:50.532   Deleting file: <test-root>\app\tools\set-autostart.ps1
+2026-11-24 23:48:50.532   Deleting file: <test-root>\app\tools\uninstall.ps1
+2026-11-24 23:48:50.533   Deleting file: <test-root>\app\tools\install.ps1
+2026-11-24 23:48:50.533   Deleting file: <test-root>\app\ops\watchdog.mjs
+2026-11-24 23:48:50.534   Deleting file: <test-root>\app\ops\watchdog-health.mjs
+2026-11-24 23:48:50.534   Deleting file: <test-root>\app\ops\stop.ps1
+2026-11-24 23:48:50.535   Deleting file: <test-root>\app\ops\resolve-data-dir.ps1
+2026-11-24 23:48:50.535   Deleting file: <test-root>\app\ops\install-common.ps1
+2026-11-24 23:48:50.536   Deleting file: <test-root>\app\seed\source\poster-welcome.svg
+2026-11-24 23:48:50.536   Deleting file: <test-root>\app\seed\source\poster-class.svg
+2026-11-24 23:48:50.537   Deleting file: <test-root>\app\seed\source\poster-autumn.svg
+2026-11-24 23:48:50.538   Deleting file: <test-root>\app\seed\sample-video.mp4
+2026-11-24 23:48:50.538   Deleting file: <test-root>\app\seed\README.md
+2026-11-24 23:48:50.539   Deleting file: <test-root>\app\seed\poster-welcome.png
+2026-11-24 23:48:50.539   Deleting file: <test-root>\app\seed\poster-class.png
+2026-11-24 23:48:50.540   Deleting file: <test-root>\app\seed\poster-autumn.png
+2026-11-24 23:48:50.540   Deleting file: <test-root>\app\public\sample\notice.html
+2026-11-24 23:48:50.541   Deleting file: <test-root>\app\public\player\sw.js
+2026-11-24 23:48:50.541   Deleting file: <test-root>\app\public\player\styles.css
+2026-11-24 23:48:50.542   Deleting file: <test-root>\app\public\player\player.js
+2026-11-24 23:48:50.542   Deleting file: <test-root>\app\public\player\index.html
+2026-11-24 23:48:50.543   Deleting file: <test-root>\app\public\admin\topology.js
+2026-11-24 23:48:50.543   Deleting file: <test-root>\app\public\admin\styles.css
+2026-11-24 23:48:50.544   Deleting file: <test-root>\app\public\admin\index.html
+2026-11-24 23:48:50.544   Deleting file: <test-root>\app\public\admin\app.js
+2026-11-24 23:48:50.545   Deleting file: <test-root>\app\poc\packages\engine\test\wall-input.test.js
+2026-11-24 23:48:50.553   Deleting file: <test-root>\app\poc\packages\engine\test\validation.test.js
+2026-11-24 23:48:50.553   Deleting file: <test-root>\app\poc\packages\engine\test\timeline.test.js
+2026-11-24 23:48:50.554   Deleting file: <test-root>\app\poc\packages\engine\test\render-plan.test.js
+2026-11-24 23:48:50.555   Deleting file: <test-root>\app\poc\packages\engine\test\patterns.test.js
+2026-11-24 23:48:50.555   Deleting file: <test-root>\app\poc\packages\engine\test\layout.test.js
+2026-11-24 23:48:50.556   Deleting file: <test-root>\app\poc\packages\engine\src\wall-input.js
+2026-11-24 23:48:50.556   Deleting file: <test-root>\app\poc\packages\engine\src\validation.js
+2026-11-24 23:48:50.557   Deleting file: <test-root>\app\poc\packages\engine\src\timeline.js
+2026-11-24 23:48:50.557   Deleting file: <test-root>\app\poc\packages\engine\src\snapshot.js
+2026-11-24 23:48:50.648   Deleting file: <test-root>\app\node_modules\multer\lib\multer-error.js
+2026-11-24 23:48:50.752   Deleting file: <test-root>\app\node_modules\http-errors\README.md
+2026-11-24 23:48:50.752   Deleting file: <test-root>\app\node_modules\http-errors\package.json
+2026-11-24 23:48:50.753   Deleting file: <test-root>\app\node_modules\http-errors\LICENSE
+2026-11-24 23:48:50.753   Deleting file: <test-root>\app\node_modules\http-errors\index.js
+2026-11-24 23:48:50.754   Deleting file: <test-root>\app\node_modules\http-errors\HISTORY.md
+2026-11-24 23:48:50.825   Deleting file: <test-root>\app\node_modules\es-errors\test\index.js
+2026-11-24 23:48:50.825   Deleting file: <test-root>\app\node_modules\es-errors\.github\FUNDING.yml
+2026-11-24 23:48:50.826   Deleting file: <test-root>\app\node_modules\es-errors\uri.js
+2026-11-24 23:48:50.826   Deleting file: <test-root>\app\node_modules\es-errors\uri.d.ts
+2026-11-24 23:48:50.827   Deleting file: <test-root>\app\node_modules\es-errors\type.js
+2026-11-24 23:48:50.827   Deleting file: <test-root>\app\node_modules\es-errors\type.d.ts
+2026-11-24 23:48:50.828   Deleting file: <test-root>\app\node_modules\es-errors\tsconfig.json
+2026-11-24 23:48:50.828   Deleting file: <test-root>\app\node_modules\es-errors\syntax.js
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\syntax.d.ts
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\ref.js
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\ref.d.ts
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\README.md
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\range.js
+2026-11-24 23:48:50.829   Deleting file: <test-root>\app\node_modules\es-errors\range.d.ts
+2026-11-24 23:48:50.831   Deleting file: <test-root>\app\node_modules\es-errors\package.json
+2026-11-24 23:48:50.831   Deleting file: <test-root>\app\node_modules\es-errors\LICENSE
+2026-11-24 23:48:50.832   Deleting file: <test-root>\app\node_modules\es-errors\index.js
+2026-11-24 23:48:50.832   Deleting file: <test-root>\app\node_modules\es-errors\index.d.ts
+2026-11-24 23:48:50.832   Deleting file: <test-root>\app\node_modules\es-errors\eval.js
+2026-11-24 23:48:50.833   Deleting file: <test-root>\app\node_modules\es-errors\eval.d.ts
+2026-11-24 23:48:50.833   Deleting file: <test-root>\app\node_modules\es-errors\CHANGELOG.md
+2026-11-24 23:48:50.834   Deleting file: <test-root>\app\node_modules\es-errors\.eslintrc
+2026-11-24 23:48:51.028   Deleting directory: <test-root>\app\node_modules\http-errors
+2026-11-24 23:48:51.047   Deleting directory: <test-root>\app\node_modules\es-errors\test
+2026-11-24 23:48:51.048   Deleting directory: <test-root>\app\node_modules\es-errors\.github
+2026-11-24 23:48:51.049   Deleting directory: <test-root>\app\node_modules\es-errors
+2026-11-24 23:48:51.631   Uninstallation process succeeded.
+2026-11-24 23:48:51.631   Removed all? Yes
+2026-11-24 23:48:51.631   Need to restart Windows? No
+2026-11-24 23:48:51.018   Deleting directory: <test-root>\app\node_modules\image-size\dist\esm\types
+2026-11-24 23:48:51.019   Deleting directory: <test-root>\app\node_modules\image-size\dist\esm
+2026-11-24 23:48:51.020   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs\utils
+2026-11-24 23:48:51.023   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs\types
+2026-11-24 23:48:51.024   Deleting directory: <test-root>\app\node_modules\image-size\dist\cjs
+2026-11-24 23:48:51.024   Deleting directory: <test-root>\app\node_modules\image-size\dist
+2026-11-24 23:48:51.025   Deleting directory: <test-root>\app\node_modules\image-size\bin
+2026-11-24 23:48:51.025   Deleting directory: <test-root>\app\node_modules\image-size
+2026-11-24 23:48:51.026   Deleting directory: <test-root>\app\node_modules\iconv-lite\lib
+2026-11-24 23:48:51.027   Deleting directory: <test-root>\app\node_modules\iconv-lite\encodings\tables
+2026-11-24 23:48:51.027   Deleting directory: <test-root>\app\node_modules\iconv-lite\encodings
+2026-11-24 23:48:51.028   Deleting directory: <test-root>\app\node_modules\iconv-lite
+2026-11-24 23:48:51.029   Deleting directory: <test-root>\app\node_modules\hasown\.github
+2026-11-24 23:48:51.029   Deleting directory: <test-root>\app\node_modules\hasown
+2026-11-24 23:48:51.030   Deleting directory: <test-root>\app\node_modules\has-symbols\test\shams
+2026-11-24 23:48:51.030   Deleting directory: <test-root>\app\node_modules\has-symbols\test
+2026-11-24 23:48:51.031   Deleting directory: <test-root>\app\node_modules\has-symbols\.github
+2026-11-24 23:48:51.032   Deleting directory: <test-root>\app\node_modules\has-symbols
+2026-11-24 23:48:51.032   Deleting directory: <test-root>\app\node_modules\gopd\test
+2026-11-24 23:48:51.033   Deleting directory: <test-root>\app\node_modules\gopd\.github
+2026-11-24 23:48:51.034   Deleting directory: <test-root>\app\node_modules\gopd
+2026-11-24 23:48:51.034   Deleting directory: <test-root>\app\node_modules\get-proto\test
+2026-11-24 23:48:51.035   Deleting directory: <test-root>\app\node_modules\get-proto\.github
+2026-11-24 23:48:51.036   Deleting directory: <test-root>\app\node_modules\get-proto
+2026-11-24 23:48:51.036   Deleting directory: <test-root>\app\node_modules\get-intrinsic\test
+2026-11-24 23:48:51.037   Deleting directory: <test-root>\app\node_modules\get-intrinsic\.github
+2026-11-24 23:48:51.038   Deleting directory: <test-root>\app\node_modules\get-intrinsic
+2026-11-24 23:48:51.038   Deleting directory: <test-root>\app\node_modules\function-bind\test
+2026-11-24 23:48:51.039   Deleting directory: <test-root>\app\node_modules\function-bind\.github
+2026-11-24 23:48:51.040   Deleting directory: <test-root>\app\node_modules\function-bind
+2026-11-24 23:48:51.040   Deleting directory: <test-root>\app\node_modules\fresh
+2026-11-24 23:48:51.041   Deleting directory: <test-root>\app\node_modules\forwarded
+2026-11-24 23:48:51.042   Deleting directory: <test-root>\app\node_modules\finalhandler
+2026-11-24 23:48:51.042   Deleting directory: <test-root>\app\node_modules\express\lib\router
+2026-11-24 23:48:51.043   Deleting directory: <test-root>\app\node_modules\express\lib\middleware
+2026-11-24 23:48:51.043   Deleting directory: <test-root>\app\node_modules\express\lib
+2026-11-24 23:48:51.044   Deleting directory: <test-root>\app\node_modules\express
+2026-11-24 23:48:51.044   Deleting directory: <test-root>\app\node_modules\etag
+2026-11-24 23:48:51.045   Deleting directory: <test-root>\app\node_modules\escape-html
+2026-11-24 23:48:51.045   Deleting directory: <test-root>\app\node_modules\es-object-atoms\test
+2026-11-24 23:48:51.046   Deleting directory: <test-root>\app\node_modules\es-object-atoms\.github
+2026-11-24 23:48:51.047   Deleting directory: <test-root>\app\node_modules\es-object-atoms
+2026-11-24 23:48:51.049   Deleting directory: <test-root>\app\node_modules\es-define-property\test
+2026-11-24 23:48:51.050   Deleting directory: <test-root>\app\node_modules\es-define-property\.github
+2026-11-24 23:48:51.051   Deleting directory: <test-root>\app\node_modules\es-define-property
+2026-11-24 23:48:51.051   Deleting directory: <test-root>\app\node_modules\encodeurl
+2026-11-24 23:48:51.052   Deleting directory: <test-root>\app\node_modules\ee-first
+2026-11-24 23:48:51.052   Deleting directory: <test-root>\app\node_modules\dunder-proto\test
+2026-11-24 23:48:51.053   Deleting directory: <test-root>\app\node_modules\dunder-proto\.github
+2026-11-24 23:48:51.053   Deleting directory: <test-root>\app\node_modules\dunder-proto
+2026-11-24 23:48:51.054   Deleting directory: <test-root>\app\node_modules\destroy
+2026-11-24 23:48:51.055   Deleting directory: <test-root>\app\node_modules\depd\lib\browser
+2026-11-24 23:48:51.055   Deleting directory: <test-root>\app\node_modules\depd\lib
+2026-11-24 23:48:51.056   Deleting directory: <test-root>\app\node_modules\depd
+2026-11-24 23:48:51.057   Deleting directory: <test-root>\app\node_modules\debug\src
+2026-11-24 23:48:51.057   Deleting directory: <test-root>\app\node_modules\debug
+2026-11-24 23:48:51.058   Deleting directory: <test-root>\app\node_modules\cookie-signature
+2026-11-24 23:48:51.058   Deleting directory: <test-root>\app\node_modules\cookie
+2026-11-24 23:48:51.059   Deleting directory: <test-root>\app\node_modules\content-type
+2026-11-24 23:48:51.060   Deleting directory: <test-root>\app\node_modules\content-disposition
+2026-11-24 23:48:51.060   Deleting directory: <test-root>\app\node_modules\call-bound\test
+2026-11-24 23:48:51.060   Deleting directory: <test-root>\app\node_modules\call-bound\.github
+2026-11-24 23:48:51.061   Deleting directory: <test-root>\app\node_modules\call-bound
+2026-11-24 23:48:51.061   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers\test
+2026-11-24 23:48:51.062   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers\.github
+2026-11-24 23:48:51.063   Deleting directory: <test-root>\app\node_modules\call-bind-apply-helpers
+2026-11-24 23:48:51.064   Deleting directory: <test-root>\app\node_modules\bytes
+2026-11-24 23:48:51.064   Deleting directory: <test-root>\app\node_modules\busboy\test
+2026-11-24 23:48:51.065   Deleting directory: <test-root>\app\node_modules\busboy\lib\types
+2026-11-24 23:48:51.065   Deleting directory: <test-root>\app\node_modules\busboy\lib
+2026-11-24 23:48:51.066   Deleting directory: <test-root>\app\node_modules\busboy\bench
+2026-11-24 23:48:51.067   Deleting directory: <test-root>\app\node_modules\busboy\.github\workflows
+2026-11-24 23:48:51.067   Deleting directory: <test-root>\app\node_modules\busboy\.github
+2026-11-24 23:48:51.067   Deleting directory: <test-root>\app\node_modules\busboy
+2026-11-24 23:48:51.068   Deleting directory: <test-root>\app\node_modules\body-parser\lib\types
+2026-11-24 23:48:51.068   Deleting directory: <test-root>\app\node_modules\body-parser\lib
+2026-11-24 23:48:51.069   Deleting directory: <test-root>\app\node_modules\body-parser
+2026-11-24 23:48:51.069   Deleting directory: <test-root>\app\node_modules\array-flatten
+2026-11-24 23:48:51.070   Deleting directory: <test-root>\app\node_modules\append-field\test
+2026-11-24 23:48:51.070   Deleting directory: <test-root>\app\node_modules\append-field\lib
+2026-11-24 23:48:51.071   Deleting directory: <test-root>\app\node_modules\append-field
+2026-11-24 23:48:51.071   Deleting directory: <test-root>\app\node_modules\accepts
+2026-11-24 23:48:51.072   Deleting directory: <test-root>\app\node_modules\.bin
+2026-11-24 23:48:51.073   Deleting directory: <test-root>\app\node_modules
+2026-11-24 23:48:51.074   Deleting directory: <test-root>\app\dist\routes
+2026-11-24 23:48:51.075   Deleting directory: <test-root>\app\dist
+2026-11-24 23:48:51.076   Deleting directory: <test-root>\app
+2026-11-24 23:48:51.076   Failed to delete directory (145). Will retry later.
+2026-11-24 23:48:51.076   Deleting Uninstall data files.
+2026-11-24 23:48:51.077   Creating "_unins-done.tmp" file.
+2026-11-24 23:48:51.630   Deleting directory: <test-root>\app
+2026-11-24 23:48:51.635   Log closed.

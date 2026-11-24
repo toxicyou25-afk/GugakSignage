@@ -73,6 +73,16 @@ function Protect-EnvironmentFile {
     }
 }
 
+function Copy-EnvironmentFilePreservingAcl {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    $sourceAcl = Get-Acl -LiteralPath $Source
+    Copy-Item -LiteralPath $Source -Destination $Destination -Force
+    Set-Acl -LiteralPath $Destination -AclObject $sourceAcl
+}
+
 function Find-Browser {
     $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
     $candidates = @(
@@ -231,7 +241,7 @@ $InstallDir = Get-NormalizedPath -Path $InstallDir
 
 $configPath = Join-Path $InstallDir "install.json"
 $previousConfig = if (Test-Path -LiteralPath $configPath) {
-    Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    Read-JsonFile -Path $configPath
 } else {
     $null
 }
@@ -251,22 +261,12 @@ $defaultDataDir = if ($isAdmin) {
 } else {
     Join-Path $env:LOCALAPPDATA "GugakSignage"
 }
-$previousDataDir = ""
-if ($previousConfig -and $previousConfig.dataDir) {
-    $previousDataDir = Get-NormalizedPath -Path ([string]$previousConfig.dataDir)
-}
-if (-not $previousDataDir) {
-    $legacyEnv = Join-Path $InstallDir ".env"
-    $legacyData = Get-EnvValue -EnvFile $legacyEnv -Name "DATA_DIR"
-    if ($legacyData) {
-        if (-not [IO.Path]::IsPathRooted($legacyData)) { $legacyData = Join-Path $InstallDir $legacyData }
-        $previousDataDir = Get-NormalizedPath -Path $legacyData
-    }
-}
+$resolvedData = Resolve-InstallerDataDir -InstallDir $InstallDir -DefaultDataDir $defaultDataDir
+$previousDataDir = if ($resolvedData.Source -eq "default-new") { "" } else { [string]$resolvedData.DataDir }
 
 $dataDirWasExplicit = -not [string]::IsNullOrWhiteSpace($DataDir)
 if (-not $dataDirWasExplicit) {
-    $DataDir = if ($previousDataDir) { $previousDataDir } else { $defaultDataDir }
+    $DataDir = [string]$resolvedData.DataDir
 }
 $DataDir = Get-NormalizedPath -Path $DataDir
 $dataDirChanged = $previousDataDir -and -not (Test-PathEqual -Left $previousDataDir -Right $DataDir)
@@ -276,7 +276,7 @@ if ($dataDirChanged -and -not $AllowDataDirChange) {
 
 Assert-DataDirOutsideInstall -InstallDir $InstallDir -DataDir $DataDir
 
-$existingDataDetected = [bool]$previousConfig
+$existingDataDetected = [bool]($resolvedData.HasPreviousEvidence -or $resolvedData.HasExistingData)
 if (Test-Path -LiteralPath (Join-Path $DataDir "signage.sqlite")) { $existingDataDetected = $true }
 if (Test-Path -LiteralPath (Join-Path $DataDir ".env")) { $existingDataDetected = $true }
 if ($previousDataDir -and (Test-Path -LiteralPath (Join-Path $previousDataDir "signage.sqlite"))) {
@@ -425,6 +425,14 @@ try {
     }
 
     $envFile = Join-Path $DataDir ".env"
+    $legacyEnvFile = Join-Path $InstallDir ".env"
+    $copiedLegacyEnv = $false
+    if (-not (Test-Path -LiteralPath $envFile -PathType Leaf) -and
+        (Test-Path -LiteralPath $legacyEnvFile -PathType Leaf)) {
+        Copy-EnvironmentFilePreservingAcl -Source $legacyEnvFile -Destination $envFile
+        $copiedLegacyEnv = $true
+        Write-Step "legacy 환경 설정을 데이터 폴더로 복사하고 원본을 보존"
+    }
     if (-not (Test-Path -LiteralPath $envFile)) {
         Write-Step "환경 설정과 임의 비밀번호 생성"
         $adminPassword = "0000"
@@ -447,7 +455,7 @@ try {
         Protect-EnvironmentFile -Path $envFile
         Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
     } else {
-        $existingEnv = Get-Content -LiteralPath $envFile -Raw
+        $existingEnv = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
         if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
             $existingEnv -match "(?m)^SESSION_SECRET=change-this-to-a-long-random-string\s*$") {
             throw "기존 .env에 개발용 기본 비밀값이 있습니다. 파일을 보존한 상태로 관리자 비밀번호와 세션 시크릿을 교체한 뒤 다시 설치하세요."
@@ -463,7 +471,6 @@ try {
         if ((Test-Path -LiteralPath $databasePath) -and $existingEnv -match "(?m)^SEED_SAMPLES=true\s*$") {
             $updatedEnv = [regex]::Replace($existingEnv, "(?m)^SEED_SAMPLES=true\s*$", "SEED_SAMPLES=false")
             [IO.File]::WriteAllText($envFile, $updatedEnv, [Text.UTF8Encoding]::new($false))
-            Protect-EnvironmentFile -Path $envFile
             Write-Step "기존 데이터 감지로 샘플 시드 비활성화"
         }
     }

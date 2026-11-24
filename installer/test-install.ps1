@@ -1,7 +1,8 @@
 ﻿# SPDX-License-Identifier: Apache-2.0
 [CmdletBinding()]
 param(
-    [switch]$KeepTestArtifacts
+    [switch]$KeepTestArtifacts,
+    [string]$EvidenceDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +14,7 @@ $verifyScript = Join-Path $PSScriptRoot "verify-browser.mjs"
 $guardScript = Join-Path $PSScriptRoot "test-guards.ps1"
 $watchdogTestScript = Join-Path $PSScriptRoot "test-watchdog.mjs"
 $watchdogHealthTest = Join-Path $PSScriptRoot "test-watchdog-health.mjs"
-$evidenceDir = Join-Path $repoRoot "docs\install\evidence"
+$evidenceDir = if ($EvidenceDir) { [IO.Path]::GetFullPath($EvidenceDir) } else { Join-Path $repoRoot "docs\install\evidence" }
 New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 
 function Get-FreePort {
@@ -41,7 +42,7 @@ function Wait-Until {
 
 function Read-WatchdogState {
     param([string]$StatePath)
-    return Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
+    return Read-JsonFile -Path $StatePath
 }
 
 function Test-ServerHealth {
@@ -82,7 +83,7 @@ function Invoke-PlayerCheck {
     if ($Screenshot) { $arguments += @("--screenshot", $Screenshot) }
     & $nodePath @arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "재생기 확인 실패: $Expect" }
-    return Get-Content -LiteralPath $Output -Raw | ConvertFrom-Json
+    return Read-JsonFile -Path $Output
 }
 
 function Sanitize-Evidence {
@@ -177,6 +178,63 @@ try {
     if (-not $watchdogJson) { throw "watchdog 중단 시험 결과 JSON이 없습니다." }
     $report.checks.watchdogFailureLifecycle = $watchdogJson | ConvertFrom-Json
 
+    Write-Host "[install-test] install.json 없는 PowerShell legacy 업그레이드"
+    $hangulDataName = [string]::Concat([char]0xAE30, [char]0xAD00, " ", [char]0xB370, [char]0xC774, [char]0xD130)
+    $legacyPsRoot = Join-Path $testRoot "legacy-powershell"
+    $legacyPsApp = Join-Path $legacyPsRoot "app"
+    $legacyPsData = Join-Path (Join-Path $legacyPsRoot $hangulDataName) "Gugak Signage"
+    $legacyPsUploads = Join-Path $legacyPsData "uploads"
+    $legacyPsDb = Join-Path $legacyPsData "signage.sqlite"
+    $legacyPsEnv = Join-Path $legacyPsApp ".env"
+    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+    $isCurrentAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $legacyPsDefault = if ($isCurrentAdmin) { Join-Path $env:ProgramData "GugakSignage" } else { Join-Path $env:LOCALAPPDATA "GugakSignage" }
+    $legacyPsDefaultExisted = Test-Path -LiteralPath $legacyPsDefault
+    New-Item -ItemType Directory -Path (Join-Path $legacyPsApp "ops"), $legacyPsUploads -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $legacyPsApp "ops\watchdog.mjs") -Value "// legacy fixture" -Encoding ascii
+    [IO.File]::WriteAllText($legacyPsDb, "legacy-db-marker")
+    $legacyPsUpload = Join-Path $legacyPsUploads "preserve-me.txt"
+    [IO.File]::WriteAllText($legacyPsUpload, "legacy upload marker")
+    $escapedLegacyPsData = $legacyPsData.Replace("\", "\\")
+    $legacyPsEnvBuilder = [Text.StringBuilder]::new()
+    [void]$legacyPsEnvBuilder.AppendLine("ADMIN_PASSWORD=0000")
+    [void]$legacyPsEnvBuilder.AppendLine("SESSION_SECRET=legacy-session-secret-preserve-this-value")
+    [void]$legacyPsEnvBuilder.AppendLine("PORT=3000")
+    [void]$legacyPsEnvBuilder.Append('DATA_DIR="').Append($escapedLegacyPsData).AppendLine('"')
+    [void]$legacyPsEnvBuilder.AppendLine("SEED_SAMPLES=true")
+    [IO.File]::WriteAllText($legacyPsEnv, $legacyPsEnvBuilder.ToString(), [Text.UTF8Encoding]::new($false))
+    $legacyPsEnvAclSddl = (Get-Acl -LiteralPath $legacyPsEnv).Sddl
+    $legacyPsEnvHashBefore = (Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash
+    $legacyPsDbHashBefore = (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash
+    $legacyPsUploadHashBefore = (Get-FileHash -LiteralPath $legacyPsUpload -Algorithm SHA256).Hash
+    $legacyPsPort = Get-FreePort
+    $legacyPsTask = "GugakSignage-LegacyPowerShell-$suffix"
+    $legacyPsOutput = & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -Port $legacyPsPort -TaskName $legacyPsTask -DesktopDir (Join-Path $legacyPsRoot "desktop") -StartMenuDir (Join-Path $legacyPsRoot "start-menu") -ProfileDir (Join-Path $legacyPsRoot "profile") -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Tee-Object -Variable legacyPsLines
+    $legacyPsLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "PowerShell legacy 업그레이드가 실패했습니다." }
+    $legacyPsConfig = Read-JsonFile -Path (Join-Path $legacyPsApp "install.json")
+    $legacyPsDataEnv = Join-Path $legacyPsData ".env"
+    $legacyPsDataEnvText = [IO.File]::ReadAllText($legacyPsDataEnv)
+    if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.dataDir) -Right $legacyPsData)) { throw "PowerShell legacy 업그레이드가 .env DATA_DIR를 기본 경로로 대체했습니다." }
+    if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.envFile) -Right $legacyPsDataEnv)) { throw "PowerShell legacy .env를 데이터 폴더로 복사하지 않았습니다." }
+    if ($legacyPsDataEnvText -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$" -or
+        $legacyPsDataEnvText -notmatch "(?m)^SESSION_SECRET=legacy-session-secret-preserve-this-value\s*$" -or
+        $legacyPsDataEnvText -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
+        throw "PowerShell legacy 업그레이드가 .env 값을 보존하거나 SEED_SAMPLES를 끄지 않았습니다."
+    }
+    if ((Get-Acl -LiteralPath $legacyPsDataEnv).Sddl -ne $legacyPsEnvAclSddl) { throw "PowerShell legacy .env ACL을 보존하지 않았습니다." }
+    if ((Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash -ne $legacyPsEnvHashBefore -or
+        (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash -ne $legacyPsDbHashBefore -or
+        (Get-FileHash -LiteralPath $legacyPsUpload -Algorithm SHA256).Hash -ne $legacyPsUploadHashBefore) {
+        throw "PowerShell legacy 업그레이드가 원본 .env, DB 또는 uploads를 변경했습니다."
+    }
+    if (-not $legacyPsDefaultExisted -and (Test-Path -LiteralPath $legacyPsDefault)) { throw "PowerShell legacy 업그레이드가 새 기본 데이터 경로를 만들었습니다." }
+    $report.checks.powerShellLegacyNoManifestUsesEnvDataDir = $true
+    $report.checks.powerShellLegacyPreservesEnvAclAndValues = $true
+    $report.checks.powerShellLegacyDisablesSampleSeed = $true
+    $report.checks.powerShellLegacyPreservesDbAndUploads = $true
+
     Write-Host "[install-test] 임시 설치 시작: <test-root>"
     $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir -HeadlessBrowser 2>&1 | Tee-Object -Variable installLines
     $installLines | Out-Host
@@ -191,7 +249,7 @@ try {
     $report.checks.evidenceUrlsSanitized = $true
 
     $envFile = Join-Path $dataDir ".env"
-    $envText = Get-Content -LiteralPath $envFile -Raw
+    $envText = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
     $adminMatch = [regex]::Match($envText, "(?m)^ADMIN_PASSWORD=(.+)$")
     $sessionMatch = [regex]::Match($envText, "(?m)^SESSION_SECRET=(.+)$")
     if (-not $adminMatch.Success -or -not $sessionMatch.Success) { throw "환경 비밀값이 없습니다." }
@@ -262,7 +320,7 @@ try {
         return ($current.lastBrowserStateKind -in @("playing", "cached"))
     }
 
-    $configBeforeUpgrade = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
+    $configBeforeUpgrade = Read-JsonFile -Path (Join-Path $installDir "install.json")
     $databasePath = Join-Path $dataDir "signage.sqlite"
     $shortcutPathsBefore = @($configBeforeUpgrade.shortcuts)
     $taskNameBefore = [string]$configBeforeUpgrade.taskName
@@ -273,8 +331,8 @@ try {
     $databaseHashBefore = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
     & $installScript -SourceDir $repoRoot -InstallDir $installDir -NoStart 2>&1 | Tee-Object -Variable upgradeLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "기존 설치 업그레이드가 실패했습니다." }
-    $configAfterUpgrade = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
-    $envAfterUpgrade = Get-Content -LiteralPath $envFile -Raw
+    $configAfterUpgrade = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    $envAfterUpgrade = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
     if (-not (Test-PathEqual -Left ([string]$configAfterUpgrade.dataDir) -Right $dataDir)) {
         throw "업그레이드가 기존 데이터 경로를 보존하지 않았습니다."
     }

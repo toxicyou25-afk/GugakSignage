@@ -34,6 +34,8 @@ Name: "firewall"; Description: "Allow local network clients through Windows Fire
 [Files]
 Source: "build\payload\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "ops\*"; DestDir: "{app}\ops"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "ops\install-common.ps1"; DestName: "resolver-common.ps1"; Flags: dontcopy
+Source: "ops\resolve-data-dir.ps1"; DestName: "resolve-data-dir.ps1"; Flags: dontcopy
 Source: "install.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "uninstall.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "set-autostart.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
@@ -56,9 +58,19 @@ var
   PortPage: TInputQueryWizardPage;
   PreviousDataDir: String;
   DataDirChangeConfirmed: Boolean;
+  DataDirWasSpecified: Boolean;
+  DataDirResolutionIsExisting: Boolean;
 
 function ReadExistingDataDir(AppDir: String): String;
   forward;
+
+function GetDefaultDataDir(): String;
+begin
+  if IsAdminInstallMode then
+    Result := ExpandConstant('{commonappdata}\GugakSignage')
+  else
+    Result := ExpandConstant('{localappdata}\GugakSignage');
+end;
 
 procedure InitializeWizard;
 begin
@@ -71,7 +83,13 @@ begin
     ''
   );
   DataDirPage.Add('Data folder:');
-  DataDirPage.Values[0] := ExpandConstant('{param:DATADIR|{commonappdata}\GugakSignage}');
+  DataDirWasSpecified := ExpandConstant('{param:DATADIR|}') <> '';
+  PreviousDataDir := '';
+  DataDirResolutionIsExisting := False;
+  if DataDirWasSpecified then
+    DataDirPage.Values[0] := ExpandConstant('{param:DATADIR|}')
+  else
+    DataDirPage.Values[0] := GetDefaultDataDir;
 
   PortPage := CreateInputQueryPage(
     DataDirPage.ID,
@@ -83,44 +101,56 @@ begin
   PortPage.Values[0] := ExpandConstant('{param:PORT|3000}');
 end;
 
-function ReadJsonStringField(Json, FieldName: String): String;
+function DecodeUtf16Hex(Value: String): String;
 var
-  Marker: String;
-  StartPos, I: Integer;
-  Character: Char;
+  I, CodeUnit: Integer;
 begin
   Result := '';
-  Marker := '"' + FieldName + '":';
-  StartPos := Pos(Marker, Json);
-  if StartPos = 0 then Exit;
-  StartPos := StartPos + Length(Marker);
-  while (StartPos <= Length(Json)) and (Json[StartPos] in [' ', #9, #13, #10]) do Inc(StartPos);
-  if (StartPos > Length(Json)) or (Json[StartPos] <> '"') then Exit;
-  StartPos := StartPos + 1;
-  I := StartPos;
-  while I <= Length(Json) do
+  if (Length(Value) mod 4) <> 0 then
+    RaiseException('The data path resolver returned invalid Unicode data.');
+  I := 1;
+  while I <= Length(Value) do
   begin
-    Character := Json[I];
-    if Character = '"' then Break;
-    if (Character = '\') and (I < Length(Json)) then
-    begin
-      I := I + 1;
-      Result := Result + Json[I];
-    end
-    else
-      Result := Result + Character;
-    I := I + 1;
+    CodeUnit := StrToInt('$' + Copy(Value, I + 2, 2) + Copy(Value, I, 2));
+    Result := Result + Chr(CodeUnit);
+    I := I + 4;
   end;
 end;
 
 function ReadExistingDataDir(AppDir: String): String;
 var
-  Json: AnsiString;
+  ResolverScript, ResolverCommon, OutputFile, Parameters: String;
+  Output: AnsiString;
+  Content, Payload, PathHex, ExistingFlag: String;
+  ResultCode, Separator: Integer;
 begin
-  Result := '';
-  if FileExists(AddBackslash(AppDir) + 'install.json') and
-     LoadStringFromFile(AddBackslash(AppDir) + 'install.json', Json) then
-    Result := ReadJsonStringField(Json, 'dataDir');
+  ResolverScript := ExpandConstant('{tmp}\resolve-data-dir.ps1');
+  ResolverCommon := ExpandConstant('{tmp}\resolver-common.ps1');
+  OutputFile := ExpandConstant('{tmp}\gugak-data-dir-result.txt');
+  if not FileExists(ResolverCommon) then ExtractTemporaryFile('resolver-common.ps1');
+  if not FileExists(ResolverScript) then ExtractTemporaryFile('resolve-data-dir.ps1');
+  if FileExists(OutputFile) then DeleteFile(OutputFile);
+  Parameters := '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + ResolverScript +
+    '" -InstallDir "' + AppDir + '" -DefaultDataDir "' +
+    GetDefaultDataDir + '" -OutputFile "' + OutputFile + '"';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
+      ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    RaiseException('Could not start the shared GugakSignage data path resolver.');
+  if not LoadStringFromFile(OutputFile, Output) then
+    RaiseException('The shared GugakSignage data path resolver did not return a result.');
+  Content := String(Output);
+  if Copy(Content, 1, 4) = 'ERR|' then
+    RaiseException(DecodeUtf16Hex(Copy(Content, 5, Length(Content))));
+  if Copy(Content, 1, 3) <> 'OK|' then
+    RaiseException('The shared GugakSignage data path resolver returned an invalid result.');
+  Payload := Copy(Content, 4, Length(Content));
+  Separator := Pos('|', Payload);
+  if Separator = 0 then
+    RaiseException('The shared GugakSignage data path resolver returned an incomplete result.');
+  PathHex := Copy(Payload, 1, Separator - 1);
+  ExistingFlag := Copy(Payload, Separator + 1, Length(Payload));
+  DataDirResolutionIsExisting := ExistingFlag = '1';
+  Result := DecodeUtf16Hex(PathHex);
 end;
 
 function NormalizePathForCompare(Path: String): String;
@@ -130,7 +160,12 @@ end;
 
 function GetDataDir(Param: String): String;
 begin
-  Result := DataDirPage.Values[0];
+  if DataDirWasSpecified then
+    Result := ExpandConstant('{param:DATADIR|}')
+  else if DataDirChangeConfirmed and Assigned(DataDirPage) then
+    Result := DataDirPage.Values[0]
+  else
+    Result := '';
 end;
 
 function GetPort(Param: String): String;
@@ -187,12 +222,15 @@ var
   ExistingDataDir: String;
 begin
   Result := '';
-  ExistingDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
-  if ExistingDataDir <> '' then
+  if not DataDirWasSpecified then
   begin
-    PreviousDataDir := ExistingDataDir;
-    if not DataDirChangeConfirmed then
-      DataDirPage.Values[0] := ExistingDataDir;
+    ExistingDataDir := ReadExistingDataDir(ExpandConstant('{app}'));
+    if DataDirResolutionIsExisting then
+    begin
+      PreviousDataDir := ExistingDataDir;
+      if not DataDirChangeConfirmed then
+        DataDirPage.Values[0] := ExistingDataDir;
+    end;
   end;
 end;
 
@@ -203,10 +241,13 @@ begin
   Result := True;
   if CurPageID = wpSelectDir then
   begin
-    PreviousDataDir := ReadExistingDataDir(WizardDirValue);
+    if not DataDirWasSpecified then
+      PreviousDataDir := ReadExistingDataDir(WizardDirValue);
     DataDirChangeConfirmed := False;
-    if PreviousDataDir <> '' then
-      DataDirPage.Values[0] := PreviousDataDir;
+    if DataDirResolutionIsExisting then
+      DataDirPage.Values[0] := PreviousDataDir
+    else if not DataDirWasSpecified then
+      DataDirPage.Values[0] := GetDefaultDataDir;
   end;
   if CurPageID = PortPage.ID then
   begin
@@ -222,7 +263,7 @@ begin
     MsgBox('Enter a data folder.', mbError, MB_OK);
     Result := False;
   end;
-  if (CurPageID = DataDirPage.ID) and Result and (PreviousDataDir <> '') and
+  if (CurPageID = DataDirPage.ID) and Result and DataDirResolutionIsExisting and (PreviousDataDir <> '') and
      (NormalizePathForCompare(DataDirPage.Values[0]) <> NormalizePathForCompare(PreviousDataDir)) then
   begin
     if MsgBox(

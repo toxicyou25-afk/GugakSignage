@@ -2,14 +2,16 @@
 [CmdletBinding()]
 param(
     [string]$SetupExe = "",
-    [switch]$KeepTestArtifacts
+    [switch]$KeepTestArtifacts,
+    [string]$EvidenceDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 . (Join-Path $PSScriptRoot "ops\install-common.ps1")
 $repoRoot = Get-NormalizedPath -Path (Join-Path $PSScriptRoot "..")
-$evidenceDir = Join-Path $repoRoot "docs\install\evidence"
+if (-not $EvidenceDir) { $EvidenceDir = Join-Path $repoRoot "docs\install\evidence" }
+$evidenceDir = [IO.Path]::GetFullPath($EvidenceDir)
 if (-not $SetupExe) { $SetupExe = Join-Path $PSScriptRoot "build\inno\GugakSignage-Setup-0.1.0.exe" }
 $SetupExe = (Resolve-Path -LiteralPath $SetupExe).Path
 if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup EXE가 없습니다: $SetupExe" }
@@ -55,6 +57,59 @@ function Get-StableFileHash {
         Start-Sleep -Milliseconds 500
     }
     throw "파일 해시를 읽지 못했습니다: $Path"
+}
+
+function Get-DirectoryContentHash {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $rootPath = Get-NormalizedPath -Path $Path
+    $entries = @()
+    if (Test-Path -LiteralPath $rootPath -PathType Container) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $rootPath -File -Recurse | Sort-Object FullName)) {
+            $relative = $file.FullName.Substring($rootPath.Length).TrimStart([IO.Path]::DirectorySeparatorChar)
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $entries += "$relative=$hash"
+        }
+    }
+    $bytes = [Text.Encoding]::UTF8.GetBytes(($entries -join "`n"))
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLowerInvariant() } finally { $sha.Dispose() }
+}
+
+function Get-DatabaseRowCounts {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $scriptPath = Join-Path ([IO.Path]::GetTempPath()) ("gugak-rowcount-" + [guid]::NewGuid().ToString("N") + ".cjs")
+    $script = @'
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(process.argv[2]);
+const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
+const counts = {};
+for (const name of names) {
+  const safeName = name.replaceAll('"', '""');
+  counts[name] = db.prepare(`SELECT COUNT(*) AS count FROM "${safeName}"`).get().count;
+}
+console.log(JSON.stringify(counts));
+db.close();
+'@
+    try {
+        [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
+        $output = & $nodePath --no-warnings $scriptPath $Path 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) { throw "SQLite row count 조회 실패: $($output -join ' ')" }
+    $jsonLine = @($output | ForEach-Object { [string]$_ } | Where-Object { $_.TrimStart().StartsWith("{") } | Select-Object -Last 1)
+    if ($jsonLine.Count -eq 0) { throw "SQLite row count JSON이 없습니다: $($output -join ' ')" }
+    return ([string]$jsonLine[0]).Trim()
+}
+
+function Set-LegacyEnvDataDir {
+    param([Parameter(Mandatory = $true)][string]$EnvFile, [Parameter(Mandatory = $true)][string]$DataDir)
+    $envText = [IO.File]::ReadAllText($EnvFile)
+    $escaped = $DataDir.Replace("\", "\\").Replace('"', '\"')
+    $updated = [regex]::Replace($envText, "(?m)^DATA_DIR=.*$", ('DATA_DIR="' + $escaped + '"'))
+    if ($updated -eq $envText) { throw "legacy fixture .env에 DATA_DIR가 없습니다." }
+    [IO.File]::WriteAllText($EnvFile, $updated, [Text.UTF8Encoding]::new($false))
 }
 
 function Sanitize-File {
@@ -116,15 +171,19 @@ $stamp = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss")
 $suffix = [Guid]::NewGuid().ToString("N").Substring(0, 8)
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) "GugakSignage-inno-test-$stamp-$suffix"
 $installDir = Join-Path $testRoot "app"
-$dataDir = Join-Path $testRoot "data"
+$hangulDataName = [string]::Concat([char]0xAE30, [char]0xAD00, " ", [char]0xB370, [char]0xC774, [char]0xD130)
+$dataDir = Join-Path (Join-Path $testRoot $hangulDataName) "Gugak Signage"
 $desktopDir = Join-Path $testRoot "desktop"
 $startMenuDir = Join-Path $testRoot "start-menu"
 $profileDir = Join-Path $testRoot "player-profile"
 $taskName = "GugakSignage-InnoTest-$suffix"
 $port = Get-FreePort
 $installerLog = Join-Path $testRoot "inno-install.log"
-$upgradeLog = Join-Path $testRoot "inno-upgrade.log"
+$upgradeLog = Join-Path $testRoot "inno-legacy-upgrade.log"
+$conflictLog = Join-Path $testRoot "inno-conflict.log"
+$reupgradeLog = Join-Path $testRoot "inno-same-version-reupgrade.log"
 $uninstallerLog = Join-Path $testRoot "inno-uninstall.log"
+$configBeforeLegacy = ""
 $startedAt = [DateTime]::UtcNow
 $report = [ordered]@{
     startedAt = $startedAt.ToString("o")
@@ -144,7 +203,7 @@ try {
     $installer = Start-Process -FilePath $SetupExe -ArgumentList $installArguments -Wait -PassThru -WindowStyle Hidden
     if ($installer.ExitCode -ne 0) { throw "Inno Setup 설치 실패: exit=$($installer.ExitCode), log=$installerLog" }
     Wait-Until -TimeoutSeconds 30 -Description "Inno 설치 파일" -Condition { Test-Path -LiteralPath (Join-Path $installDir "install.json") }
-    $config = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
+    $config = Read-JsonFile -Path (Join-Path $installDir "install.json")
     if (-not (Test-PathEqual -Left ([string]$config.installDir) -Right $installDir)) { throw "EXE 설치 경로가 격리 경로와 다릅니다." }
     if (-not (Test-PathEqual -Left ([string]$config.dataDir) -Right $dataDir)) { throw "EXE 데이터 경로가 /DATADIR와 다릅니다." }
     if ([string]$config.taskName -ne $taskName) { throw "EXE 작업 이름이 /WATCHDOGTASK와 다릅니다." }
@@ -182,7 +241,7 @@ try {
     $report.checks.testAdminPasswordLogin = $true
     $statePath = Join-Path $dataDir "logs\watchdog-state.json"
     Wait-Until -TimeoutSeconds 30 -Description "EXE 설치 watchdog 상태" -Condition { Test-Path -LiteralPath $statePath }
-    $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $state = Read-JsonFile -Path $statePath
     $debugPort = [int]$config.debugPort
     $innoPlayerJson = Join-Path $evidenceDir "player-inno-installed.json"
     $innoPlayerPng = Join-Path $evidenceDir "player-inno-installed.png"
@@ -195,29 +254,109 @@ try {
     & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
     Wait-Until -TimeoutSeconds 25 -Description "Inno 업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
     Wait-Until -TimeoutSeconds 25 -Description "Inno 업그레이드 전 프로세스 종료" -Condition {
-        $currentState = Get-Content -LiteralPath (Join-Path $dataDir "logs\watchdog-state.json") -Raw | ConvertFrom-Json
+        $currentState = Read-JsonFile -Path (Join-Path $dataDir "logs\watchdog-state.json")
         return (-not $currentState.serverPid -and -not $currentState.browserPid)
     }
-    $databaseHashBeforeUpgrade = Get-StableFileHash -Path (Join-Path $dataDir "signage.sqlite")
+    $dataEnvPath = Join-Path $dataDir ".env"
+    $legacyEnvPath = Join-Path $installDir ".env"
+    $uploadsDir = Join-Path $dataDir "uploads"
+    $uploadMarker = Join-Path $uploadsDir "legacy-preservation-marker.txt"
+    New-Item -ItemType Directory -Path $uploadsDir -Force | Out-Null
+    [IO.File]::WriteAllText($uploadMarker, "legacy upload fixture")
+    Set-LegacyEnvDataDir -EnvFile $dataEnvPath -DataDir $dataDir
+    Move-Item -LiteralPath $dataEnvPath -Destination $legacyEnvPath
+    $legacyEnvAclSddl = (Get-Acl -LiteralPath $legacyEnvPath).Sddl
+    $legacyEnvBefore = [IO.File]::ReadAllText($legacyEnvPath)
+    $legacyEnvHashBefore = Get-StableFileHash -Path $legacyEnvPath
+    $appSentinel = Join-Path $installDir "package.json"
+    $appSentinelHashBefore = Get-StableFileHash -Path $appSentinel
+    $configBeforeLegacy = [IO.File]::ReadAllText((Join-Path $installDir "install.json"))
+    Remove-Item -LiteralPath (Join-Path $installDir "install.json") -Force
+    if (Test-Path -LiteralPath $dataEnvPath) { throw "legacy fixture에 데이터 폴더 .env가 남아 있습니다." }
+    $databasePath = Join-Path $dataDir "signage.sqlite"
+    $databaseRowsBeforeUpgrade = Get-DatabaseRowCounts -Path $databasePath
+    $uploadsHashBeforeUpgrade = Get-DirectoryContentHash -Path $uploadsDir
+
     $upgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $upgradeLog + '"'
     $upgrader = Start-Process -FilePath $SetupExe -ArgumentList $upgradeArguments -Wait -PassThru -WindowStyle Hidden
-    if ($upgrader.ExitCode -ne 0) { throw "Inno Setup 업그레이드 실패: exit=$($upgrader.ExitCode), log=$upgradeLog" }
-    $upgradedConfig = Get-Content -LiteralPath (Join-Path $installDir "install.json") -Raw | ConvertFrom-Json
+    if ($upgrader.ExitCode -ne 0) { throw "install.json 없는 legacy Inno 업그레이드 실패: exit=$($upgrader.ExitCode), log=$upgradeLog" }
+    Wait-Until -TimeoutSeconds 30 -Description "legacy 업그레이드 install.json" -Condition { Test-Path -LiteralPath (Join-Path $installDir "install.json") }
+    $upgradedConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
     if (-not (Test-PathEqual -Left ([string]$upgradedConfig.dataDir) -Right $dataDir)) {
-        throw "Inno 업그레이드가 기존 데이터 폴더를 보존하지 않았습니다."
+        throw "install.json 없는 legacy 업그레이드가 .env의 사용자 지정 경로를 보존하지 않았습니다."
     }
-    $upgradedEnv = Get-Content -LiteralPath (Join-Path $dataDir ".env") -Raw
-    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=false\s*$") { throw "Inno 업그레이드가 샘플 시드를 비활성화하지 않았습니다." }
-    $databaseHashAfterUpgrade = Get-StableFileHash -Path (Join-Path $dataDir "signage.sqlite")
-    if ($databaseHashBeforeUpgrade -ne $databaseHashAfterUpgrade) { throw "Inno 업그레이드가 기존 SQLite 파일을 변경했습니다." }
+    if (-not (Test-PathEqual -Left ([string]$upgradedConfig.envFile) -Right $dataEnvPath)) { throw "legacy .env를 데이터 폴더로 이전하지 않았습니다." }
+    if (-not (Test-PathEqual -Left (Get-EnvValue -EnvFile $legacyEnvPath -Name "DATA_DIR") -Right $dataDir)) { throw "escaped .env DATA_DIR를 복원하지 못했습니다." }
+    $upgradedEnv = [IO.File]::ReadAllText($dataEnvPath)
+    if ($upgradedEnv -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
+    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=false\s*$") { throw "legacy 업그레이드가 샘플 시드를 비활성화하지 않았습니다." }
+    if ((Get-Acl -LiteralPath $dataEnvPath).Sddl -ne $legacyEnvAclSddl) { throw "legacy .env ACL을 보존하지 않았습니다." }
+    if ((Get-StableFileHash -Path $legacyEnvPath) -ne $legacyEnvHashBefore) { throw "legacy 설치 폴더의 원본 .env를 변경했습니다." }
+    if ((Get-DatabaseRowCounts -Path $databasePath) -ne $databaseRowsBeforeUpgrade) { throw "legacy 업그레이드가 기존 SQLite 행 수를 변경했습니다." }
+    if ((Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeUpgrade) { throw "legacy 업그레이드가 기존 uploads를 변경했습니다." }
+    if ((Get-StableFileHash -Path $appSentinel) -ne $appSentinelHashBefore) { throw "legacy 업그레이드 전 app sentinel이 예상치 않게 달라졌습니다." }
+    $report.checks.innoLegacyNoManifestUsesEnvDataDir = $true
+    $report.checks.innoLegacyEscapedUnicodePath = $true
+    $report.checks.innoLegacyCopiesEnvAndPreservesAcl = $true
+    $report.checks.innoLegacyPreservesAdminPassword0000 = $true
+    $report.checks.innoLegacyDisablesSampleSeed = $true
+    $report.checks.innoLegacyPreservesDatabaseHashAndRows = $true
+    $report.checks.innoLegacyPreservesUploads = $true
+    $report.checks.innoLegacySourceEnvUnchanged = $true
+
+    $conflictDataDir = Join-Path $testRoot "conflicting-data"
+    New-Item -ItemType Directory -Path (Join-Path $conflictDataDir "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $conflictDataDir "signage.sqlite"), "conflicting legacy fixture")
+    Set-LegacyEnvDataDir -EnvFile $legacyEnvPath -DataDir $conflictDataDir
+    $conflictingEnvHash = Get-StableFileHash -Path $legacyEnvPath
+    $configHashBeforeConflict = Get-StableFileHash -Path (Join-Path $installDir "install.json")
+    $uploadsHashBeforeConflict = Get-DirectoryContentHash -Path $uploadsDir
+    $conflictArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $conflictLog + '"'
+    $conflictRun = Start-Process -FilePath $SetupExe -ArgumentList $conflictArguments -Wait -PassThru -WindowStyle Hidden
+    if ($conflictRun.ExitCode -eq 0) { throw "서로 다른 install.json/.env 데이터 경로의 Inno 업그레이드가 허용되었습니다." }
+    if ((Get-StableFileHash -Path (Join-Path $installDir "install.json")) -ne $configHashBeforeConflict -or
+        (Get-StableFileHash -Path $legacyEnvPath) -ne $conflictingEnvHash -or
+        (Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeConflict -or
+        (Get-StableFileHash -Path $appSentinel) -ne $appSentinelHashBefore) {
+        throw "경로 충돌로 중단된 업그레이드가 기존 설치 또는 데이터를 변경했습니다."
+    }
+    $report.checks.conflictingPathsFailClosedWithoutMutation = $true
+    [IO.File]::WriteAllText($legacyEnvPath, $legacyEnvBefore, [Text.UTF8Encoding]::new($false))
+
+    & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
+    Wait-Until -TimeoutSeconds 25 -Description "same-version 재업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
+    Wait-Until -TimeoutSeconds 25 -Description "same-version 재업그레이드 전 프로세스 종료" -Condition {
+        $currentState = Read-JsonFile -Path (Join-Path $dataDir "logs\watchdog-state.json")
+        return (-not $currentState.serverPid -and -not $currentState.browserPid)
+    }
+    $uploadsHashBeforeReupgrade = Get-DirectoryContentHash -Path $uploadsDir
+    $reupgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $reupgradeLog + '"'
+    $reupgrader = Start-Process -FilePath $SetupExe -ArgumentList $reupgradeArguments -Wait -PassThru -WindowStyle Hidden
+    if ($reupgrader.ExitCode -ne 0) { throw "same-version Inno 재업그레이드 실패: exit=$($reupgrader.ExitCode), log=$reupgradeLog" }
+    $reupgradedConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    if (-not (Test-PathEqual -Left ([string]$reupgradedConfig.dataDir) -Right $dataDir)) { throw "same-version 재업그레이드가 데이터 경로를 변경했습니다." }
+    if ((Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeReupgrade) {
+        throw "same-version 재업그레이드가 기존 데이터를 변경했습니다."
+    }
+    $report.checks.sameVersionReupgradePreservesLegacyData = $true
+
     Start-ScheduledTask -TaskName $taskName
-    Wait-Until -TimeoutSeconds 90 -Description "Inno 업그레이드 후 서버 health" -Condition { Test-ServerHealth -PortNumber $port }
-    $report.checks.innoUpgradePreservesDataDir = $true
-    $report.checks.innoUpgradePreservesDatabase = $true
-    $report.checks.innoUpgradeDisablesSeedSamples = $true
+    Wait-Until -TimeoutSeconds 90 -Description "legacy 업그레이드 후 서버 health" -Condition { Test-ServerHealth -PortNumber $port }
+    $loginClient = [System.Net.Http.HttpClient]::new()
+    try {
+        $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+        $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
+        if (-not $loginResponse.IsSuccessStatusCode) { throw "legacy 업그레이드 후 0000 로그인이 실패했습니다." }
+    } finally {
+        $loginClient.Dispose()
+    }
+    $report.checks.innoLegacyAdminPasswordLogin = $true
 
     $uninstaller = Join-Path $installDir "unins000.exe"
     if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { throw "Inno Setup 제거 관리자가 없습니다." }
+    $databaseRowsBeforeUninstall = Get-DatabaseRowCounts -Path $databasePath
+    $uploadsHashBeforeUninstall = Get-DirectoryContentHash -Path $uploadsDir
+    $envHashBeforeUninstall = Get-StableFileHash -Path $dataEnvPath
     $uninstallArguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="' + $uninstallerLog + '"'
     $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList $uninstallArguments -Wait -PassThru -WindowStyle Hidden
     if ($uninstallProcess.ExitCode -ne 0) { throw "Inno Setup 제거 실패: exit=$($uninstallProcess.ExitCode)" }
@@ -229,9 +368,16 @@ try {
     }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir ".env"))) { throw "기본 제거가 .env 데이터를 삭제했습니다." }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir "signage.sqlite"))) { throw "기본 제거가 SQLite 데이터를 삭제했습니다." }
+    if ((Get-DatabaseRowCounts -Path $databasePath) -ne $databaseRowsBeforeUninstall -or
+        (Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeUninstall -or
+        (Get-StableFileHash -Path $dataEnvPath) -ne $envHashBeforeUninstall -or
+        -not (Test-Path -LiteralPath $uploadMarker -PathType Leaf)) {
+        throw "기본 제거가 legacy 데이터 내용을 변경했습니다."
+    }
     $report.checks.uninstallRemovedApplication = $true
     $report.checks.uninstallRemovedShortcutsAndTask = $true
     $report.checks.uninstallPreservedData = $true
+    $report.checks.uninstallPreservedDatabaseRowsUploadsAndEnv = $true
     $report.result = "passed"
 } catch {
     $report.result = "failed"
@@ -243,6 +389,9 @@ try {
     $report.checks.productionPathsUntouched = (($report.productionPathsBefore | ConvertTo-Json -Compress) -eq
         ($report.productionPathsAfter | ConvertTo-Json -Compress))
     if ($report.result -ne "passed" -and (Test-Path -LiteralPath (Join-Path $installDir "tools\uninstall.ps1"))) {
+        if ($configBeforeLegacy -and -not (Test-Path -LiteralPath (Join-Path $installDir "install.json"))) {
+            [IO.File]::WriteAllText((Join-Path $installDir "install.json"), $configBeforeLegacy, [Text.UTF8Encoding]::new($false))
+        }
         try { & (Join-Path $installDir "tools\uninstall.ps1") -KeepInstallFiles -Quiet | Out-Host } catch {
             Write-Warning "Inno 실패 정리 오류: $($_.Exception.Message)"
         }
@@ -253,6 +402,8 @@ try {
     if ($uninstallLog) { Sanitize-File -Source $uninstallLog.FullName -Destination (Join-Path $evidenceDir "inno-uninstallscript-run.txt") }
     Sanitize-InnoLog -Source $installerLog -Destination (Join-Path $evidenceDir "inno-setup-log.txt")
     Sanitize-InnoLog -Source $upgradeLog -Destination (Join-Path $evidenceDir "inno-upgrade-log.txt")
+    Sanitize-InnoLog -Source $conflictLog -Destination (Join-Path $evidenceDir "inno-conflict-log.txt")
+    Sanitize-InnoLog -Source $reupgradeLog -Destination (Join-Path $evidenceDir "inno-same-version-reupgrade-log.txt")
     Sanitize-InnoLog -Source $uninstallerLog -Destination (Join-Path $evidenceDir "inno-uninstall-log.txt")
     $report | ConvertTo-Json -Depth 6 -Compress | Set-Content -LiteralPath (Join-Path $evidenceDir "inno-install-verification.json") -Encoding utf8
     foreach ($jsonFile in Get-ChildItem -LiteralPath $evidenceDir -Filter "player-inno-*.json" -ErrorAction SilentlyContinue) {

@@ -18,7 +18,7 @@ $configPath = Join-Path $PSScriptRoot "..\install.json"
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
-$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$config = Read-JsonFile -Path $configPath
 if ([string]$config.product -ne "GugakSignage") {
     throw "GugakSignage 설치 정보가 아닙니다: $configPath"
 }
@@ -92,7 +92,7 @@ try {
 
     $statePath = Join-Path $logDir "watchdog-state.json"
     $state = if (Test-Path -LiteralPath $statePath) {
-        Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        Read-JsonFile -Path $statePath
     } else {
         $null
     }
@@ -156,6 +156,13 @@ try {
         Write-Step "설치 파일 제거: $installDir"
         Remove-Item -LiteralPath $installDir -Recurse -Force
     } elseif ($InnoUninstall) {
+        $legacyInstallEnv = Join-Path $installDir ".env"
+        $dataEnv = Join-Path $dataDir ".env"
+        if ((Test-Path -LiteralPath $legacyInstallEnv -PathType Leaf) -and
+            (Test-Path -LiteralPath $dataEnv -PathType Leaf)) {
+            Remove-Item -LiteralPath $legacyInstallEnv -Force
+            Write-Step "legacy 설치 폴더 .env 제거(데이터 폴더 .env 보존)"
+        }
         Write-Step "Inno Setup이 설치 파일을 제거하도록 남겨 둡니다."
     } else {
         Write-Step "설치 파일 보존 옵션이 적용되었습니다."

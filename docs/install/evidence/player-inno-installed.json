@@ -1,5 +1,5 @@
 ﻿{
-  "checkedAt": "2026-11-24T12:37:03.384Z",
+  "checkedAt": "2026-11-24T14:47:57.667Z",
   "expected": "online",
   "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
   "state": {
@@ -12,11 +12,12 @@
     "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T12:37:00.381Z",
+    "lastHeartbeatAt": "2026-11-24T14:47:57.591Z",
     "wallGroupId": null,
     "wallDisplayIds": [],
     "wallPlans": {},
-    "serverOffsetMs": 0.3333333333333333,
+    "serverOffsetMs": -1,
+    "shellVersion": "v4",
     "visibility": "visible"
   },
   "screenshot": "<repo>\\docs\\install\\evidence\\player-inno-installed.png"

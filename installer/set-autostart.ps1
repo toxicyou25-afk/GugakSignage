@@ -17,7 +17,7 @@ $configPath = Join-Path $installDir "install.json"
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
-$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$config = Read-JsonFile -Path $configPath
 $taskName = [string]$config.taskName
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 
@@ -38,7 +38,7 @@ if ($Status) {
     Write-Host "마지막 결과: $($info.LastTaskResult)"
     $statePath = Join-Path ([string]$config.logDir) "watchdog-state.json"
     if (Test-Path -LiteralPath $statePath) {
-        $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        $state = Read-JsonFile -Path $statePath
         Write-Host "Watchdog PID: $($state.watchdogPid)"
         Write-Host "중단 여부: $($state.halted)"
         if ($state.haltedReason) { Write-Host "중단 사유: $($state.haltedReason)" }
