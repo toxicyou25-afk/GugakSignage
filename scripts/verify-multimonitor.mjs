@@ -129,9 +129,33 @@ try {
       }),
     });
     if (!updatedResponse.ok) throw new Error(await updatedResponse.text());
-    return { id: created.playlist.id, name: created.playlist.name, contentId: image.id };
+    const url = contents.find((content) => content.kind === 'url');
+    if (!url) throw new Error('검증용 URL 콘텐츠가 준비되지 않았습니다.');
+    const urlPlaylistResponse = await fetch('/api/playlists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '4번 화면 URL 단독', description: '다중 모니터 URL 브라우저 검증용' }),
+    });
+    const urlPlaylist = (await urlPlaylistResponse.json()).playlist;
+    const urlPlaylistUpdate = await fetch(`/api/playlists/${urlPlaylist.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: urlPlaylist.name,
+        description: urlPlaylist.description,
+        items: [{ contentId: url.id, durationSeconds: 30, transitionMs: 300, enabled: true }],
+      }),
+    });
+    if (!urlPlaylistUpdate.ok) throw new Error(await urlPlaylistUpdate.text());
+    return {
+      id: created.playlist.id,
+      name: created.playlist.name,
+      contentId: image.id,
+      urlPlaylistId: urlPlaylist.id,
+      urlContentId: url.id,
+    };
   });
-  step('격리된 검증용 화면 전용 재생목록 생성', playlist);
+  step('격리된 검증용 이미지·URL 화면 재생목록 생성', playlist);
 
   await admin.locator('.site-card').first().click();
   await admin.waitForSelector('.topology-config');
@@ -157,14 +181,70 @@ try {
     previewScreens: await admin.locator('.preview-screen').count(),
   });
 
+  const secondDeviceId = await admin.evaluate(async () => {
+    const response = await fetch('/api/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '브라우저 검증용 PC B', orientation: 'landscape', width: 1920, height: 1080 }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.device?.id) throw new Error(data.error || '검증용 PC B를 만들지 못했습니다.');
+    return data.device.id;
+  });
+  // Device creation adds a migration display; saving the current 4-screen
+  // draft removes that temporary extra screen and refreshes the PC choices.
+  await admin.click('.topology-config button[type=submit]');
+  await admin.waitForFunction(() => document.querySelectorAll('.screen-assignment').length === 4);
+  const initialMapping = await admin.evaluate(async () => {
+    const sites = await (await fetch('/api/sites')).json();
+    const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
+    return detail.groups[0].displays.map((display) => display.device_id);
+  });
+  if (initialMapping.length !== 4 || initialMapping.some((value) => value !== deviceValue)) {
+    throw new Error(`초기 화면별 PC 배정이 예상과 다릅니다: ${JSON.stringify(initialMapping)}`);
+  }
+
   const fourth = admin.locator('.screen-assignment').nth(3);
-  await fourth.locator('[data-screen-fit]').selectOption('cover');
-  await fourth.locator('[data-screen-playlist]').selectOption(playlist.id);
+  const screenDeviceSelects = admin.locator('.screen-assignment [data-screen-device]');
+  if (await screenDeviceSelects.count() !== 4) throw new Error('화면별 PC 선택 UI가 4개 표시되지 않았습니다.');
+  await fourth.locator('[data-screen-device]').selectOption(secondDeviceId);
   await fourth.locator('[data-topology-action=save-screen]').click();
+  await admin.waitForFunction((secondId) =>
+    document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-device]')?.value === secondId,
+  secondDeviceId);
+  const explicitMapping = await admin.evaluate(async () => {
+    const sites = await (await fetch('/api/sites')).json();
+    const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
+    return detail.groups[0].displays.map((display) => display.device_id);
+  });
+  if (explicitMapping[3] !== secondDeviceId || explicitMapping.slice(0, 3).some((value) => value !== deviceValue)) {
+    throw new Error(`화면별 명시적 PC 재배정이 반영되지 않았습니다: ${JSON.stringify(explicitMapping)}`);
+  }
+  await admin.click('.topology-config button[type=submit]');
+  await admin.waitForSelector('.preview-canvas');
+  const savedMapping = await admin.evaluate(async () => {
+    const sites = await (await fetch('/api/sites')).json();
+    const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
+    return detail.groups[0].displays.map((display) => display.device_id);
+  });
+  if (JSON.stringify(savedMapping) !== JSON.stringify(explicitMapping)) {
+    throw new Error(`그룹 저장이 화면별 PC 배정을 덮어썼습니다: ${JSON.stringify(savedMapping)}`);
+  }
+  report.deviceMapping = { initialMapping, explicitMapping, savedMapping };
+  step('화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존', report.deviceMapping);
+
+  const refreshedFourth = admin.locator('.screen-assignment').nth(3);
+  await refreshedFourth.locator('[data-screen-device]').selectOption(deviceValue);
+  await refreshedFourth.locator('[data-screen-fit]').selectOption('cover');
+  await refreshedFourth.locator('[data-screen-playlist]').selectOption(playlist.urlPlaylistId);
+  await refreshedFourth.locator('[data-topology-action=save-screen]').click();
   await admin.waitForSelector('.preview-canvas');
   await admin.waitForFunction((playlistId) =>
-    Array.from(document.querySelectorAll('.screen-assignment select[data-screen-playlist]'))
-      .some((select) => select.value === playlistId), playlist.id);
+    document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value === playlistId,
+  playlist.urlPlaylistId);
+  await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
+  const adminUrlHeading = await admin.frameLocator('.preview-screen iframe').locator('h1').innerText({ timeout: 10_000 });
+  if (!adminUrlHeading.includes('오늘의 안내')) throw new Error(`관리 미리보기 URL iframe이 표시되지 않았습니다: ${adminUrlHeading}`);
   await admin.screenshot({ path: path.join(evidenceDir, 'multimonitor-02-admin-plan-preview.png'), fullPage: true });
   report.adminPreview = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
@@ -176,9 +256,15 @@ try {
       layout: preview.wall.layout.type,
       fits: preview.plans.map((plan) => plan.fit),
       rotations: preview.plans.map((plan) => plan.rotation),
+      kinds: preview.plans.map((plan) => plan.kind),
+      contentIds: preview.plans.map((plan) => plan.contentId),
+      deviceMapping: preview.wall.displays.map((display) => display.deviceId),
       nextChanges: preview.plans.map((plan) => plan.nextChangeAt),
     };
   });
+  if (report.adminPreview.kinds[3] !== 'url' || report.adminPreview.contentIds[3] !== playlist.urlContentId) {
+    throw new Error(`관리 미리보기에 URL RenderPlan이 없습니다: ${JSON.stringify(report.adminPreview)}`);
+  }
   step('관리 미리보기와 실제 엔진 RenderPlan 동일 응답 확인', report.adminPreview);
 
   await admin.locator('[data-topology-action=publish]').first().click();
@@ -198,12 +284,16 @@ try {
   await player.goto(`${base}/player/?code=GUGAK1`, { waitUntil: 'networkidle' });
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 30_000 });
   await player.waitForFunction(() => document.querySelectorAll('.wall-screen').length === 4, null, { timeout: 10_000 });
+  await player.waitForSelector('.wall-screen iframe', { timeout: 20_000 });
+  const wallUrlHeading = await player.frameLocator('.wall-screen iframe').locator('h1').innerText({ timeout: 10_000 });
+  if (!wallUrlHeading.includes('오늘의 안내')) throw new Error(`wall URL iframe이 표시되지 않았습니다: ${wallUrlHeading}`);
   await player.waitForTimeout(2_500);
   await player.screenshot({ path: path.join(evidenceDir, 'multimonitor-03-player-four-screens.png') });
   report.player = await player.evaluate(() => ({
     ...window.__signagePlayer.getState(),
     screenCount: document.querySelectorAll('.wall-screen').length,
     mediaCount: document.querySelectorAll('.wall-screen .wall-media').length,
+    urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,
     renderReady: Array.from(document.querySelectorAll('.wall-screen-canvas')).map((node) => node.dataset.renderReady),
     screenHtml: Array.from(document.querySelectorAll('.wall-screen')).map((node) => node.innerHTML.slice(0, 300)),
   }));
@@ -215,6 +305,7 @@ try {
   const changed = Object.keys(afterBoundary.wallPlans).some((id) => afterBoundary.wallPlans[id].imageId !== firstBefore[id]?.imageId);
   report.timing = { before: firstBefore, after: afterBoundary.wallPlans, changed, serverOffsetMs: afterBoundary.serverOffsetMs };
   step('서버 시각 기준 3초 전환 관찰', { changed, serverOffsetMs: afterBoundary.serverOffsetMs });
+  if (!changed) throw new Error('3초 전환 경계 뒤에도 화면별 RenderPlan 콘텐츠가 바뀌지 않았습니다.');
 
   const firstDisplayId = report.player.wallDisplayIds[0];
   report.testingOffline = true;
@@ -222,7 +313,11 @@ try {
   await player.reload({ waitUntil: 'domcontentloaded' });
   await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 15_000 });
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 20_000 });
-  await player.waitForFunction(() => document.querySelectorAll('.wall-screen .wall-media').length === 4, null, { timeout: 20_000 });
+  await player.waitForFunction(() =>
+    document.querySelectorAll('.wall-screen .wall-media, .wall-screen .wall-url-offline').length === 4,
+  null, { timeout: 20_000 });
+  await player.waitForSelector('.wall-screen .wall-url-offline', { timeout: 10_000 });
+  await player.waitForTimeout(700);
   report.offlineReload = await player.evaluate(async () => {
     const shared = await import('/engine/index.js');
     const manifest = JSON.parse(localStorage.getItem('signage.player.manifest.v1'));
@@ -245,6 +340,9 @@ try {
       offsetDriftMs: Math.abs(state.serverOffsetMs - storedOffset),
       cacheAgeMs: Date.now() - Number(localStorage.getItem('signage.player.manifestCachedAt')),
       screenCount: document.querySelectorAll('.wall-screen').length,
+      urlFallbackCount: document.querySelectorAll('.wall-screen .wall-url-offline').length,
+      urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,
+      urlPlanCount: Object.values(state.wallPlans).filter((plan) => plan.kind === 'url').length,
       plansMatchSharedInput: Object.entries(state.wallPlans).every(([displayId, plan]) =>
         plan.imageId === expected[displayId]?.imageId &&
         plan.nextChangeAtMs === expected[displayId]?.nextChangeAtMs),
@@ -252,11 +350,13 @@ try {
       actual: state.wallPlans,
     };
   });
-  await player.waitForTimeout(700);
   await player.screenshot({ path: path.join(evidenceDir, 'multimonitor-05-player-offline-reload.png') });
   step('오프라인 재로드에서 캐시 오프셋과 공유 RenderPlan 유지', report.offlineReload);
   if (report.offlineReload.offsetDriftMs > 50 || !report.offlineReload.plansMatchSharedInput) {
     throw new Error('오프라인 재로드 시각 보정이 캐시 시점과 다릅니다.');
+  }
+  if (report.offlineReload.urlFallbackCount !== report.offlineReload.urlPlanCount || report.offlineReload.urlFrameCount !== 0) {
+    throw new Error(`오프라인 URL 대체 화면이 올바르지 않습니다: ${JSON.stringify(report.offlineReload)}`);
   }
   await context.setOffline(false);
   report.testingOffline = false;
@@ -275,6 +375,7 @@ try {
     throw new Error('브라우저 화면 수가 예상과 다릅니다.');
   }
   if (report.pageErrors.length) throw new Error(`브라우저 페이지 오류: ${report.pageErrors.join(' | ')}`);
+  if (report.consoleErrors.length) throw new Error(`브라우저 콘솔 오류: ${report.consoleErrors.join(' | ')}`);
   report.result = 'passed';
   report.finishedAt = new Date().toISOString();
 } catch (error) {

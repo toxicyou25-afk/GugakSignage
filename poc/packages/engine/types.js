@@ -20,6 +20,7 @@ export const LAYOUT_TYPES = Object.freeze([
 ]);
 
 export const FIT_MODES = Object.freeze(['contain', 'cover', 'stretch']);
+export const CONTENT_KINDS = Object.freeze(['image', 'video', 'url']);
 export const ORIENTATIONS = Object.freeze(['landscape', 'portrait']);
 export const ROTATIONS = Object.freeze([0, 90, 180, 270]);
 export const IMAGE_MIME_TYPES = Object.freeze([
@@ -53,6 +54,9 @@ export const DEFAULT_ASPECT_TOLERANCE = 0.1;
  * @typedef {object} PlaylistItem
  * @property {string} id
  * @property {string} imageId
+ * @property {string} [contentId]
+ * @property {'image'|'video'|'url'} [kind]
+ * @property {string} [contentUrl]
  * @property {number} durationMs
  * @property {'contain'|'cover'|'stretch'} [fitMode]
  * @property {number} [transitionMs]
@@ -121,6 +125,7 @@ export const DEFAULT_ASPECT_TOLERANCE = 0.1;
  * @property {Layout[]} layouts
  * @property {Playlist[]} playlists
  * @property {ImageAsset[]} images
+ * @property {Array<object>} [contents]
  * @property {object} [publication]
  *
  * @typedef {object} Snapshot

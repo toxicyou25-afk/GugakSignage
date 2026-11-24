@@ -75,9 +75,15 @@ export function buildRenderPlan(snapshot, displayId, atMs = Date.now(), options 
     epochMs: timeline.epochMs,
     dwellMs: timeline.dwellMs,
     imageCount,
+    itemCount: imageCount,
     displayCount,
     imageIndex: timeline.imageIndex,
     imageId: timeline.imageId,
+    contentId: timeline.contentId,
+    kind: timeline.kind,
+    content: timeline.content,
+    contentUrl: timeline.contentUrl,
+    requiresNetwork: timeline.kind === 'url',
     itemId: timeline.item?.id ?? null,
     image: timeline.image,
     imageUrl: timeline.image?.displayUrl ?? null,
@@ -100,7 +106,8 @@ export function buildRenderPlan(snapshot, displayId, atMs = Date.now(), options 
     warnings: [],
   };
 
-  if (imageCount === 0 || !timeline.image) {
+  const contentReady = timeline.kind === 'url' ? Boolean(timeline.contentUrl) : Boolean(timeline.image);
+  if (imageCount === 0 || !contentReady) {
     return {
       ...base,
       sourceRect: null,
@@ -118,7 +125,7 @@ export function buildRenderPlan(snapshot, displayId, atMs = Date.now(), options 
                 code: 'IMAGE_ASSET_MISSING',
                 severity: 'error',
                 path: 'playlist.items',
-                message: `Playlist references missing image ${timeline.imageId}.`,
+                message: `Playlist references missing content ${timeline.contentId}.`,
               },
             ]
           : []),
@@ -136,6 +143,20 @@ export function buildRenderPlan(snapshot, displayId, atMs = Date.now(), options 
       message: `Display ${displayId} has no layout slot; using a full-screen fit.`,
     });
   }
+  if (timeline.kind === 'url') {
+    return {
+      ...base,
+      fit: baseFit,
+      rotation,
+      sourceRect: null,
+      destinationRect: { x: 0, y: 0, w: viewport.width, h: viewport.height },
+      slotId: slot?.id ?? null,
+      slotRect: slot ? { x: slot.x, y: slot.y, w: slot.w, h: slot.h } : null,
+      warnings: dedupeIssues(warnings),
+      ...(options.extra ? options.extra : {}),
+    };
+  }
+
   let geometry;
   if (mode === 'canvas' && slot) {
     geometry = computeCanvasGeometry(timeline.image, snapshot.layout, slot, viewport, baseFit, rotation);

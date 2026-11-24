@@ -126,22 +126,22 @@
 
 연결 화면의 샘플 힌트는 관리 DB에 `dev-sample-lobby`가 있을 때만 노출한다. 샘플 기기를 삭제한 운영 환경에서는 코드 입력과 관리 화면 링크만 보인다. 잘못된 코드 응답에는 6자리 코드의 위치와, 샘플 기기가 있으면 그 코드를 함께 안내한다. 이미 다른 재생기가 연결된 기기라면 409 응답 뒤 **기존 연결 끊고 다시 연결** 버튼을 보여 주며, 같은 6자리 코드로 서버의 기존 hardwareId·토큰을 교체한다. 이때 이전 토큰은 즉시 무효화된다.
 
-`public/player/sw.js`는 secure context(localhost/HTTPS)에서 재생기 셸을 캐시하는 보조 수단이다. LAN IP의 HTTP에서는 서비스 워커를 쓸 수 없지만, 이미 열린 탭과 IndexedDB 캐시는 동작한다. 재부팅 직후 오프라인 시작을 보장하려면 HTTPS나 별도 로컬 셸이 필요하다.
+`public/player/sw.js`는 secure context(localhost/HTTPS)에서 재생기 셸을 캐시하는 보조 수단이다. 현재 셸 캐시는 `gugak-signage-shell-v4`이며 HTML·JS·CSS는 network-first, 네트워크 실패 시 캐시로 대체한다. 설치 시 `skipWaiting`, 활성화 시 이전 셸 캐시 삭제·`clients.claim()`을 수행하고, 이전 셸이 있던 열린 재생기는 같은 URL로 한 번 갱신한다. 새 player는 15분마다 `registration.update()`를 호출한다. LAN IP의 HTTP에서는 서비스 워커를 쓸 수 없지만, 이미 열린 탭과 IndexedDB 캐시는 동작한다. 재부팅 직후 오프라인 시작을 보장하려면 HTTPS나 별도 로컬 셸이 필요하다.
 
 ## 6. PoC 엔진·RenderPlan과의 비교
 
-`poc/packages/engine`은 이미지 전용 순수 엔진이며, `Site → DisplayGroup → Display/Layout → Playlist` 스냅샷을 입력으로 `buildRenderPlan(snapshot, displayId, atMs)`를 만든다. 반환값에는 `sourceRect`, `destinationRect`, `rotation`, `fit`, `nextChangeAt`, `warnings`가 있어 다중 모니터·통합 캔버스·동기화 송출에 적합하다.
+`poc/packages/engine`은 이미지·동영상·URL 항목을 받는 순수 엔진이며, `Site → DisplayGroup → Display/Layout → Playlist` 스냅샷을 입력으로 `buildRenderPlan(snapshot, displayId, atMs)`를 만든다. 반환값에는 콘텐츠 종류, `sourceRect`, `destinationRect`, `rotation`, `fit`, `nextChangeAt`, `warnings`가 있어 다중 모니터·통합 캔버스·동기화 송출에 적합하다.
 
-이번 MVP는 **한 기기 = 한 화면**이고 이미지·동영상·URL을 섞은 순차 재생, 요일·시간표, 오프라인 미디어 캐시가 우선이다. PoC 엔진은 동영상·URL 항목과 시간표 우선순위를 다루지 않으므로 그대로 가져오면 스냅샷 변환과 미디어 분기 코드가 추가되고, MVP의 단순한 경계를 오히려 복잡하게 만든다. 따라서 엔진 코드는 복사하지 않았다.
+이번 MVP는 이미지·동영상·URL을 섞은 순차 재생, 요일·시간표, 오프라인 미디어 캐시를 유지하면서 다중 모니터 wall 입력을 같은 엔진으로 계산한다. URL은 `kind: "url"`과 `contentUrl`을 보존하고 화면별 `iframe`으로 그린다. 네트워크가 없으면 이름과 복구 안내가 있는 대체 카드를 표시한다.
 
 대신 다음 계약을 맞췄다.
 
 - 맞춤 용어를 `contain`/`cover`/`stretch`로 통일했다. CSS 렌더링에서만 `stretch`를 `object-fit: fill`로 매핑한다.
 - 표시 시간은 초 단위 API·DB, 화면 전환은 ms 단위(`transitionMs`)로 유지한다.
 - 게시 스냅샷·버전·epoch에 준하는 재생 경계 개념을 사용한다.
-- 재생기는 manifest를 받아 현재 항목과 다음 전환 시점을 계산한다. 다중 모니터가 필요해지면 이 재생기 계층을 PoC의 `buildRenderPlan` 호출로 교체하는 것이 전환 지점이다.
+- 재생기는 manifest를 받아 현재 항목과 다음 전환 시점을 계산하며, 다중 모니터 wall은 서버 미리보기와 같은 `buildRenderPlan` 호출을 사용한다.
 
-다중 모니터 단계에서는 MVP의 기기별 manifest를 `Site/DisplayGroup/Layout/Display/Playlist` 스냅샷으로 확장하고, `buildRenderPlan`의 `sourceRect`·`destinationRect`를 캔버스 또는 CSS로 그리는 어댑터를 추가한다. 관리 서버의 콘텐츠·기기·게시 테이블은 유지할 수 있다.
+다중 모니터 단계에서는 MVP의 기기별 manifest를 `Site/DisplayGroup/Layout/Display/Playlist` 스냅샷으로 확장하고, `buildRenderPlan`의 `sourceRect`·`destinationRect`를 캔버스 또는 CSS로 그리고 URL 계획은 슬롯 안의 `iframe`으로 그린다. 관리 서버의 콘텐츠·기기·게시 테이블은 유지한다.
 
 ## 7. SQLite → PostgreSQL 전환
 
