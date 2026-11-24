@@ -1,0 +1,40 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8e3828"/>
+      <stop offset="0.55" stop-color="#b14c33"/>
+      <stop offset="1" stop-color="#d0764e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <g opacity="0.2" fill="none" stroke="#f7e7cb" stroke-width="2">
+    <circle cx="1540" cy="180" r="260"/>
+    <circle cx="1540" cy="180" r="330"/>
+    <circle cx="1540" cy="180" r="400"/>
+    <circle cx="1540" cy="180" r="470"/>
+  </g>
+  <path d="M0 720 C310 620 570 760 860 690 C1180 612 1460 730 1920 610 L1920 1080 L0 1080Z" fill="#722b20" opacity="0.55"/>
+  <g transform="translate(1430 720)" opacity="0.28" stroke="#f9e9cc" stroke-width="8" fill="none">
+    <path d="M0 240 C70 120 190 40 330 0"/>
+    <path d="M20 270 C100 150 220 72 365 34"/>
+    <path d="M40 300 C130 182 250 104 400 68"/>
+    <path d="M60 330 C160 214 280 136 435 102"/>
+  </g>
+  <text x="132" y="180" fill="#f5dfbe" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="28" letter-spacing="10">국립부산국악원 시민 프로그램</text>
+  <text x="126" y="402" fill="#fff8eb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="142" font-weight="700" letter-spacing="-4">국악 체험 교실</text>
+  <text x="132" y="485" fill="#f9e3c4" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38">장구와 가야금, 손끝에서 피어나는 우리 가락</text>
+  <g transform="translate(132 590)" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif">
+    <rect width="560" height="290" rx="22" fill="#f8ead3" opacity="0.96"/>
+    <text x="42" y="72" fill="#8e3828" font-size="26" font-weight="700">초급 · 8주 과정</text>
+    <text x="42" y="138" fill="#3c2c27" font-size="31">매주 토요일 오후 2시</text>
+    <text x="42" y="190" fill="#3c2c27" font-size="31">국립부산국악원 연습실</text>
+    <line x1="42" y1="218" x2="518" y2="218" stroke="#d9bf9d"/>
+    <text x="42" y="258" fill="#8e3828" font-size="24">수강료 4만원 · 선착순 접수</text>
+  </g>
+  <g transform="translate(750 760)">
+    <rect width="310" height="64" rx="32" fill="#f5dfbe"/>
+    <text x="155" y="42" text-anchor="middle" fill="#7a2f21" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="26" font-weight="700">홈페이지에서 신청</text>
+  </g>
+  <text x="1780" y="1000" text-anchor="end" fill="#f0caa2" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" letter-spacing="3">2026 가을 시민 문화학교</text>
+</svg>

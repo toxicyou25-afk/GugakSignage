@@ -1,0 +1,58 @@
+{
+  "startedAt": "2026-11-24T09:23:08.724Z",
+  "base": "http://127.0.0.1:3125",
+  "steps": [
+    {
+      "name": "서버 시작",
+      "at": "2026-11-24T09:23:09.365Z"
+    },
+    {
+      "name": "기본 목록 없이 시간표만 있는 기기 게시",
+      "at": "2026-11-24T09:23:10.827Z",
+      "code": "WQULNQ",
+      "playlistId": "pl-sample-lobby",
+      "version": 1
+    },
+    {
+      "name": "예약 시간 전 재생 대기 확인",
+      "at": "2026-11-24T09:23:11.248Z",
+      "clock": "08:00",
+      "schedule": "09:00-10:00"
+    },
+    {
+      "name": "예약 시간 시작 후 첫 콘텐츠 재생",
+      "at": "2026-11-24T09:23:12.614Z",
+      "deviceId": "baea7c24-2834-4eba-ae35-503d7f5d7f20",
+      "manifestVersion": 1,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-autumn",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T00:01:00.173Z"
+    },
+    {
+      "name": "서버 단절 상태에서 예약 시간 종료 반영",
+      "at": "2026-11-24T09:23:26.282Z",
+      "clock": "10:01"
+    },
+    {
+      "name": "서버 단절 상태에서 다음 예약 시간 자동 시작",
+      "at": "2026-11-24T09:23:26.289Z",
+      "deviceId": "baea7c24-2834-4eba-ae35-503d7f5d7f20",
+      "manifestVersion": 1,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-autumn",
+      "offline": true,
+      "lastError": "Failed to fetch",
+      "lastHeartbeatAt": "2026-11-24T00:01:00.173Z"
+    }
+  ],
+  "pageErrors": [],
+  "result": "passed",
+  "finishedAt": "2026-11-24T09:23:26.289Z",
+  "serverLog": "[signage] 서버 시작 · 2026-11-24T09:23:09.214Z\n[signage] 관리 화면: http://127.0.0.1:3125/admin/\n[signage] 재생기: http://127.0.0.1:3125/player/\n[signage] 데이터베이스: <temp>\\schedule.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3125/player/?code=GUGAK1\n"
+}

@@ -1,0 +1,36 @@
+{
+  "name": "gugak-signage",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "국립부산국악원 디지털 사이니지 MVP — 관리 서버와 웹 재생기",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "serve": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/api.test.ts test/env.test.ts",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "verify:api": "node scripts/verify-api.mjs",
+    "verify:first-run": "node scripts/verify-first-run.mjs",
+    "verify:schedule": "node scripts/verify-schedule.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "image-size": "^2.0.2",
+    "multer": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.10.1",
+    "playwright-core": "^1.56.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

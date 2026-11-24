@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+services:
+  signage:
+    build: .
+    image: gugak-signage:mvp
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-gugak1234}
+      SESSION_SECRET: ${SESSION_SECRET:-change-this-session-secret-before-use}
+      DATA_DIR: /data
+      DB_PATH: /data/signage.sqlite
+      UPLOAD_DIR: /data/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-300}
+      SEED_SAMPLES: ${SEED_SAMPLES:-true}
+    volumes:
+      - signage-data:/data
+    restart: unless-stopped
+
+volumes:
+  signage-data:

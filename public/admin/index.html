@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>국악원 사이니지 관리</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2317334d'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23e5c88f' stroke-width='2'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='26' fill='%23e5c88f'%3E%E5%9C%8B%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section id="login-view" class="login-view" hidden>
+      <div class="login-visual" aria-hidden="true">
+        <div class="login-mark"><span>國</span><span>樂</span></div>
+        <p>국립부산국악원<br /><strong>디지털 사이니지</strong></p>
+      </div>
+      <div class="login-panel">
+        <form id="login-form" class="login-card">
+          <p class="eyebrow">SIGNAGE ADMIN</p>
+          <h1>관리 화면 로그인</h1>
+          <p class="muted">콘텐츠와 기기 상태를 관리합니다. 한 번 로그인하면 12시간 동안 유지됩니다.</p>
+          <label for="password">관리자 비밀번호</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <button class="btn btn-primary btn-block" type="submit">로그인</button>
+          <div id="login-demo-hint" class="login-demo-hint" hidden>
+            <strong>개발/샘플 모드</strong><br />초기 비밀번호 <code>gugak1234</code>입니다. 운영 전 <code>ADMIN_PASSWORD</code>를 바꾸세요.
+          </div>
+          <p class="login-help">초기 비밀번호와 서버 실행 방법은 <code>README.md</code>를 참고하세요.</p>
+        </form>
+      </div>
+    </section>
+
+    <div id="app-view" class="app-shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="#/dashboard" aria-label="대시보드로 이동">
+          <span class="brand-mark" aria-hidden="true">國</span>
+          <span><strong>국악원 사이니지</strong><small>관리 센터</small></span>
+        </a>
+        <nav class="nav" aria-label="주 메뉴">
+          <a href="#/dashboard" data-nav="dashboard"><span class="nav-icon">◈</span>대시보드</a>
+          <a href="#/contents" data-nav="contents"><span class="nav-icon">▦</span>콘텐츠</a>
+          <a href="#/devices" data-nav="devices"><span class="nav-icon">▣</span>기기</a>
+          <a href="#/playlists" data-nav="playlists"><span class="nav-icon">≋</span>재생목록</a>
+        </nav>
+        <div class="sidebar-guide">
+          <p class="sidebar-guide-title">처음이신가요?</p>
+          <ol>
+            <li>콘텐츠 올리기</li>
+            <li>기기 등록 코드 확인</li>
+            <li>재생목록 만들기</li>
+            <li>게시하고 재생기 열기</li>
+          </ol>
+        </div>
+        <div class="sidebar-foot">
+          <span class="server-dot" aria-hidden="true"></span>
+          <span>로컬 서버 연결됨</span>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <div>
+            <p id="page-eyebrow" class="eyebrow">OVERVIEW</p>
+            <h1 id="page-title">대시보드</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="refresh-button" class="btn btn-ghost btn-sm" type="button">새로고침</button>
+            <button id="logout-button" class="btn btn-ghost btn-sm" type="button">로그아웃</button>
+          </div>
+        </header>
+        <main id="view" tabindex="-1"></main>
+        <footer class="app-footer">국립부산국악원 인포메이션센터 · MVP 관리 서버</footer>
+      </div>
+    </div>
+
+    <dialog id="modal" class="modal"></dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="app.js"></script>
+  </body>
+</html>

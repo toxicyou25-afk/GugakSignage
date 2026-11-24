@@ -1,0 +1,79 @@
+[signage] 서버 시작 · 2026-11-24T09:22:55.801Z
+[signage] 관리 화면: http://127.0.0.1:3124/admin/
+[signage] 재생기: http://127.0.0.1:3124/player/
+[signage] 데이터베이스: <temp>\first-run.sqlite
+[signage] 업로드 폴더: <temp>\uploads
+[signage] 샘플 기기 등록 코드: GUGAK1
+[signage] 샘플 재생기 주소: http://127.0.0.1:3124/player/?code=GUGAK1
+[signage] 개발/샘플 모드 초기 비밀번호: gugak1234 · 운영 전 ADMIN_PASSWORD를 바꾸세요.
+
+
+{
+  "startedAt": "2026-11-24T09:22:55.176Z",
+  "base": "http://127.0.0.1:3124",
+  "sampleCode": "GUGAK1",
+  "steps": [
+    {
+      "name": "서버 시작",
+      "at": "2026-11-24T09:22:55.822Z"
+    },
+    {
+      "name": "관리자 로그인 화면에서 개발 모드 비밀번호 힌트 확인",
+      "at": "2026-11-24T09:22:57.652Z",
+      "loginHint": "개발/샘플 모드\n초기 비밀번호 gugak1234입니다. 운영 전 ADMIN_PASSWORD를 바꾸세요."
+    },
+    {
+      "name": "관리자 로그인 후 기기 카드에서 코드 확인",
+      "at": "2026-11-24T09:22:58.038Z",
+      "code": "GUGAK1"
+    },
+    {
+      "name": "코드 없이 샘플 버튼으로 연결하고 이미지 재생",
+      "at": "2026-11-24T09:22:59.909Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 1,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-autumn",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T09:22:58.946Z"
+    },
+    {
+      "name": "세로 화면에서 비율 유지 재생 확인",
+      "at": "2026-11-24T09:23:00.584Z",
+      "viewport": "720x1280",
+      "fit": "contain",
+      "rendered": "720x1280"
+    },
+    {
+      "name": "관리자 로그인 없이 기존 연결 복구 버튼 확인",
+      "at": "2026-11-24T09:23:01.433Z",
+      "message": "이미 다른 재생기가 연결된 기기입니다. 기존 연결을 끊고 다시 연결하면 이 화면으로 바꿀 수 있습니다."
+    },
+    {
+      "name": "기존 연결 끊고 다시 연결 후 재생",
+      "at": "2026-11-24T09:23:02.427Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 1,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-autumn",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T09:23:01.480Z"
+    },
+    {
+      "name": "연결된 기기의 재생기 링크에서 선택 코드 유지",
+      "at": "2026-11-24T09:23:02.440Z",
+      "href": "/player/?code=GUGAK1"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "result": "passed",
+  "finishedAt": "2026-11-24T09:23:02.441Z",
+  "serverLog": "[signage] 서버 시작 · 2026-11-24T09:22:55.801Z\n[signage] 관리 화면: http://127.0.0.1:3124/admin/\n[signage] 재생기: http://127.0.0.1:3124/player/\n[signage] 데이터베이스: <temp>\\first-run.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3124/player/?code=GUGAK1\n[signage] 개발/샘플 모드 초기 비밀번호: gugak1234 · 운영 전 ADMIN_PASSWORD를 바꾸세요.\n"
+}
