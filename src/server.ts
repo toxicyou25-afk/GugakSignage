@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { loadLocalEnv } from './env.js';
 import { migrateSampleCode, seedDatabase } from './seed.js';
+import { ensureDeviceTopology } from './topology-migration.js';
 
 loadLocalEnv();
 const config = loadConfig();
@@ -14,6 +15,7 @@ fs.mkdirSync(config.uploadDir, { recursive: true });
 const db = openDatabase(config.dbPath);
 const sampleCodeMigrated = migrateSampleCode(db);
 const seedResult = seedDatabase(db, config);
+if (seedResult.deviceId) ensureDeviceTopology(db, seedResult.deviceId);
 const app = createApp(db, config);
 const server = http.createServer(app);
 

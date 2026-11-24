@@ -1,0 +1,316 @@
+{
+  "startedAt": "2026-11-24T10:13:00.480Z",
+  "base": "http://127.0.0.1:3141",
+  "temporaryDataDir": "<system temp>",
+  "steps": [
+    {
+      "name": "장소 목록 화면 확인",
+      "at": "2026-11-24T10:13:03.511Z",
+      "siteCards": 1
+    },
+    {
+      "name": "4번 화면 전용 이미지",
+      "at": "2026-11-24T10:13:03.524Z",
+      "id": "debb4331-b1c5-47e5-a439-bd7dcacec7fc",
+      "contentId": "ct-sample-poster-welcome"
+    },
+    {
+      "name": "관리 화면에서 4모니터·1280×720·2×2 배치 저장",
+      "at": "2026-11-24T10:13:03.763Z",
+      "previewScreens": 4
+    },
+    {
+      "name": "관리 미리보기와 실제 엔진 RenderPlan 동일 응답 확인",
+      "at": "2026-11-24T10:13:04.012Z",
+      "displays": 4,
+      "plans": 4,
+      "layout": "grid",
+      "fits": [
+        "contain",
+        "contain",
+        "contain",
+        "cover"
+      ],
+      "rotations": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nextChanges": [
+        "2026-11-24T10:13:06.719Z",
+        "2026-11-24T10:13:06.719Z",
+        "2026-11-24T10:13:06.719Z",
+        null
+      ]
+    },
+    {
+      "name": "4화면 배치 게시",
+      "at": "2026-11-24T10:13:04.094Z",
+      "toast": "1대 PC에 v2 배치를 게시했습니다."
+    },
+    {
+      "name": "재생기에서 한 PC·4화면 캔버스 표시",
+      "at": "2026-11-24T10:13:07.531Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+      "queueLength": 0,
+      "index": 0,
+      "currentContentId": "ct-sample-poster-class",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T10:13:04.274Z",
+      "wallGroupId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+      "wallDisplayIds": [
+        "2864a682-7961-4520-af9a-79df159bc26b",
+        "7035e08c-ac32-4fab-8757-fd0a37f868d1",
+        "6f425b7a-5145-46c4-b4f5-61f32957cfc6",
+        "4b53c128-3f51-4653-b944-60e1cb83901b"
+      ],
+      "wallPlans": {
+        "2864a682-7961-4520-af9a-79df159bc26b": {
+          "imageId": "ct-sample-poster-welcome",
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795515189719
+        },
+        "7035e08c-ac32-4fab-8757-fd0a37f868d1": {
+          "imageId": "ct-sample-video-bbb",
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795515189719
+        },
+        "6f425b7a-5145-46c4-b4f5-61f32957cfc6": {
+          "imageId": "ct-sample-poster-class",
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795515189719
+        },
+        "4b53c128-3f51-4653-b944-60e1cb83901b": {
+          "imageId": "ct-sample-poster-welcome",
+          "fit": "cover",
+          "rotation": 0,
+          "nextChangeAtMs": null
+        }
+      },
+      "serverOffsetMs": 0,
+      "screenCount": 4,
+      "mediaCount": 4,
+      "renderReady": [
+        "true",
+        "true",
+        "true",
+        "true"
+      ],
+      "screenHtml": [
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1080,&quot;h&quot;:1920}\" data-destination-rect=\"{&quot;x&quot;:437.5,&quot;y&quot;:0,&quot;w&quot;:405,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 34.1",
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:640,&quot;h&quot;:360}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: ",
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1920,&quot;h&quot;:1080}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top",
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:656.25,&quot;w&quot;:1080,&quot;h&quot;:607.5}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0"
+      ]
+    },
+    {
+      "name": "서버 시각 기준 3초 전환 관찰",
+      "at": "2026-11-24T10:13:10.838Z",
+      "changed": true,
+      "serverOffsetMs": 0
+    },
+    {
+      "name": "모니터별 분리 창 모드 확인",
+      "at": "2026-11-24T10:13:11.970Z",
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 2,
+      "playlistId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+      "queueLength": 0,
+      "index": 0,
+      "currentContentId": "ct-sample-video-bbb",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-24T10:13:10.891Z",
+      "wallGroupId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+      "wallDisplayIds": [
+        "2864a682-7961-4520-af9a-79df159bc26b"
+      ],
+      "wallPlans": {
+        "2864a682-7961-4520-af9a-79df159bc26b": {
+          "imageId": "ct-sample-video-bbb",
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795515192719
+        }
+      },
+      "serverOffsetMs": -1,
+      "screenCount": 1
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "adminPreview": {
+    "displays": 4,
+    "plans": 4,
+    "layout": "grid",
+    "fits": [
+      "contain",
+      "contain",
+      "contain",
+      "cover"
+    ],
+    "rotations": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "nextChanges": [
+      "2026-11-24T10:13:06.719Z",
+      "2026-11-24T10:13:06.719Z",
+      "2026-11-24T10:13:06.719Z",
+      null
+    ]
+  },
+  "player": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+    "queueLength": 0,
+    "index": 0,
+    "currentContentId": "ct-sample-poster-class",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T10:13:04.274Z",
+    "wallGroupId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+    "wallDisplayIds": [
+      "2864a682-7961-4520-af9a-79df159bc26b",
+      "7035e08c-ac32-4fab-8757-fd0a37f868d1",
+      "6f425b7a-5145-46c4-b4f5-61f32957cfc6",
+      "4b53c128-3f51-4653-b944-60e1cb83901b"
+    ],
+    "wallPlans": {
+      "2864a682-7961-4520-af9a-79df159bc26b": {
+        "imageId": "ct-sample-poster-welcome",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "7035e08c-ac32-4fab-8757-fd0a37f868d1": {
+        "imageId": "ct-sample-video-bbb",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "6f425b7a-5145-46c4-b4f5-61f32957cfc6": {
+        "imageId": "ct-sample-poster-class",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "4b53c128-3f51-4653-b944-60e1cb83901b": {
+        "imageId": "ct-sample-poster-welcome",
+        "fit": "cover",
+        "rotation": 0,
+        "nextChangeAtMs": null
+      }
+    },
+    "serverOffsetMs": 0,
+    "screenCount": 4,
+    "mediaCount": 4,
+    "renderReady": [
+      "true",
+      "true",
+      "true",
+      "true"
+    ],
+    "screenHtml": [
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1080,&quot;h&quot;:1920}\" data-destination-rect=\"{&quot;x&quot;:437.5,&quot;y&quot;:0,&quot;w&quot;:405,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 34.1",
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:640,&quot;h&quot;:360}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: ",
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1920,&quot;h&quot;:1080}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top",
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:656.25,&quot;w&quot;:1080,&quot;h&quot;:607.5}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0"
+    ]
+  },
+  "perMonitorWindow": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 2,
+    "playlistId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+    "queueLength": 0,
+    "index": 0,
+    "currentContentId": "ct-sample-video-bbb",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-24T10:13:10.891Z",
+    "wallGroupId": "248a0358-3db4-4ca0-8911-77bc2a80cad3",
+    "wallDisplayIds": [
+      "2864a682-7961-4520-af9a-79df159bc26b"
+    ],
+    "wallPlans": {
+      "2864a682-7961-4520-af9a-79df159bc26b": {
+        "imageId": "ct-sample-video-bbb",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515192719
+      }
+    },
+    "serverOffsetMs": -1,
+    "screenCount": 1
+  },
+  "physicalMonitors": "NOT_RUN",
+  "finishedAt": "2026-11-24T10:13:11.970Z",
+  "result": "passed",
+  "serverLog": "[signage] 서버 시작 · 2026-11-24T10:13:01.492Z\n[signage] 관리 화면: http://127.0.0.1:3141/admin/\n[signage] 재생기: http://127.0.0.1:3141/player/\n[signage] 데이터베이스: <temp>\\verify.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3141/player/?code=GUGAK1\n",
+  "timing": {
+    "before": {
+      "2864a682-7961-4520-af9a-79df159bc26b": {
+        "imageId": "ct-sample-poster-welcome",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "7035e08c-ac32-4fab-8757-fd0a37f868d1": {
+        "imageId": "ct-sample-video-bbb",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "6f425b7a-5145-46c4-b4f5-61f32957cfc6": {
+        "imageId": "ct-sample-poster-class",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515189719
+      },
+      "4b53c128-3f51-4653-b944-60e1cb83901b": {
+        "imageId": "ct-sample-poster-welcome",
+        "fit": "cover",
+        "rotation": 0,
+        "nextChangeAtMs": null
+      }
+    },
+    "after": {
+      "2864a682-7961-4520-af9a-79df159bc26b": {
+        "imageId": "ct-sample-video-bbb",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515192719
+      },
+      "7035e08c-ac32-4fab-8757-fd0a37f868d1": {
+        "imageId": "ct-sample-poster-class",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515192719
+      },
+      "6f425b7a-5145-46c4-b4f5-61f32957cfc6": {
+        "imageId": "ct-sample-poster-autumn",
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795515192719
+      },
+      "4b53c128-3f51-4653-b944-60e1cb83901b": {
+        "imageId": "ct-sample-poster-welcome",
+        "fit": "cover",
+        "rotation": 0,
+        "nextChangeAtMs": null
+      }
+    },
+    "changed": true,
+    "serverOffsetMs": 0
+  }
+}

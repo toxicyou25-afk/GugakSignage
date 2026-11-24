@@ -9,6 +9,7 @@ const state = {
   contents: [],
   devices: [],
   playlists: [],
+  sites: [],
   contentFilter: 'all',
   editor: null,
   uploading: false,
@@ -32,6 +33,7 @@ const el = {
 const PAGE_META = {
   dashboard: { title: '대시보드', eyebrow: 'OVERVIEW' },
   contents: { title: '콘텐츠', eyebrow: 'CONTENT LIBRARY' },
+  sites: { title: '장소·화면', eyebrow: 'SITES & DISPLAYS' },
   devices: { title: '기기', eyebrow: 'DISPLAYS' },
   playlists: { title: '재생목록', eyebrow: 'PLAYLISTS' },
 };
@@ -187,16 +189,18 @@ function showError(error) {
 }
 
 async function loadAll() {
-  const [dashboard, contents, devices, playlists] = await Promise.all([
+  const [dashboard, contents, devices, playlists, sites] = await Promise.all([
     api('/api/dashboard'),
     api('/api/contents'),
     api('/api/devices'),
     api('/api/playlists'),
+    api('/api/sites'),
   ]);
   state.dashboard = dashboard;
   state.contents = contents.contents;
   state.devices = devices.devices;
   state.playlists = playlists.playlists;
+  state.sites = sites.sites;
 }
 
 async function refreshOnly() {
@@ -222,6 +226,16 @@ async function route() {
   if (page === 'playlists' && id) {
     setPageMeta('playlists');
     await renderPlaylistEditor(id);
+    return;
+  }
+  if (page === 'sites') {
+    setPageMeta('sites');
+    if (!window.GugakTopology) {
+      el.view.innerHTML = '<div class="empty"><h3>화면 관리 모듈을 불러오지 못했습니다.</h3><p>페이지를 새로고침해 주세요.</p></div>';
+      return;
+    }
+    await window.GugakTopology.render(id || '', el.view);
+    el.view.focus({ preventScroll: true });
     return;
   }
   setPageMeta(PAGE_META[page] ? page : 'dashboard');
@@ -504,6 +518,8 @@ function deviceCardHtml(device) {
     </div>
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>
+      <span>장소 <strong>${esc(device.siteName || '미지정')}</strong></span>
+      <span>모니터 <strong>${device.displayCount || 0}개</strong></span>
       <span>게시 <strong>${device.publishedVersion ? `v${device.publishedVersion}` : '아직 없음'}</strong></span>
       <span>마지막 연결 <strong>${timeAgo(device.lastSeen)}</strong></span>
       ${device.reportedWidth ? `<span>실제 화면 <strong>${device.reportedWidth}×${device.reportedHeight || '?'}</strong></span>` : ''}

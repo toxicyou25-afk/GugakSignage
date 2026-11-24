@@ -84,7 +84,10 @@ function publishedDeviceNamesUsingContent(db: DB, contentId: string): string[] {
     const usesSchedule = (snapshot.schedules || []).some((schedule) =>
       playlistReferencesContent(schedule.playlist, contentId),
     );
-    if (usesDefault || usesSchedule) names.add(row.name);
+    const usesWall = (snapshot.wall?.screens || []).some((screen) =>
+      playlistReferencesContent(screen.playlist, contentId),
+    );
+    if (usesDefault || usesSchedule || usesWall) names.add(row.name);
   }
   return [...names];
 }

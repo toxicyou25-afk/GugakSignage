@@ -11,6 +11,7 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { deviceRoutes } from './routes/devices.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
+import { topologyRoutes } from './routes/topology.js';
 
 export function createApp(db: DB, config: AppConfig) {
   const app = express();
@@ -34,12 +35,17 @@ export function createApp(db: DB, config: AppConfig) {
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'gugak-signage', time: new Date().toISOString() });
   });
+  app.get('/api/time', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ serverTime: new Date().toISOString(), serverTimeMs: Date.now() });
+  });
   app.use('/api/auth', authRoutes(config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/dashboard', admin, dashboardRoutes(db, config));
   app.use('/api/contents', admin, contentRoutes(db, config));
   app.use('/api/playlists', admin, playlistRoutes(db));
   app.use('/api/devices', admin, deviceRoutes(db, config));
+  app.use('/api', admin, topologyRoutes(db, config));
 
   app.use(
     '/media',
@@ -54,6 +60,7 @@ export function createApp(db: DB, config: AppConfig) {
     }),
   );
   app.use('/sample', express.static(path.join(config.rootDir, 'public', 'sample'), { index: 'notice.html' }));
+  app.use('/engine', express.static(path.join(config.rootDir, 'poc', 'packages', 'engine'), { index: false }));
   app.use('/player', express.static(path.join(config.rootDir, 'public', 'player'), { index: 'index.html' }));
   app.use('/admin', express.static(path.join(config.rootDir, 'public', 'admin'), { index: 'index.html' }));
 

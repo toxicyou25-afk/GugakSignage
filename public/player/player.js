@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-'use strict';
+import { buildRenderPlan } from '/engine/index.js';
 
 const STORAGE = {
   token: 'signage.player.token',
@@ -66,6 +66,14 @@ const runtime = {
   sampleCode: null,
   pairing: false,
   lastAttemptCode: null,
+  serverOffsetMs: 0,
+  clockSyncedAt: 0,
+  clockTimer: null,
+  wallTimer: null,
+  wallPlans: new Map(),
+  wallNodes: new Map(),
+  wallSurface: null,
+  requestedDisplayId: new URLSearchParams(location.search).get('display') || '',
 };
 
 function safeGet(key) {
@@ -226,7 +234,33 @@ function startLoops() {
     fetchManifest();
   }, POLL_MS);
   runtime.heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
+  runtime.clockTimer = setInterval(() => { syncServerClock().catch(() => {}); }, 30_000);
+  syncServerClock().catch(() => {});
   sendHeartbeat();
+}
+
+async function syncServerClock() {
+  const samples = [];
+  for (let index = 0; index < 5; index += 1) {
+    const sent = Date.now();
+    const response = await fetch('/api/time', { cache: 'no-store' });
+    const received = Date.now();
+    if (!response.ok) throw new Error(`time ${response.status}`);
+    const data = await response.json();
+    const serverMs = Number(data.serverTimeMs ?? Date.parse(data.serverTime));
+    if (!Number.isFinite(serverMs)) continue;
+    samples.push({ offset: serverMs - (sent + received) / 2, rtt: received - sent });
+  }
+  if (!samples.length) return;
+  samples.sort((left, right) => left.rtt - right.rtt);
+  const best = samples.slice(0, Math.max(1, Math.ceil(samples.length / 2)));
+  runtime.serverOffsetMs = best.reduce((sum, sample) => sum + sample.offset, 0) / best.length;
+  runtime.clockSyncedAt = Date.now();
+  if (runtime.manifest?.wall && !el.player.hidden) renderWallFrame();
+}
+
+function serverNow() {
+  return Date.now() + runtime.serverOffsetMs;
 }
 
 async function fetchManifest(options = {}) {
@@ -265,6 +299,17 @@ async function fetchManifest(options = {}) {
 }
 
 function acceptManifest(manifest, initial) {
+  if (manifest.wall) {
+    if (!runtime.manifest || initial || runtime.manifest.version !== manifest.version) {
+      applyManifest(manifest, true);
+    } else {
+      runtime.manifest = manifest;
+      runtime.serverOffsetMs = Number.isFinite(Date.parse(manifest.serverTime))
+        ? Date.parse(manifest.serverTime) - Date.now()
+        : runtime.serverOffsetMs;
+    }
+    return;
+  }
   if (!runtime.manifest || initial || !runtime.currentNode || runtime.queue.length === 0) {
     applyManifest(manifest, true);
     return;
@@ -281,6 +326,7 @@ function acceptManifest(manifest, initial) {
 function reevaluateCachedSchedule() {
   const manifest = runtime.manifest;
   if (!manifest || !runtime.token || el.player.hidden) return;
+  if (manifest.wall) return;
   const playlist = activePlaylist(manifest);
   const queue = queueFor(playlist);
   if (!playlist || queue.length === 0) {
@@ -336,6 +382,15 @@ function applyManifest(manifest, restart) {
   el.error.hidden = true;
   el.deviceLabel.textContent = manifest.device?.name || '';
   safeSet(STORAGE.deviceId, manifest.device?.id || runtime.deviceId || '');
+  if (manifest.serverTime) {
+    const serverMs = Date.parse(manifest.serverTime);
+    if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
+  }
+  if (manifest.wall) {
+    applyWallManifest(manifest, restart);
+    return;
+  }
+  stopWallPlayback();
   if (manifest.version === 0 && !manifest.defaultPlaylist && !(manifest.schedules || []).length) {
     stopPlayback();
     showWaitingState(manifest);
@@ -363,6 +418,235 @@ function applyManifest(manifest, restart) {
     runtime.index = 0;
     playCurrent();
   }
+}
+
+function wallPlaylistSnapshot(wall, screen) {
+  const items = (screen.playlist?.items || []).filter((item) =>
+    item.enabled && item.content?.url && item.content?.width > 0 && item.content?.height > 0,
+  );
+  return {
+    site: { ...wall.site, publication: { epoch: wall.group.epoch } },
+    group: { ...wall.group, settings: wall.group.settings || { dwellMs: wall.dwellMs } },
+    layout: wall.layout,
+    playlist: {
+      id: screen.playlist?.id || `empty-${screen.displayId}`,
+      name: screen.playlist?.name || '배정 없음',
+      items: items.map((item) => ({
+        id: item.id,
+        imageId: item.content.id,
+        durationMs: Math.max(1, item.durationSeconds) * 1000,
+        fitMode: item.fitMode,
+        transitionMs: item.transitionMs,
+        enabled: true,
+      })),
+    },
+    images: items.map((item) => ({
+      id: item.content.id,
+      filename: item.content.name,
+      width: item.content.width,
+      height: item.content.height,
+      mime: item.content.mime || 'application/octet-stream',
+      displayUrl: item.content.url,
+    })),
+    displays: wall.displays,
+    mode: wall.group.playbackMode,
+    epoch: wall.group.epoch,
+    dwellMs: wall.dwellMs,
+    settings: wall.group.settings || {},
+  };
+}
+
+function visibleWallDisplays(wall) {
+  const own = wall.displays.filter((display) => display.deviceId === runtime.deviceId);
+  if (!runtime.requestedDisplayId) return own;
+  return own.filter((display) => display.id === runtime.requestedDisplayId);
+}
+
+function applyWallManifest(manifest, restart) {
+  const wall = manifest.wall;
+  if (!wall?.group || !Array.isArray(wall.displays)) {
+    stopPlayback();
+    showError('화면 배치를 읽지 못했습니다', '게시 스냅샷에 배치 정보가 없습니다. 관리 화면에서 다시 게시해 주세요.');
+    return;
+  }
+  const visible = visibleWallDisplays(wall);
+  if (!visible.length) {
+    stopWallPlayback();
+    hideCenter();
+    el.waitingTitle.textContent = '이 PC에 배정된 모니터가 없습니다';
+    el.waitingMessage.textContent = '관리 화면 → 장소·화면에서 이 PC의 모니터를 연결한 뒤 다시 게시해 주세요.';
+    el.waiting.hidden = false;
+    return;
+  }
+  if (restart || !runtime.wallSurface || runtime.wallSurface.parentElement !== el.stage) {
+    buildWallSurface(wall, visible);
+  }
+  renderWallFrame();
+  revealControls();
+}
+
+function buildWallSurface(wall, visible) {
+  stopWallPlayback();
+  const surface = document.createElement('div');
+  surface.className = `wall-surface${runtime.requestedDisplayId ? ' is-single' : ''}`;
+  surface.style.setProperty('--wall-aspect', String(wall.layout.canvasWidth / Math.max(1, wall.layout.canvasHeight)));
+  const slotById = new Map((wall.layout.slots || []).map((slot) => [slot.id, slot]));
+  for (const display of visible) {
+    const slot = slotById.get(display.slotId);
+    const screen = document.createElement('section');
+    screen.className = 'wall-screen';
+    screen.dataset.displayId = display.id;
+    screen.setAttribute('aria-label', display.name);
+    if (runtime.requestedDisplayId) {
+      Object.assign(screen.style, { left: '0', top: '0', width: '100%', height: '100%' });
+    } else if (slot) {
+      Object.assign(screen.style, {
+        left: `${slot.x * 100}%`,
+        top: `${slot.y * 100}%`,
+        width: `${slot.w * 100}%`,
+        height: `${slot.h * 100}%`,
+      });
+    }
+    const canvas = document.createElement('div');
+    canvas.className = 'wall-screen-canvas';
+    canvas.dataset.renderReady = 'false';
+    screen.appendChild(canvas);
+    surface.appendChild(screen);
+    runtime.wallNodes.set(display.id, { screen, canvas, imageId: null, contentId: null, renderToken: 0 });
+  }
+  runtime.wallSurface = surface;
+  runtime.currentNode = surface;
+  el.stage.classList.add('wall-stage');
+  el.stage.appendChild(surface);
+}
+
+function updateWallScreen(displayId, plan, wall) {
+  const entry = runtime.wallNodes.get(displayId);
+  const display = wall.displays.find((candidate) => candidate.id === displayId);
+  const screen = wall.screens.find((candidate) => candidate.displayId === displayId);
+  if (!entry || !display) return;
+  entry.screen.dataset.rotation = String(plan.rotation);
+  entry.screen.dataset.fit = plan.fit;
+  entry.canvas.dataset.sourceRect = JSON.stringify(plan.sourceRect || null);
+  entry.canvas.dataset.destinationRect = JSON.stringify(plan.destinationRect);
+  if (plan.placeholder) {
+    if (entry.contentId !== '__placeholder__') {
+      entry.contentId = '__placeholder__';
+      entry.canvas.innerHTML = `<div class="wall-placeholder"><span>${display.name}</span><strong>배정된 이미지가 없습니다</strong><small>관리 화면에서 화면별 콘텐츠를 배정하세요.</small></div>`;
+    }
+    return;
+  }
+  if (entry.contentId === plan.imageId && entry.imageId === plan.imageId) return;
+  const item = screen?.playlist?.items?.find((candidate) => candidate.content.id === plan.imageId);
+  if (!item) return;
+  const token = ++entry.renderToken;
+  resolveMediaUrl(item.content).then((source) => {
+    if (!runtime.wallNodes.has(displayId) || token !== entry.renderToken || !source) return;
+    const viewport = plan.viewport;
+    const sourceRect = plan.sourceRect || { x: 0, y: 0, w: item.content.width, h: item.content.height };
+    const destination = plan.destinationRect;
+    const clip = document.createElement('div');
+    clip.className = 'wall-media-clip';
+    Object.assign(clip.style, {
+      left: `${(destination.x / viewport.width) * 100}%`,
+      top: `${(destination.y / viewport.height) * 100}%`,
+      width: `${(destination.w / viewport.width) * 100}%`,
+      height: `${(destination.h / viewport.height) * 100}%`,
+    });
+    const media = item.content.kind === 'video' ? document.createElement('video') : document.createElement('img');
+    media.className = 'wall-media';
+    const rotationLayer = document.createElement('div');
+    rotationLayer.className = 'wall-rotation-layer';
+    const rotatedQuarter = plan.rotation === 90 || plan.rotation === 270;
+    Object.assign(rotationLayer.style, rotatedQuarter ? {
+      left: `${((destination.w - destination.h) / 2 / destination.w) * 100}%`,
+      top: `${((destination.h - destination.w) / 2 / destination.h) * 100}%`,
+      width: `${(destination.h / destination.w) * 100}%`,
+      height: `${(destination.w / destination.h) * 100}%`,
+      transform: `rotate(${plan.rotation}deg)`,
+    } : {
+      inset: '0',
+      transform: plan.rotation ? `rotate(${plan.rotation}deg)` : 'none',
+    });
+    if (media instanceof HTMLImageElement) media.alt = item.content.name || '';
+    else {
+      media.muted = true;
+      media.loop = true;
+      media.autoplay = true;
+      media.playsInline = true;
+      media.play().catch(() => {});
+    }
+    Object.assign(media.style, {
+      left: `${(-sourceRect.x / sourceRect.w) * 100}%`,
+      top: `${(-sourceRect.y / sourceRect.h) * 100}%`,
+      width: `${(item.content.width / sourceRect.w) * 100}%`,
+      height: `${(item.content.height / sourceRect.h) * 100}%`,
+    });
+    media.src = source;
+    rotationLayer.appendChild(media);
+    clip.appendChild(rotationLayer);
+    const previous = entry.canvas.querySelector('.wall-media-clip');
+    const transitionMs = Math.max(0, Number(plan.transitionMs) || 0);
+    clip.style.transitionDuration = `${transitionMs}ms`;
+    entry.canvas.appendChild(clip);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => clip.classList.add('visible'));
+    });
+    if (previous) {
+      previous.classList.remove('visible');
+      setTimeout(() => previous.remove(), transitionMs + 120);
+    }
+    entry.canvas.dataset.renderReady = 'true';
+    entry.contentId = plan.imageId;
+    entry.imageId = plan.imageId;
+    runtime.currentContentId = plan.imageId;
+    document.body.dataset.currentContentId = plan.imageId || '';
+  }).catch(() => {
+    entry.canvas.dataset.renderReady = 'false';
+  });
+}
+
+function renderWallFrame() {
+  clearTimeout(runtime.wallTimer);
+  runtime.wallTimer = null;
+  const manifest = runtime.manifest;
+  const wall = manifest?.wall;
+  if (!wall || !runtime.wallSurface) return;
+  const now = serverNow();
+  const visible = visibleWallDisplays(wall);
+  const plans = [];
+  for (const display of visible) {
+    const screen = wall.screens.find((candidate) => candidate.displayId === display.id) || {
+      displayId: display.id,
+      playlistId: null,
+      playlist: { id: 'empty', name: '배정 없음', items: [] },
+    };
+    const plan = buildRenderPlan(wallPlaylistSnapshot(wall, screen), display.id, now);
+    runtime.wallPlans.set(display.id, plan);
+    plans.push(plan);
+    updateWallScreen(display.id, plan, wall);
+  }
+  runtime.currentContentId = plans.find((plan) => plan.imageId)?.imageId || null;
+  runtime.playlistId = wall.group.id;
+  const next = plans
+    .map((plan) => plan.nextChangeAtMs)
+    .filter((value) => Number.isFinite(value) && value > serverNow())
+    .sort((left, right) => left - right)[0];
+  const delay = next ? Math.max(16, Math.min(1_000, next - serverNow() + 20)) : 1_000;
+  runtime.wallTimer = setTimeout(renderWallFrame, delay);
+}
+
+function stopWallPlayback() {
+  clearTimeout(runtime.wallTimer);
+  runtime.wallTimer = null;
+  runtime.wallNodes.clear();
+  runtime.wallPlans.clear();
+  if (runtime.wallSurface) {
+    runtime.wallSurface.remove();
+    runtime.wallSurface = null;
+  }
+  if (runtime.currentNode === runtime.wallSurface) runtime.currentNode = null;
+  el.stage.classList.remove('wall-stage');
 }
 
 function hideCenter() {
@@ -402,6 +686,7 @@ function stopPlayback() {
     runtime.currentNode.remove();
     runtime.currentNode = null;
   }
+  stopWallPlayback();
 }
 
 function advance() {
@@ -705,6 +990,7 @@ function collectContents(manifest) {
   };
   visit(manifest.defaultPlaylist);
   for (const schedule of manifest.schedules || []) visit(schedule.playlist);
+  for (const screen of manifest.wall?.screens || []) visit(screen.playlist);
   return [...map.values()];
 }
 
@@ -831,6 +1117,9 @@ el.disconnect.addEventListener('click', async () => {
 
 document.addEventListener('mousemove', () => { if (!el.player.hidden) revealControls(); });
 document.addEventListener('touchstart', () => { if (!el.player.hidden) revealControls(); }, { passive: true });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && runtime.manifest?.wall) renderWallFrame();
+});
 window.addEventListener('online', () => { fetchManifest(); sendHeartbeat(); });
 window.addEventListener('offline', () => setOffline(true));
 
@@ -846,6 +1135,17 @@ window.__signagePlayer = {
       offline: runtime.offline,
       lastError: runtime.lastError,
       lastHeartbeatAt: runtime.lastHeartbeatAt,
+      wallGroupId: runtime.manifest?.wall?.group?.id ?? null,
+      wallDisplayIds: runtime.manifest?.wall?.displays
+        ? visibleWallDisplays(runtime.manifest.wall).map((display) => display.id)
+        : [],
+      wallPlans: Object.fromEntries([...runtime.wallPlans].map(([displayId, plan]) => [displayId, {
+        imageId: plan.imageId,
+        fit: plan.fit,
+        rotation: plan.rotation,
+        nextChangeAtMs: plan.nextChangeAtMs,
+      }])),
+      serverOffsetMs: runtime.serverOffsetMs,
     };
   },
 };

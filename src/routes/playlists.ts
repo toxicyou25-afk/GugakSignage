@@ -175,10 +175,20 @@ export function playlistRoutes(db: DB): Router {
       `SELECT DISTINCT d.name FROM schedules s JOIN devices d ON d.id = s.device_id WHERE s.playlist_id = ?`,
       playlist.id,
     );
+    const topologyUsage = Number(get<{ n: number }>(
+      db,
+      `SELECT
+         (SELECT COUNT(*) FROM display_groups WHERE playlist_id = ?) +
+         (SELECT COUNT(*) FROM displays WHERE playlist_id = ?) AS n`,
+      playlist.id,
+      playlist.id,
+    )?.n ?? 0);
     const usage = [...new Map([...devices, ...scheduled].map((row) => [row.name, row])).keys()];
-    if (usage.length > 0) {
+    if (usage.length > 0 || topologyUsage > 0) {
       res.status(409).json({
-        error: `이 재생목록은 ${usage.map((name) => `‘${name}’`).join(', ')} 기기에서 사용 중입니다. 기기의 재생 설정을 바꾼 뒤 삭제해 주세요.`,
+        error: usage.length > 0
+          ? `이 재생목록은 ${usage.map((name) => `‘${name}’`).join(', ')} 기기에서 사용 중입니다. 기기의 재생 설정을 바꾼 뒤 삭제해 주세요.`
+          : '이 재생목록은 장소·화면 배치에서 사용 중입니다. 화면별 배정과 그룹 기본 재생목록을 바꾼 뒤 삭제해 주세요.',
       });
       return;
     }

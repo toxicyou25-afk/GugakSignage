@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-import { all, get, run, type DB } from './db.js';
+import { all, get, run, transaction, type DB } from './db.js';
 import type {
   ContentKind,
   DeviceManifest,
@@ -12,6 +12,7 @@ import type {
   PlaylistRow,
   PublicationRow,
   ScheduleRow,
+  WallSnapshot,
 } from './types.js';
 import { id, nowIso, safeJsonParse } from './util.js';
 
@@ -24,6 +25,7 @@ export class PublishError extends Error {
 export interface Snapshot {
   defaultPlaylist: ManifestPlaylist | null;
   schedules: ManifestSchedule[];
+  wall?: WallSnapshot;
 }
 
 interface ItemContentRow extends PlaylistItemRow {
@@ -166,6 +168,17 @@ export function latestPublication(db: DB, deviceId: string): PublicationRow | un
 export function manifestForDevice(db: DB, device: DeviceRow): DeviceManifest {
   const publication = latestPublication(db, device.id);
   const snapshot = publication ? safeJsonParse<Snapshot>(publication.snapshot) : null;
+  const ownDisplayIds = new Set(
+    snapshot?.wall?.displays
+      .filter((display) => display.deviceId === device.id)
+      .map((display) => display.id) ?? [],
+  );
+  const wall = snapshot?.wall
+    ? {
+        ...snapshot.wall,
+        screens: snapshot.wall.screens.filter((screen) => ownDisplayIds.has(screen.displayId)),
+      }
+    : undefined;
   return {
     version: publication?.version ?? 0,
     publishedAt: publication?.published_at ?? null,
@@ -178,6 +191,55 @@ export function manifestForDevice(db: DB, device: DeviceRow): DeviceManifest {
       width: device.width,
       height: device.height,
     },
+    ...(wall ? { wall } : {}),
     serverTime: nowIso(),
   };
+}
+
+export function publishGroupSnapshot(
+  db: DB,
+  wall: WallSnapshot,
+): { version: number; publishedAt: string; deviceIds: string[] } {
+  const deviceIds = [...new Set(wall.displays.map((display) => display.deviceId).filter((value): value is string => Boolean(value)))];
+  if (deviceIds.length === 0) {
+    throw new PublishError('화면을 PC 기기에 한 대 이상 연결한 뒤 게시해 주세요.');
+  }
+  const publishedAt = nowIso();
+  const snapshotWall: WallSnapshot = { ...wall, publishedAt };
+  const fallbackPlaylist =
+    wall.groupPlaylist ??
+    wall.screens.find((screen) => screen.playlist.items.length > 0)?.playlist ??
+    null;
+  const snapshot: Snapshot = {
+    defaultPlaylist: fallbackPlaylist,
+    schedules: [],
+    wall: snapshotWall,
+  };
+  let version = 0;
+  transaction(db, () => {
+    for (const deviceId of deviceIds) {
+      const device = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', deviceId);
+      if (!device) continue;
+      const nextVersion = device.published_version + 1;
+      run(
+        db,
+        'INSERT INTO publications(id, device_id, version, snapshot, published_at) VALUES (?, ?, ?, ?, ?)',
+        id(),
+        deviceId,
+        nextVersion,
+        JSON.stringify(snapshot),
+        publishedAt,
+      );
+      run(
+        db,
+        'UPDATE devices SET published_version = ?, published_at = ?, updated_at = ? WHERE id = ?',
+        nextVersion,
+        publishedAt,
+        publishedAt,
+        deviceId,
+      );
+      version = Math.max(version, nextVersion);
+    }
+  });
+  return { version, publishedAt, deviceIds };
 }
