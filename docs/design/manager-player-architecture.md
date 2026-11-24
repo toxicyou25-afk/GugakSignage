@@ -63,6 +63,8 @@ Manager는 직원이 브라우저만으로 이미지, 재생목록, 장소, 화�
 
 ## 4. 목표 컴포넌트
 
+Manager와 Player 사이의 장비 등록, 게시 manifest, heartbeat, 미디어 다운로드 및 오류 재시도 계약은 [API 설계 문서](manager-player-api.md)를 참고한다.
+
 ```mermaid
 flowchart LR
   Staff[직원 브라우저] -->|관리 UI / HTTPS| AdminUI[Manager Web UI]
