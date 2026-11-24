@@ -89,11 +89,15 @@ Do not add `--token` to a command manually. The installer's hidden-console launc
 | --- | --- |
 | Runner | ID 2, `GugakSignage-CI-Win11`, labels `self-hosted,Windows,X64,gugaksignage-ci`, online |
 | Windows service | `actions.runner.toxicyou25-afk-GugakSignage.GugakSignage-CI-Win11`, Running, Auto, `NT AUTHORITY\\LOCAL SERVICE` |
-| Validated implementation SHA | `f944a5c29bae475836f3c8612515339a1822926c` |
-| Actions run and job | Run `45509184450`, job `138852170420` |
-| Conclusion and steps | Success; 20/20 steps succeeded, including identity, isolation, checkout, hook, Node setup, install, typecheck, build, tests, four UI verifications, artifact upload, and cleanup |
+| Review-hardening SHA | `c143ec20c87b8554429959628643ca5377ea16e2` |
+| Actions run and job | Run `45513841103`, job `138868073638` |
+| Conclusion and steps | Success; 21/21 steps succeeded, including identity, isolation, checkout, hook and ACL checks, Node setup, install, typecheck, build, tests, four UI verifications, artifact upload, and cleanup |
 | Identity evidence | Job log: `Runner process identity: NT AUTHORITY\\LOCAL SERVICE` |
 | Precreated-root ACL repair | `D:PAI` reproduced on the old hook and cached archive; dedicated-root reset preserved both; archive SHA-256 and admission tests passed |
+| Control ACLs | Self-hosted job confirmed read-only LocalService access to controls/credentials and Modify access only on runtime data paths |
+| Token transport | Launcher probe confirmed the registration token reaches hidden console stdin and is absent from child process argv |
+| setup-node cache | The automatic npm-cache input was removed; npm still uses the isolated `_cache\npm`, and the final run has no gzip/cache save warning |
+| Verification artifact | `windows-verification-1`, ID `14976882400`, 10,413,838 bytes |
 | Required-check names | `CI / Validate on Windows` (workflow and job names unchanged) |
 | Fork selection | Workflow routes fork PRs to `windows-latest`; runner admission hook denies them before steps; no fork PR was created or run |
-| Service elevation | The owner already approved UAC for the bootstrap; retry the command above for GugakSignage after pulling this branch |
+| Service elevation | LocalService automatic service is installed; rerun the elevated bootstrap after pulling review-hardening changes to reload the service environment and auto-update setting |
