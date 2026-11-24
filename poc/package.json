@@ -1,0 +1,20 @@
+{
+  "name": "gugak-signage-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Generic image signage engine, server, browser player, and virtual preview PoC",
+  "scripts": {
+    "start": "node apps/server/server.js",
+    "test": "node --test",
+    "media": "node tools/generate-media.mjs",
+    "verify": "node tools/scenario-sim.mjs",
+    "smoke:preview": "node tools/preview-smoke.mjs",
+    "smoke": "node tools/smoke-browser.mjs",
+    "all": "npm test && npm run verify && npm run smoke:preview && npm run smoke"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,41 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-label="환영합니다">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#091b2e"/>
+      <stop offset="1" stop-color="#173f5f"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d8a23a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#d8a23a" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <circle cx="153.6" cy="972" r="453.59999999999997" fill="#5e88a8" opacity="0.08"/>
+  <g transform="translate(1725.6 259.2)">
+    <circle cx="1725.6" cy="259.2" r="216" fill="none" stroke="#5e88a8" stroke-width="4.32" opacity="0.6"/>
+  <circle cx="1725.6" cy="259.2" r="178.2" fill="none" stroke="#5e88a8" stroke-width="4.32" opacity="0.45999999999999996"/>
+  <circle cx="1725.6" cy="259.2" r="140.39999999999998" fill="none" stroke="#5e88a8" stroke-width="4.32" opacity="0.31999999999999995"/>
+  </g>
+  <text x="1839" y="972" text-anchor="end" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="367" font-weight="700" fill="#f4efe3" opacity="0.07">01</text>
+  <text x="81" y="100" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="19" letter-spacing="2.66" fill="#d8a23a">GUGANG SIGN · WELCOME</text>
+  <rect x="81" y="133.65" width="172.8" height="5.4" fill="#d8a23a"/>
+  <text x="81" y="410.4" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="124" font-weight="700" fill="#f4efe3">환영합니다</text>
+  <text x="81" y="579.31" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="35" fill="#b9c8d6">국립부산국악원 인포메이션센터</text>
+  <path d="M 81 712.8000000000001 L 300.75 742.4097571839189 L 520.5 749.6114404471958 L 740.25 728.9549594728388 L 960 696.0727272434547 L 1179.75 675.8493615522594 L 1399.5 683.5895023703838 L 1619.25 713.4355654383085 L 1839 742.800645253498" fill="none" stroke="url(#fade)" stroke-width="5.4" stroke-linecap="round"/>
+  <rect x="81" y="935.01" width="8" height="19.439999999999998" rx="4" fill="#d8a23a" opacity="0.35"/>
+  <rect x="96.2" y="828.09" width="8" height="126.35999999999999" rx="4" fill="#d8a23a" opacity="0.47"/>
+  <rect x="111.4" y="847.5300000000001" width="8" height="106.91999999999999" rx="4" fill="#d8a23a" opacity="0.59"/>
+  <rect x="126.6" y="866.97" width="8" height="87.48" rx="4" fill="#d8a23a" opacity="0.71"/>
+  <rect x="141.8" y="886.4100000000001" width="8" height="68.04" rx="4" fill="#d8a23a" opacity="0.35"/>
+  <rect x="157" y="905.85" width="8" height="48.6" rx="4" fill="#d8a23a" opacity="0.47"/>
+  <rect x="172.2" y="925.2900000000001" width="8" height="29.159999999999997" rx="4" fill="#d8a23a" opacity="0.59"/>
+  <rect x="187.39999999999998" y="818.3700000000001" width="8" height="136.07999999999998" rx="4" fill="#d8a23a" opacity="0.71"/>
+  <rect x="202.6" y="837.8100000000001" width="8" height="116.64" rx="4" fill="#d8a23a" opacity="0.35"/>
+  <rect x="217.79999999999998" y="857.25" width="8" height="97.2" rx="4" fill="#d8a23a" opacity="0.47"/>
+  <rect x="233" y="876.69" width="8" height="77.75999999999999" rx="4" fill="#d8a23a" opacity="0.59"/>
+  <rect x="248.2" y="896.1300000000001" width="8" height="58.31999999999999" rx="4" fill="#d8a23a" opacity="0.71"/>
+  <rect x="263.4" y="915.57" width="8" height="38.879999999999995" rx="4" fill="#d8a23a" opacity="0.35"/>
+  <rect x="278.6" y="935.01" width="8" height="19.439999999999998" rx="4" fill="#d8a23a" opacity="0.47"/>
+  <text x="1839" y="1051.65" text-anchor="end" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="17.1" fill="#b9c8d6" opacity="0.85">원본 데모 자산 · ORIGINAL DEMO ASSET</text>
+</svg>

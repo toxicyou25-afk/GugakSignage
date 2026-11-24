@@ -1,0 +1,51 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>국악원 사이니지 플레이어</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c2238'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23d8a23a' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/player/styles.css">
+</head>
+<body>
+  <main id="stage" aria-label="사이니지 재생 화면">
+    <canvas id="layer-a" class="layer" aria-hidden="true"></canvas>
+    <canvas id="layer-b" class="layer" aria-hidden="true"></canvas>
+    <div id="placeholder" class="placeholder" hidden>
+      <strong>콘텐츠 없음</strong>
+      <span>No images are published for this display.</span>
+    </div>
+    <div id="offline-badge" class="offline-badge" hidden>OFFLINE · 마지막 콘텐츠 재생 중</div>
+    <div id="boot" class="boot" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="boot-text">플레이어를 준비하는 중…</span>
+    </div>
+    <section id="register" class="register" hidden aria-labelledby="register-title">
+      <div class="register-card">
+        <p class="eyebrow">GUGANG SIGN · PLAYER</p>
+        <h1 id="register-title">화면 연결</h1>
+        <p class="lede">사이트 키 또는 화면 링크로 이 브라우저를 등록합니다. 자동 등록은 이 브라우저의 하드웨어 ID를 사용합니다.</p>
+        <form id="register-form">
+          <label for="site-key">사이트 키 <span class="hint-inline">(예: demo-a)</span></label>
+          <input id="site-key" name="siteKey" autocomplete="off" required placeholder="demo-a">
+          <label for="display-id">화면 ID <span class="hint-inline">(선택, 비우면 자동 등록)</span></label>
+          <input id="display-id" name="displayId" autocomplete="off" placeholder="disp-a1">
+          <button type="submit">연결하기</button>
+          <p id="register-message" class="register-message" role="status" aria-live="polite"></p>
+        </form>
+        <p class="small">수동 링크 예시: <code>/player/?site=site-a&amp;display=disp-a1</code></p>
+      </div>
+    </section>
+    <aside id="debug" class="debug" hidden aria-label="재생 디버그 정보">
+      <pre id="debug-text"></pre>
+    </aside>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <button id="fullscreen" class="fullscreen" type="button" title="전체 화면 (F)" aria-label="전체 화면">⛶</button>
+    <p id="hint" class="hint">D 디버그 · F 전체 화면</p>
+  </main>
+  <noscript>이 플레이어는 JavaScript가 필요합니다.</noscript>
+  <script type="module" src="/player/player.js"></script>
+</body>
+</html>

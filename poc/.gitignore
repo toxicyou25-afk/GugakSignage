@@ -1,0 +1,5 @@
+node_modules/
+artifacts/
+apps/server/data/state.json
+apps/server/data/*.tmp
+*.log

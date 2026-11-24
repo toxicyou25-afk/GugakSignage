@@ -1,0 +1,155 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>가상 모니터 미리보기 · GugakSignage PoC</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c2238'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23d8a23a' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/preview/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">◎</span>
+      <div>
+        <p class="eyebrow">GUGANG SIGN · ENGINE POC</p>
+        <h1>가상 모니터 미리보기</h1>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="inline-field">장소
+        <select id="site-select" aria-label="장소 선택"></select>
+      </label>
+      <button id="refresh" class="button secondary" type="button">새로 고침</button>
+      <span id="server-status" class="status-pill" role="status">서버 확인 중</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="workspace" aria-label="가상 모니터 배치">
+      <div class="workspace-head">
+        <div>
+          <p id="site-meta" class="meta">불러오는 중…</p>
+          <h2 id="site-name">—</h2>
+        </div>
+        <div class="transport" role="group" aria-label="재생 제어">
+          <button id="play-pause" class="button play" type="button">일시정지</button>
+          <button id="go-live" class="button secondary" type="button">현재 시각</button>
+          <span id="time-label" class="time-label">—</span>
+        </div>
+      </div>
+
+      <div class="scrub-row">
+        <label for="scrub">시간 이동</label>
+        <input id="scrub" type="range" min="0" max="120000" step="100" value="0">
+        <span id="slot-label" class="slot-label">slot —</span>
+      </div>
+
+      <div id="board-wrap" class="board-wrap">
+        <div id="board" class="board" role="img" aria-label="정규화 좌표로 그린 가상 모니터 배치"></div>
+      </div>
+      <p class="board-note">점선은 빈 슬롯입니다. 실제 송출과 미리보기는 같은 <code>RenderPlan</code> 엔진을 사용합니다.</p>
+      <div id="unassigned" class="unassigned" hidden></div>
+
+      <section class="panel scenario-panel" aria-labelledby="scenario-title">
+        <div class="panel-head">
+          <h2 id="scenario-title">시나리오</h2>
+          <p>모드·이미지 수·모니터 수·배치를 바꿔 같은 엔진을 확인합니다.</p>
+        </div>
+        <div class="scenario-grid">
+          <label>재생 방식
+            <select id="mode-select">
+              <option value="individual">개별 재생 (individual)</option>
+              <option value="synchronized-cycle">순환 동기화 (synchronized-cycle)</option>
+              <option value="mirror">동시 재생 (mirror)</option>
+              <option value="canvas">통합 화면 (canvas)</option>
+            </select>
+          </label>
+          <label>이미지 수
+            <select id="image-count">
+              <option value="site">장소 기본</option>
+              <option value="0">0장</option>
+              <option value="1">1장</option>
+              <option value="3">3장</option>
+              <option value="10">10장</option>
+            </select>
+          </label>
+          <label>모니터 수
+            <span class="count-control">
+              <button id="display-minus" class="icon-button" type="button" aria-label="모니터 한 대 제거">−</button>
+              <input id="display-count" type="number" min="1" max="12" step="1" value="4" aria-label="모니터 수">
+              <button id="display-plus" class="icon-button" type="button" aria-label="모니터 한 대 추가">+</button>
+            </span>
+          </label>
+          <label>배치
+            <select id="layout-select">
+              <option value="site">장소 배치</option>
+              <option value="row">가로</option>
+              <option value="column">세로</option>
+              <option value="grid">격자</option>
+              <option value="custom">사용자 지정</option>
+            </select>
+          </label>
+          <label>이미지 맞춤
+            <select id="fit-select">
+              <option value="contain">contain (잘림 없음)</option>
+              <option value="cover">cover (채우기)</option>
+              <option value="stretch">stretch (늘이기)</option>
+            </select>
+          </label>
+          <div class="quick-counts" role="group" aria-label="모니터 수 빠른 선택">
+            <button class="quick" type="button" data-count="1">1대</button>
+            <button class="quick" type="button" data-count="4">4대</button>
+            <button class="quick" type="button" data-count="8">8대</button>
+          </div>
+        </div>
+        <p id="scenario-note" class="scenario-note" role="status"></p>
+      </section>
+    </section>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-head compact">
+          <h2>검사 결과</h2>
+          <span id="warning-count" class="counter">—</span>
+        </div>
+        <div id="warnings" class="warnings" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head compact">
+          <h2>현재 상태</h2>
+          <span id="clock-state" class="mini-pill">—</span>
+        </div>
+        <dl id="stats" class="stats">
+          <div><dt>이미지 / 모니터</dt><dd>—</dd></div>
+          <div><dt>패턴 주기</dt><dd>—</dd></div>
+          <div><dt>epoch</dt><dd>—</dd></div>
+          <div><dt>dwell</dt><dd>—</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head compact">
+          <h2>플레이어 링크</h2>
+        </div>
+        <div id="player-links" class="player-links"></div>
+      </section>
+
+      <section class="panel pattern-panel">
+        <div class="panel-head compact">
+          <h2>LCM 패턴</h2>
+          <span id="pattern-count" class="counter">—</span>
+        </div>
+        <div class="pattern-scroll">
+          <table id="pattern-table" class="pattern-table" aria-label="이미지와 모니터 순환 패턴"></table>
+        </div>
+      </section>
+    </aside>
+  </main>
+  <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+  <script type="module" src="/preview/preview.js"></script>
+</body>
+</html>

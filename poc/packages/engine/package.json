@@ -1,0 +1,13 @@
+{
+  "name": "@gugak-signage/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Pure image signage playback engine for the GugakSignage PoC",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./src/*": "./src/*.js"
+  }
+}

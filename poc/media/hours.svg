@@ -1,0 +1,42 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-label="운영 시간">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#decda9"/>
+      <stop offset="1" stop-color="#f3e9d2"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b4533f" stop-opacity="0"/>
+      <stop offset="1" stop-color="#b4533f" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <circle cx="86.4" cy="1728" r="453.59999999999997" fill="#a9a08a" opacity="0.08"/>
+  <g transform="translate(885.6 460.79999999999995)">
+    <circle cx="885.6" cy="460.79999999999995" r="216" fill="none" stroke="#a9a08a" stroke-width="4.32" opacity="0.6"/>
+  <circle cx="885.6" cy="460.79999999999995" r="178.2" fill="none" stroke="#a9a08a" stroke-width="4.32" opacity="0.45999999999999996"/>
+  <circle cx="885.6" cy="460.79999999999995" r="140.39999999999998" fill="none" stroke="#a9a08a" stroke-width="4.32" opacity="0.31999999999999995"/>
+  </g>
+  <text x="999" y="1728" text-anchor="end" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="367" font-weight="700" fill="#19304a" opacity="0.07">03</text>
+  <text x="81" y="100" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="19" letter-spacing="2.66" fill="#b4533f">GUGANG SIGN · HOURS</text>
+  <rect x="81" y="133.65" width="172.8" height="5.4" fill="#b4533f"/>
+  <text x="81" y="729.6" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="124" font-weight="700" fill="#19304a">운영 시간</text>
+  <text x="81" y="898.51" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="35" fill="#5f6a6f">09:00 — 18:00</text>
+  <text x="81" y="956.26" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="35" fill="#5f6a6f">월요일 휴관</text>
+  <path d="M 81 1304.0114404471958 L 195.75 1283.3549594728388 L 310.5 1250.4727272434545 L 425.25 1230.2493615522594 L 540 1237.9895023703837 L 654.75 1267.8355654383085 L 769.5 1297.2006452534981 L 884.25 1303.8618348499442 L 999 1282.7780787421384" fill="none" stroke="url(#fade)" stroke-width="5.4" stroke-linecap="round"/>
+  <rect x="81" y="1658.3700000000001" width="8" height="136.07999999999998" rx="4" fill="#b4533f" opacity="0.35"/>
+  <rect x="96.2" y="1677.81" width="8" height="116.64" rx="4" fill="#b4533f" opacity="0.47"/>
+  <rect x="111.4" y="1697.25" width="8" height="97.2" rx="4" fill="#b4533f" opacity="0.59"/>
+  <rect x="126.6" y="1716.69" width="8" height="77.75999999999999" rx="4" fill="#b4533f" opacity="0.71"/>
+  <rect x="141.8" y="1736.13" width="8" height="58.31999999999999" rx="4" fill="#b4533f" opacity="0.35"/>
+  <rect x="157" y="1755.5700000000002" width="8" height="38.879999999999995" rx="4" fill="#b4533f" opacity="0.47"/>
+  <rect x="172.2" y="1775.01" width="8" height="19.439999999999998" rx="4" fill="#b4533f" opacity="0.59"/>
+  <rect x="187.39999999999998" y="1668.0900000000001" width="8" height="126.35999999999999" rx="4" fill="#b4533f" opacity="0.71"/>
+  <rect x="202.6" y="1687.53" width="8" height="106.91999999999999" rx="4" fill="#b4533f" opacity="0.35"/>
+  <rect x="217.79999999999998" y="1706.97" width="8" height="87.48" rx="4" fill="#b4533f" opacity="0.47"/>
+  <rect x="233" y="1726.41" width="8" height="68.04" rx="4" fill="#b4533f" opacity="0.59"/>
+  <rect x="248.2" y="1745.8500000000001" width="8" height="48.6" rx="4" fill="#b4533f" opacity="0.71"/>
+  <rect x="263.4" y="1765.29" width="8" height="29.159999999999997" rx="4" fill="#b4533f" opacity="0.35"/>
+  <rect x="278.6" y="1658.3700000000001" width="8" height="136.07999999999998" rx="4" fill="#b4533f" opacity="0.47"/>
+  <text x="999" y="1891.65" text-anchor="end" font-family="'Malgun Gothic', 'Noto Sans KR', sans-serif" font-size="17.1" fill="#5f6a6f" opacity="0.85">원본 데모 자산 · ORIGINAL DEMO ASSET</text>
+</svg>
