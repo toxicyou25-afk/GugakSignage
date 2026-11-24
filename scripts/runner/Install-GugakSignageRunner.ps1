@@ -27,6 +27,12 @@ $playwrightCacheDirectory = Join-Path $runnerRoot '_cache\ms-playwright'
 $homeDirectory = Join-Path $runnerRoot 'home'
 $admissionDirectory = Join-Path $runnerRoot 'admission'
 $admissionHook = Join-Path $admissionDirectory 'Assert-TrustedJob.ps1'
+$admissionHookSource = Join-Path $PSScriptRoot 'Assert-TrustedJob.ps1'
+$runnerExecutable = Join-Path $runnerDirectory 'bin\Runner.Listener.exe'
+$configurationLauncher = Join-Path $PSScriptRoot 'Invoke-RunnerConfiguration.ps1'
+$admissionTest = Join-Path $PSScriptRoot 'Test-GugakSignageRunnerAdmission.ps1'
+$aclPolicyTest = Join-Path $PSScriptRoot 'Assert-RunnerAclPolicy.ps1'
+$autoUpdateDisableScript = Join-Path $PSScriptRoot 'Set-RunnerAutoUpdateDisabled.ps1'
 
 function Assert-RunnerRootIsIsolated {
     $fullRunnerRoot = [IO.Path]::GetFullPath($runnerRoot).TrimEnd('\')
@@ -70,11 +76,47 @@ function Set-RunnerRootPermissions {
         "$identity`:(OI)(CI)F",
         'NT AUTHORITY\SYSTEM:(OI)(CI)F',
         'BUILTIN\Administrators:(OI)(CI)F',
-        'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M'
+        'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)RX'
     )
     & $icacls @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not apply the runner-only ACL to C:\actions-runners\GugakSignage.'
+    }
+}
+
+function Set-RunnerWritablePermissions {
+    $icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+    $writableDirectories = @(
+        (Join-Path $runnerRoot '_work'),
+        $temporaryDirectory,
+        $toolCacheDirectory,
+        (Join-Path $runnerRoot '_cache'),
+        (Join-Path $runnerRoot '_logs'),
+        $homeDirectory,
+        (Join-Path $runnerDirectory '_work'),
+        (Join-Path $runnerDirectory '_diag')
+    )
+    foreach ($directory in $writableDirectories) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        & $icacls $directory '/grant:r' 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M' | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not grant LocalService runtime write access to: $directory"
+        }
+    }
+}
+
+function Assert-RunnerAclPolicy {
+    & $aclPolicyTest -RunnerRoot $runnerRoot
+    if (-not $?) {
+        throw 'The runner ACL policy validation failed.'
+    }
+}
+
+function Invoke-AdmissionTests {
+    try {
+        & $admissionTest -HookPath $admissionHookSource
+    } catch {
+        throw "Runner admission hook tests failed: $($_.Exception.Message)"
     }
 }
 
@@ -136,12 +178,11 @@ function Ensure-RunnerFiles {
         throw 'The downloaded runner package is missing run.cmd.'
     }
 
-    $hookSource = Join-Path $PSScriptRoot 'Assert-TrustedJob.ps1'
-    if (-not (Test-Path -LiteralPath $hookSource)) {
+    if (-not (Test-Path -LiteralPath $admissionHookSource)) {
         throw 'The repository runner admission hook is missing from scripts/runner.'
     }
     Repair-AdmissionAcl
-    Copy-Item -LiteralPath $hookSource -Destination $admissionHook -Force
+    Copy-Item -LiteralPath $admissionHookSource -Destination $admissionHook -Force
     Reset-IsolatedAcl -Path $admissionHook
 }
 
@@ -206,6 +247,86 @@ function Set-ServiceProcessEnvironment {
     New-ItemProperty -LiteralPath $serviceKey -Name Environment -PropertyType MultiString -Value $environmentEntries.ToArray() -Force | Out-Null
 }
 
+function Set-RunnerAutoUpdateDisabled {
+    $settingsFile = Join-Path $runnerDirectory '.runner'
+    & $autoUpdateDisableScript -SettingsFile $settingsFile
+    if (-not $?) {
+        throw 'Runner auto-update configuration failed.'
+    }
+}
+
+function Invoke-RunnerRegistrationWithSecret {
+    param([Parameter(Mandatory = $true)][string]$RegistrationToken)
+
+    if (-not (Test-Path -LiteralPath $configurationLauncher)) {
+        throw 'The no-argv runner configuration launcher is missing.'
+    }
+    if (-not (Test-Path -LiteralPath $runnerExecutable)) {
+        throw 'Runner.Listener.exe is missing from the pinned runner package.'
+    }
+
+    $payload = [ordered]@{
+        executable = $runnerExecutable
+        workingDirectory = $runnerDirectory
+        arguments = @(
+            'configure',
+            '--url', $repositoryUrl,
+            '--name', $runnerName,
+            '--runnergroup', 'Default',
+            '--labels', $runnerLabel,
+            '--work', '_work',
+            '--runasservice',
+            '--windowslogonaccount', 'NT AUTHORITY\LOCAL SERVICE',
+            '--disableupdate'
+        )
+    }
+    $payloadJson = $payload | ConvertTo-Json -Compress -Depth 6
+    $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payloadJson))
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = (Get-Command powershell.exe -CommandType Application | Select-Object -First 1).Source
+    $startInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$configurationLauncher`" -PayloadBase64 $payloadBase64"
+    $startInfo.WorkingDirectory = $PSScriptRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        $null = $process.Start()
+        $process.StandardInput.WriteLine($RegistrationToken)
+        $process.StandardInput.Close()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(310000)) {
+            $process.Kill()
+            throw 'Runner configuration exceeded the 310-second safety timeout.'
+        }
+        $null = $stdoutTask.Result
+        $safeError = $stderrTask.Result.Replace($RegistrationToken, '[redacted]')
+        if ($process.ExitCode -ne 0) {
+            throw "Runner configuration failed with exit code $($process.ExitCode). $safeError"
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Test-RunnerConfigurationLauncher {
+    $launcherTest = Join-Path $PSScriptRoot 'Test-RunnerConfigurationLauncher.ps1'
+    try {
+        & $launcherTest -LauncherPath $configurationLauncher
+    } catch {
+        throw "Runner configuration launcher test failed: $($_.Exception.Message)"
+    }
+    if (-not $?) {
+        throw 'Runner configuration launcher test failed.'
+    }
+}
+
 Assert-RunnerRootIsIsolated
 
 if ($Elevate -and -not (Test-IsElevated)) {
@@ -228,12 +349,16 @@ if ($Mode -eq 'ValidateOnly') {
     if ($archiveHash -ne 'not-present' -and $archiveHash -ne $runnerSha256) {
         throw 'The cached runner archive checksum does not match the pinned release digest.'
     }
-    $admissionTest = Join-Path $PSScriptRoot 'Test-GugakSignageRunnerAdmission.ps1'
-    try {
-        & $admissionTest -HookPath $admissionHook
-    } catch {
-        throw "Runner admission hook tests failed: $($_.Exception.Message)"
+    $runnerSettingsFile = Join-Path $runnerDirectory '.runner'
+    if (Test-Path -LiteralPath $runnerSettingsFile) {
+        $runnerSettings = Get-Content -LiteralPath $runnerSettingsFile -Raw | ConvertFrom-Json
+        if ($runnerSettings.disableUpdate -ne $true) {
+            throw 'The configured runner does not have auto-update disabled.'
+        }
+        Assert-RunnerAclPolicy
     }
+    Invoke-AdmissionTests
+    Test-RunnerConfigurationLauncher
     Write-Output "PASS: runner root, pinned release, isolated layout, and admission hook validated for $runnerName ($runnerLabel)."
     exit 0
 }
@@ -258,15 +383,23 @@ if (Test-Path -LiteralPath (Join-Path $runnerDirectory '.runner')) {
         throw 'The configured runner service does not use NT AUTHORITY\LOCAL SERVICE.'
     }
 
-    New-Item -ItemType Directory -Path $runnerRoot -Force | Out-Null
-    Set-RunnerRootPermissions
-    Ensure-RunnerFiles
-    Set-ServiceProcessEnvironment -ServiceName $existingServiceName
-    Set-Service -Name $existingServiceName -StartupType Automatic
+    Invoke-AdmissionTests
     if ($existingService.State -eq 'Running') {
         Stop-Service -Name $existingServiceName -Force
     }
+    New-Item -ItemType Directory -Path $runnerRoot -Force | Out-Null
+    Set-RunnerRootPermissions
+    Ensure-RunnerFiles
+    Set-RunnerWritablePermissions
+    Set-RunnerAutoUpdateDisabled
+    Assert-RunnerAclPolicy
+    Set-ServiceProcessEnvironment -ServiceName $existingServiceName
+    Set-Service -Name $existingServiceName -StartupType Automatic
     Start-Service -Name $existingServiceName
+    $restartedService = Get-CimInstance Win32_Service -Filter "Name='$existingServiceName'"
+    if ($restartedService.State -ne 'Running' -or $restartedService.StartMode -ne 'Auto' -or $restartedService.StartName -notmatch '(?i)LOCAL SERVICE') {
+        throw 'The reused runner service did not remain running as auto-start LocalService.'
+    }
     Write-Output "PASS: $runnerName is running as NT AUTHORITY\LOCAL SERVICE with automatic startup."
     exit 0
 }
@@ -277,9 +410,11 @@ if ($LASTEXITCODE -ne 0) {
     throw 'GitHub CLI must be authenticated as a repository administrator before installing the runner.'
 }
 
+Invoke-AdmissionTests
 New-Item -ItemType Directory -Path $runnerRoot -Force | Out-Null
 Set-RunnerRootPermissions
 Ensure-RunnerFiles
+Set-RunnerWritablePermissions
 
 $registrationToken = & $gh.Source api --method POST "repos/$owner/$repository/actions/runners/registration-token" --jq '.token'
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($registrationToken)) {
@@ -288,25 +423,11 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($registrationToken)) {
 }
 $registrationToken = $registrationToken.Trim()
 
-$configCommand = Join-Path $runnerDirectory 'config.cmd'
-$configArguments = @(
-    '--unattended',
-    '--url', $repositoryUrl,
-    '--token', $registrationToken,
-    '--name', $runnerName,
-    '--labels', $runnerLabel,
-    '--work', '_work',
-    '--runasservice',
-    '--windowslogonaccount', 'NT AUTHORITY\LOCAL SERVICE'
-)
-$configOutput = & $configCommand @configArguments 2>&1
-$configExitCode = $LASTEXITCODE
-$registrationToken = $null
-$configArguments = $null
-$configOutput = $null
-[GC]::Collect()
-if ($configExitCode -ne 0) {
-    throw "Runner service configuration failed with exit code $configExitCode. No command output or credentials were written by this script."
+try {
+    Invoke-RunnerRegistrationWithSecret -RegistrationToken $registrationToken
+} finally {
+    $registrationToken = $null
+    [GC]::Collect()
 }
 
 $serviceFile = Join-Path $runnerDirectory '.service'
@@ -314,6 +435,15 @@ if (-not (Test-Path -LiteralPath $serviceFile)) {
     throw 'Runner configuration completed but did not create the expected Windows service metadata.'
 }
 $serviceName = (Get-Content -LiteralPath $serviceFile -Raw).Trim()
+$configuredService = Get-Service -Name $serviceName
+if ($configuredService.Status -eq 'Running') {
+    Stop-Service -Name $serviceName -Force
+}
+Set-RunnerRootPermissions
+Ensure-RunnerFiles
+Set-RunnerWritablePermissions
+Set-RunnerAutoUpdateDisabled
+Assert-RunnerAclPolicy
 Set-ServiceProcessEnvironment -ServiceName $serviceName
 Set-Service -Name $serviceName -StartupType Automatic
 if ((Get-Service -Name $serviceName).Status -eq 'Running') {
