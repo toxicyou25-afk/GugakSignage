@@ -41,10 +41,6 @@ Source: "uninstall.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "set-autostart.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "..\docs\install\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
-[Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}""{code:GetDataDirChangeFlag}{code:GetNoStartFlag}{code:GetHeadlessFlag}"; StatusMsg: "Configuring GugakSignage services..."; Flags: waituntilterminated; Tasks: not firewall
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\install.ps1"" -ConfigureOnly -InstallDir ""{app}"" -DataDir ""{code:GetDataDir}"" -Port {code:GetPort} -TaskName ""{code:GetTaskName}"" -DesktopDir ""{code:GetDesktopDir}"" -StartMenuDir ""{code:GetStartMenuDir}"" -ProfileDir ""{code:GetProfileDir}"" -OpenFirewall{code:GetDataDirChangeFlag}{code:GetNoStartFlag}{code:GetHeadlessFlag}"; StatusMsg: "Configuring GugakSignage services and firewall..."; Flags: waituntilterminated; Tasks: firewall
-
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\uninstall.ps1"" -InnoUninstall"; Flags: runhidden waituntilterminated; RunOnceId: "GugakSignageCleanup"
 
@@ -60,6 +56,7 @@ var
   DataDirChangeConfirmed: Boolean;
   DataDirWasSpecified: Boolean;
   DataDirResolutionIsExisting: Boolean;
+  SetupFailed: Boolean;
 
 function ReadExistingDataDir(AppDir: String): String;
   forward;
@@ -219,12 +216,15 @@ end;
 
 function PathEqualsOrInside(Path, Parent: String): Boolean;
 var
-  Candidate, Container: String;
+  Candidate, Container, Prefix: String;
 begin
   Candidate := NormalizePathForCompare(Path);
   Container := NormalizePathForCompare(Parent);
-  Result := (Candidate = Container) or
-    (Copy(Candidate, 1, Length(Container) + 1) = Container + '\');
+  if (Container <> '') and (Copy(Container, Length(Container), 1) = '\') then
+    Prefix := Container
+  else
+    Prefix := Container + '\';
+  Result := (Candidate = Container) or (Copy(Candidate, 1, Length(Prefix)) = Prefix);
 end;
 
 function GetSelectedDataDirForValidation(): String;
@@ -262,10 +262,47 @@ begin
   end;
   SelectedDataDir := GetSelectedDataDirForValidation();
   InstallDir := ExpandConstant('{app}');
+  if DataDirResolutionIsExisting and (PreviousDataDir <> '') and
+     (SelectedDataDir <> '') and
+     (NormalizePathForCompare(SelectedDataDir) <> NormalizePathForCompare(PreviousDataDir)) and
+     (not DataDirChangeConfirmed) then
+    RaiseException('The data folder cannot be changed without explicit confirmation. Existing: ' + PreviousDataDir + ', selected: ' + SelectedDataDir);
   if (SelectedDataDir <> '') and
      (PathEqualsOrInside(SelectedDataDir, InstallDir) or
       PathEqualsOrInside(InstallDir, SelectedDataDir)) then
     RaiseException('The data folder and install folder cannot be the same or contain each other. Install: ' + InstallDir + ', data: ' + SelectedDataDir);
+end;
+
+function GetCustomSetupExitCode(): Integer;
+begin
+  if SetupFailed then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+procedure RunInstallScript;
+var
+  Parameters: String;
+  ResultCode: Integer;
+begin
+  Parameters := '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install.ps1') +
+    '" -ConfigureOnly -InstallDir "' + ExpandConstant('{app}') +
+    '" -DataDir "' + GetDataDir('') +
+    '" -Port ' + GetPort('') +
+    ' -TaskName "' + GetTaskName('') +
+    '" -DesktopDir "' + GetDesktopDir('') +
+    '" -StartMenuDir "' + GetStartMenuDir('') +
+    '" -ProfileDir "' + GetProfileDir('') + '"' +
+    GetDataDirChangeFlag('') + GetNoStartFlag('') + GetHeadlessFlag('');
+  if WizardIsTaskSelected('firewall') then
+    Parameters := Parameters + ' -OpenFirewall';
+  if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
+      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+  begin
+    SetupFailed := True;
+    Abort;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -282,9 +319,14 @@ begin
         DataDirPage.Values[0] := ResolvedDataDir;
     end;
   end;
+  if CurStep = ssPostInstall then
+    RunInstallScript;
   if CurStep = ssDone then
     if not FileExists(ExpandConstant('{app}\install.json')) then
-      RaiseException('GugakSignage configuration did not complete. Check the install log and retry.');
+    begin
+      SetupFailed := True;
+      Abort;
+    end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

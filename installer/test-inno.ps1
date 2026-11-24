@@ -251,6 +251,16 @@ try {
     $report.checks.playerRendering = $true
     $report.screenshots = @("docs/install/evidence/player-inno-installed.png")
 
+    $explicitDataDir = Join-Path $testRoot "explicit-data-change"
+    $changeLog = Join-Path $testRoot "inno-explicit-data-change.log"
+    $configHashBeforeChange = Get-StableFileHash -Path (Join-Path $installDir "install.json")
+    $changeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /DATADIR="' + $explicitDataDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $changeLog + '"'
+    $changeRun = Start-Process -FilePath $SetupExe -ArgumentList $changeArguments -Wait -PassThru -WindowStyle Hidden
+    if ($changeRun.ExitCode -eq 0) { throw "기존 설치의 /DATADIR 변경이 Setup 성공으로 종료됐습니다." }
+    if ((Get-StableFileHash -Path (Join-Path $installDir "install.json")) -ne $configHashBeforeChange) { throw "거부된 /DATADIR 변경이 install.json을 변경했습니다." }
+    if (Test-Path -LiteralPath $explicitDataDir) { throw "거부된 /DATADIR 변경이 새 데이터 폴더를 만들었습니다." }
+    $report.checks.existingDataDirChangeRejected = $true
+
     & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
     Wait-Until -TimeoutSeconds 25 -Description "Inno 업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
     Wait-Until -TimeoutSeconds 25 -Description "Inno 업그레이드 전 프로세스 종료" -Condition {

@@ -1,188 +1,188 @@
 ﻿# Relevant sanitized excerpt from the Inno Setup 6.7.3 execution log.
-2026-11-25 01:25:29.293   Log opened. (Time zone: UTC+09:00)
-2026-11-25 01:25:29.293   Setup version: Inno Setup version 6.7.3
-2026-11-25 01:25:29.293   Original Setup EXE: <repo>\installer\build\inno\GugakSignage-Setup-0.1.0.exe
-2026-11-25 01:25:29.294   Setup command line: /SL5="$BC0B8E,3790627,893952,<repo>\installer\build\inno\GugakSignage-Setup-0.1.0.exe" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="<test-root>\app" /WATCHDOGTASK="GugakSignage-InnoTest-a2d43f65" /DESKTOPDIR="<test-root>\desktop" /STARTMENUDIR="<test-root>\start-menu" /PLAYERPROFILE="<test-root>\player-profile" /LOG="<test-root>\inno-same-version-reupgrade.log"
-2026-11-25 01:25:29.294   Windows version: 10.0.26300
-2026-11-25 01:25:29.294   Windows architecture: x64 (64-bit)
-2026-11-25 01:25:29.294   Machine types supported by system: x86 x64
-2026-11-25 01:25:29.294   User privileges: None
-2026-11-25 01:25:29.298   Administrative install mode: No
-2026-11-25 01:25:29.300   Install mode root key: HKEY_CURRENT_USER
-2026-11-25 01:25:29.300   64-bit install mode: Yes
-2026-11-25 01:25:29.300   RedirectionGuard status for current process: Enabled in enforcing mode
-2026-11-25 01:25:29.301   Created temporary directory: C:\Users\<user>\AppData\Local\Temp\is-J2U1SRFCJK.tmp
-2026-11-25 01:25:29.813   Extracting temporary file: C:\Users\<user>\AppData\Local\Temp\is-J2U1SRFCJK.tmp\resolver-common.ps1
-2026-11-25 01:25:29.902   Extracting temporary file: C:\Users\<user>\AppData\Local\Temp\is-J2U1SRFCJK.tmp\resolve-data-dir.ps1
-2026-11-25 01:25:34.196   Starting the installation process.
-2026-11-25 01:25:34.200   Directory for uninstall files: <test-root>\app
-2026-11-25 01:25:34.207   Will append to existing uninstall log: <test-root>\app\unins000.dat
-2026-11-25 01:25:34.213   -- File entry --
-2026-11-25 01:25:34.213   Dest filename: <test-root>\app\unins000.exe
-2026-11-25 01:25:34.213   Non-default bitness: 32-bit
-2026-11-25 01:25:34.218   Time stamp of our file: 2026-11-25 01:25:29.075
-2026-11-25 01:25:34.218   Dest file exists.
-2026-11-25 01:25:34.218   Time stamp of existing file: 2026-11-25 01:25:09.862
-2026-11-25 01:25:34.218   Version of our file: 51.1054.0.0
-2026-11-25 01:25:34.223   Version of existing file: 51.1054.0.0
-2026-11-25 01:25:34.224   Installing the file.
-2026-11-25 01:25:34.235   Leaving temporary file in place for now.
-2026-11-25 01:25:34.235   -- File entry --
-2026-11-25 01:25:34.235   Dest filename: <test-root>\app\LICENSE
-2026-11-25 01:25:34.236   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.236   Dest file exists.
-2026-11-25 01:25:34.236   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.236   Installing the file.
-2026-11-25 01:25:34.239   Successfully installed the file.
-2026-11-25 01:25:34.240   -- File entry --
-2026-11-25 01:25:34.240   Dest filename: <test-root>\app\NOTICE
-2026-11-25 01:25:34.240   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.240   Dest file exists.
-2026-11-25 01:25:34.240   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.240   Installing the file.
-2026-11-25 01:25:34.243   Successfully installed the file.
-2026-11-25 01:25:34.244   -- File entry --
-2026-11-25 01:25:34.244   Dest filename: <test-root>\app\package-lock.json
-2026-11-25 01:25:34.244   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.244   Dest file exists.
-2026-11-25 01:25:34.244   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:34.244   Installing the file.
-2026-11-25 01:25:34.249   Successfully installed the file.
-2026-11-25 01:25:34.249   -- File entry --
-2026-11-25 01:25:34.249   Dest filename: <test-root>\app\package.json
-2026-11-25 01:25:34.249   Time stamp of our file: 2026-11-24 23:38:52.000
-2026-11-25 01:25:34.249   Dest file exists.
-2026-11-25 01:25:34.250   Time stamp of existing file: 2026-11-24 23:38:52.000
-2026-11-25 01:25:34.250   Installing the file.
-2026-11-25 01:25:34.253   Successfully installed the file.
-2026-11-25 01:25:34.253   -- File entry --
-2026-11-25 01:25:34.253   Dest filename: <test-root>\app\dist\admin-password.js
-2026-11-25 01:25:34.253   Time stamp of our file: 2026-11-25 01:22:44.000
-2026-11-25 01:25:34.253   Dest file exists.
-2026-11-25 01:25:35.150   Dest filename: <test-root>\app\node_modules\es-errors\.eslintrc
-2026-11-25 01:25:35.154   Dest filename: <test-root>\app\node_modules\es-errors\CHANGELOG.md
-2026-11-25 01:25:35.161   Dest filename: <test-root>\app\node_modules\es-errors\eval.d.ts
-2026-11-25 01:25:35.167   Dest filename: <test-root>\app\node_modules\es-errors\eval.js
-2026-11-25 01:25:35.171   Dest filename: <test-root>\app\node_modules\es-errors\index.d.ts
-2026-11-25 01:25:35.175   Dest filename: <test-root>\app\node_modules\es-errors\index.js
-2026-11-25 01:25:35.179   Dest filename: <test-root>\app\node_modules\es-errors\LICENSE
-2026-11-25 01:25:35.186   Dest filename: <test-root>\app\node_modules\es-errors\package.json
-2026-11-25 01:25:35.190   Dest filename: <test-root>\app\node_modules\es-errors\range.d.ts
-2026-11-25 01:25:35.195   Dest filename: <test-root>\app\node_modules\es-errors\range.js
-2026-11-25 01:25:35.200   Dest filename: <test-root>\app\node_modules\es-errors\README.md
-2026-11-25 01:25:35.207   Dest filename: <test-root>\app\node_modules\es-errors\ref.d.ts
-2026-11-25 01:25:35.212   Dest filename: <test-root>\app\node_modules\es-errors\ref.js
-2026-11-25 01:25:35.220   Dest filename: <test-root>\app\node_modules\es-errors\syntax.d.ts
-2026-11-25 01:25:35.224   Dest filename: <test-root>\app\node_modules\es-errors\syntax.js
-2026-11-25 01:25:35.228   Dest filename: <test-root>\app\node_modules\es-errors\tsconfig.json
-2026-11-25 01:25:35.233   Dest filename: <test-root>\app\node_modules\es-errors\type.d.ts
-2026-11-25 01:25:35.238   Dest filename: <test-root>\app\node_modules\es-errors\type.js
-2026-11-25 01:25:35.242   Dest filename: <test-root>\app\node_modules\es-errors\uri.d.ts
-2026-11-25 01:25:35.246   Dest filename: <test-root>\app\node_modules\es-errors\uri.js
-2026-11-25 01:25:35.251   Dest filename: <test-root>\app\node_modules\es-errors\.github\FUNDING.yml
-2026-11-25 01:25:35.255   Dest filename: <test-root>\app\node_modules\es-errors\test\index.js
-2026-11-25 01:25:35.831   Dest filename: <test-root>\app\node_modules\http-errors\HISTORY.md
-2026-11-25 01:25:35.834   Dest filename: <test-root>\app\node_modules\http-errors\index.js
-2026-11-25 01:25:35.838   Dest filename: <test-root>\app\node_modules\http-errors\LICENSE
-2026-11-25 01:25:35.842   Dest filename: <test-root>\app\node_modules\http-errors\package.json
-2026-11-25 01:25:35.846   Dest filename: <test-root>\app\node_modules\http-errors\README.md
-2026-11-25 01:25:37.516   Dest filename: <test-root>\app\node_modules\multer\lib\multer-error.js
-2026-11-25 01:25:38.705   Installation process succeeded.
-2026-11-25 01:25:38.712   -- Run entry --
-2026-11-25 01:25:38.713   Parameters: -NoLogo -NoProfile -ExecutionPolicy Bypass -File "<test-root>\app\tools\install.ps1" -ConfigureOnly -InstallDir "<test-root>\app" -DataDir "" -Port 3000 -TaskName "GugakSignage-InnoTest-a2d43f65" -DesktopDir "<test-root>\desktop" -StartMenuDir "<test-root>\start-menu" -ProfileDir "<test-root>\player-profile" -NoStart -HeadlessBrowser
-2026-11-25 01:25:43.711   Process exit code: 0
-2026-11-25 01:25:43.716   Need to restart Windows? No
-2026-11-25 01:25:38.642   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.642   Dest file exists.
-2026-11-25 01:25:38.642   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.642   Installing the file.
-2026-11-25 01:25:38.646   Successfully installed the file.
-2026-11-25 01:25:38.646   -- File entry --
-2026-11-25 01:25:38.646   Dest filename: <test-root>\app\seed\source\poster-class.svg
-2026-11-25 01:25:38.647   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.647   Dest file exists.
-2026-11-25 01:25:38.647   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.647   Installing the file.
-2026-11-25 01:25:38.650   Successfully installed the file.
-2026-11-25 01:25:38.650   -- File entry --
-2026-11-25 01:25:38.650   Dest filename: <test-root>\app\seed\source\poster-welcome.svg
-2026-11-25 01:25:38.651   Time stamp of our file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.651   Dest file exists.
-2026-11-25 01:25:38.651   Time stamp of existing file: 2026-11-24 18:30:58.000
-2026-11-25 01:25:38.651   Installing the file.
-2026-11-25 01:25:38.654   Successfully installed the file.
-2026-11-25 01:25:38.654   -- File entry --
-2026-11-25 01:25:38.655   Dest filename: <test-root>\app\ops\install-common.ps1
-2026-11-25 01:25:38.655   Time stamp of our file: 2026-11-25 00:57:08.000
-2026-11-25 01:25:38.655   Dest file exists.
-2026-11-25 01:25:38.655   Time stamp of existing file: 2026-11-25 00:57:08.000
-2026-11-25 01:25:38.655   Installing the file.
-2026-11-25 01:25:38.659   Successfully installed the file.
-2026-11-25 01:25:38.659   -- File entry --
-2026-11-25 01:25:38.659   Dest filename: <test-root>\app\ops\resolve-data-dir.ps1
-2026-11-25 01:25:38.660   Time stamp of our file: 2026-11-24 22:41:02.000
-2026-11-25 01:25:38.660   Dest file exists.
-2026-11-25 01:25:38.660   Time stamp of existing file: 2026-11-24 22:41:02.000
-2026-11-25 01:25:38.660   Installing the file.
-2026-11-25 01:25:38.663   Successfully installed the file.
-2026-11-25 01:25:38.663   -- File entry --
-2026-11-25 01:25:38.663   Dest filename: <test-root>\app\ops\stop.ps1
-2026-11-25 01:25:38.664   Time stamp of our file: 2026-11-24 22:59:08.000
-2026-11-25 01:25:38.664   Dest file exists.
-2026-11-25 01:25:38.664   Time stamp of existing file: 2026-11-24 22:59:08.000
-2026-11-25 01:25:38.664   Installing the file.
-2026-11-25 01:25:38.666   Successfully installed the file.
-2026-11-25 01:25:38.667   -- File entry --
-2026-11-25 01:25:38.667   Dest filename: <test-root>\app\ops\watchdog-health.mjs
-2026-11-25 01:25:38.667   Time stamp of our file: 2026-11-24 20:17:54.000
-2026-11-25 01:25:38.667   Dest file exists.
-2026-11-25 01:25:38.667   Time stamp of existing file: 2026-11-24 20:17:54.000
-2026-11-25 01:25:38.668   Installing the file.
-2026-11-25 01:25:38.671   Successfully installed the file.
-2026-11-25 01:25:38.671   -- File entry --
-2026-11-25 01:25:38.671   Dest filename: <test-root>\app\ops\watchdog.mjs
-2026-11-25 01:25:38.672   Time stamp of our file: 2026-11-24 21:12:20.000
-2026-11-25 01:25:38.672   Dest file exists.
-2026-11-25 01:25:38.672   Time stamp of existing file: 2026-11-24 21:12:20.000
-2026-11-25 01:25:38.672   Installing the file.
-2026-11-25 01:25:38.676   Successfully installed the file.
-2026-11-25 01:25:38.676   -- File entry --
-2026-11-25 01:25:38.676   Dest filename: <test-root>\app\tools\install.ps1
-2026-11-25 01:25:38.676   Time stamp of our file: 2026-11-24 23:32:36.000
-2026-11-25 01:25:38.676   Dest file exists.
-2026-11-25 01:25:38.677   Time stamp of existing file: 2026-11-24 23:32:36.000
-2026-11-25 01:25:38.677   Installing the file.
-2026-11-25 01:25:38.680   Successfully installed the file.
-2026-11-25 01:25:38.680   -- File entry --
-2026-11-25 01:25:38.681   Dest filename: <test-root>\app\tools\uninstall.ps1
-2026-11-25 01:25:38.681   Time stamp of our file: 2026-11-24 23:42:22.000
-2026-11-25 01:25:38.681   Dest file exists.
-2026-11-25 01:25:38.681   Time stamp of existing file: 2026-11-24 23:42:22.000
-2026-11-25 01:25:38.681   Installing the file.
-2026-11-25 01:25:38.684   Successfully installed the file.
-2026-11-25 01:25:38.685   -- File entry --
-2026-11-25 01:25:38.685   Dest filename: <test-root>\app\tools\set-autostart.ps1
-2026-11-25 01:25:38.685   Time stamp of our file: 2026-11-24 22:59:02.000
-2026-11-25 01:25:38.685   Dest file exists.
-2026-11-25 01:25:38.686   Time stamp of existing file: 2026-11-24 22:59:02.000
-2026-11-25 01:25:38.686   Installing the file.
-2026-11-25 01:25:38.689   Successfully installed the file.
-2026-11-25 01:25:38.689   -- File entry --
-2026-11-25 01:25:38.689   Dest filename: <test-root>\app\docs\README.md
-2026-11-25 01:25:38.690   Time stamp of our file: 2026-11-24 21:31:32.000
-2026-11-25 01:25:38.690   Dest file exists.
-2026-11-25 01:25:38.690   Time stamp of existing file: 2026-11-24 21:31:32.000
-2026-11-25 01:25:38.690   Installing the file.
-2026-11-25 01:25:38.693   Successfully installed the file.
-2026-11-25 01:25:38.693   Saving uninstall information.
-2026-11-25 01:25:38.693   Renaming uninstaller.
-2026-11-25 01:25:38.696   Deleting uninstall key left over from previous non administrative install.
-2026-11-25 01:25:38.696   Creating new uninstall key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1
-2026-11-25 01:25:38.696   Writing uninstall key values.
-2026-11-25 01:25:38.697   Detected previous administrative 64-bit install? No
-2026-11-25 01:25:38.697   Detected previous administrative 32-bit install? No
-2026-11-25 01:25:38.712   Run as: Current user
-2026-11-25 01:25:38.712   Type: Exec
-2026-11-25 01:25:38.712   Filename: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe
-2026-11-25 01:25:43.741   Deinitializing Setup.
-2026-11-25 01:25:43.750   Log closed.
+2026-11-25 01:50:03.460   Log opened. (Time zone: UTC+09:00)
+2026-11-25 01:50:03.460   Setup version: Inno Setup version 6.7.3
+2026-11-25 01:50:03.460   Original Setup EXE: <repo>\installer\build\inno\GugakSignage-Setup-0.1.0.exe
+2026-11-25 01:50:03.460   Setup command line: /SL5="$710FA6,3790627,893952,<repo>\installer\build\inno\GugakSignage-Setup-0.1.0.exe" /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="<test-root>\app" /WATCHDOGTASK="GugakSignage-InnoTest-90c4713d" /DESKTOPDIR="<test-root>\desktop" /STARTMENUDIR="<test-root>\start-menu" /PLAYERPROFILE="<test-root>\player-profile" /LOG="<test-root>\inno-same-version-reupgrade.log"
+2026-11-25 01:50:03.460   Windows version: 10.0.26300
+2026-11-25 01:50:03.460   Windows architecture: x64 (64-bit)
+2026-11-25 01:50:03.460   Machine types supported by system: x86 x64
+2026-11-25 01:50:03.460   User privileges: None
+2026-11-25 01:50:03.467   Administrative install mode: No
+2026-11-25 01:50:03.467   Install mode root key: HKEY_CURRENT_USER
+2026-11-25 01:50:03.467   64-bit install mode: Yes
+2026-11-25 01:50:03.467   RedirectionGuard status for current process: Enabled in enforcing mode
+2026-11-25 01:50:03.470   Created temporary directory: C:\Users\<user>\AppData\Local\Temp\is-UI048DP1FH.tmp
+2026-11-25 01:50:03.949   Extracting temporary file: C:\Users\<user>\AppData\Local\Temp\is-UI048DP1FH.tmp\resolver-common.ps1
+2026-11-25 01:50:04.034   Extracting temporary file: C:\Users\<user>\AppData\Local\Temp\is-UI048DP1FH.tmp\resolve-data-dir.ps1
+2026-11-25 01:50:07.271   Starting the installation process.
+2026-11-25 01:50:07.273   Directory for uninstall files: <test-root>\app
+2026-11-25 01:50:07.280   Will append to existing uninstall log: <test-root>\app\unins000.dat
+2026-11-25 01:50:07.286   -- File entry --
+2026-11-25 01:50:07.286   Dest filename: <test-root>\app\unins000.exe
+2026-11-25 01:50:07.286   Non-default bitness: 32-bit
+2026-11-25 01:50:07.289   Time stamp of our file: 2026-11-25 01:50:03.175
+2026-11-25 01:50:07.289   Dest file exists.
+2026-11-25 01:50:07.289   Time stamp of existing file: 2026-11-25 01:49:45.198
+2026-11-25 01:50:07.290   Version of our file: 51.1054.0.0
+2026-11-25 01:50:07.300   Version of existing file: 51.1054.0.0
+2026-11-25 01:50:07.300   Installing the file.
+2026-11-25 01:50:07.310   Leaving temporary file in place for now.
+2026-11-25 01:50:07.310   -- File entry --
+2026-11-25 01:50:07.310   Dest filename: <test-root>\app\LICENSE
+2026-11-25 01:50:07.311   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.311   Dest file exists.
+2026-11-25 01:50:07.311   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.311   Installing the file.
+2026-11-25 01:50:07.314   Successfully installed the file.
+2026-11-25 01:50:07.314   -- File entry --
+2026-11-25 01:50:07.314   Dest filename: <test-root>\app\NOTICE
+2026-11-25 01:50:07.314   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.314   Dest file exists.
+2026-11-25 01:50:07.315   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.315   Installing the file.
+2026-11-25 01:50:07.317   Successfully installed the file.
+2026-11-25 01:50:07.317   -- File entry --
+2026-11-25 01:50:07.317   Dest filename: <test-root>\app\package-lock.json
+2026-11-25 01:50:07.318   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.318   Dest file exists.
+2026-11-25 01:50:07.318   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:07.318   Installing the file.
+2026-11-25 01:50:07.321   Successfully installed the file.
+2026-11-25 01:50:07.322   -- File entry --
+2026-11-25 01:50:07.322   Dest filename: <test-root>\app\package.json
+2026-11-25 01:50:07.322   Time stamp of our file: 2026-11-24 23:38:52.000
+2026-11-25 01:50:07.322   Dest file exists.
+2026-11-25 01:50:07.322   Time stamp of existing file: 2026-11-24 23:38:52.000
+2026-11-25 01:50:07.323   Installing the file.
+2026-11-25 01:50:07.325   Successfully installed the file.
+2026-11-25 01:50:07.325   -- File entry --
+2026-11-25 01:50:07.325   Dest filename: <test-root>\app\dist\admin-password.js
+2026-11-25 01:50:07.325   Time stamp of our file: 2026-11-25 01:48:38.000
+2026-11-25 01:50:07.325   Dest file exists.
+2026-11-25 01:50:08.029   Dest filename: <test-root>\app\node_modules\es-errors\.eslintrc
+2026-11-25 01:50:08.033   Dest filename: <test-root>\app\node_modules\es-errors\CHANGELOG.md
+2026-11-25 01:50:08.036   Dest filename: <test-root>\app\node_modules\es-errors\eval.d.ts
+2026-11-25 01:50:08.040   Dest filename: <test-root>\app\node_modules\es-errors\eval.js
+2026-11-25 01:50:08.043   Dest filename: <test-root>\app\node_modules\es-errors\index.d.ts
+2026-11-25 01:50:08.047   Dest filename: <test-root>\app\node_modules\es-errors\index.js
+2026-11-25 01:50:08.049   Dest filename: <test-root>\app\node_modules\es-errors\LICENSE
+2026-11-25 01:50:08.053   Dest filename: <test-root>\app\node_modules\es-errors\package.json
+2026-11-25 01:50:08.057   Dest filename: <test-root>\app\node_modules\es-errors\range.d.ts
+2026-11-25 01:50:08.059   Dest filename: <test-root>\app\node_modules\es-errors\range.js
+2026-11-25 01:50:08.063   Dest filename: <test-root>\app\node_modules\es-errors\README.md
+2026-11-25 01:50:08.066   Dest filename: <test-root>\app\node_modules\es-errors\ref.d.ts
+2026-11-25 01:50:08.069   Dest filename: <test-root>\app\node_modules\es-errors\ref.js
+2026-11-25 01:50:08.074   Dest filename: <test-root>\app\node_modules\es-errors\syntax.d.ts
+2026-11-25 01:50:08.078   Dest filename: <test-root>\app\node_modules\es-errors\syntax.js
+2026-11-25 01:50:08.082   Dest filename: <test-root>\app\node_modules\es-errors\tsconfig.json
+2026-11-25 01:50:08.086   Dest filename: <test-root>\app\node_modules\es-errors\type.d.ts
+2026-11-25 01:50:08.090   Dest filename: <test-root>\app\node_modules\es-errors\type.js
+2026-11-25 01:50:08.094   Dest filename: <test-root>\app\node_modules\es-errors\uri.d.ts
+2026-11-25 01:50:08.098   Dest filename: <test-root>\app\node_modules\es-errors\uri.js
+2026-11-25 01:50:08.102   Dest filename: <test-root>\app\node_modules\es-errors\.github\FUNDING.yml
+2026-11-25 01:50:08.106   Dest filename: <test-root>\app\node_modules\es-errors\test\index.js
+2026-11-25 01:50:08.646   Dest filename: <test-root>\app\node_modules\http-errors\HISTORY.md
+2026-11-25 01:50:08.650   Dest filename: <test-root>\app\node_modules\http-errors\index.js
+2026-11-25 01:50:08.654   Dest filename: <test-root>\app\node_modules\http-errors\LICENSE
+2026-11-25 01:50:08.658   Dest filename: <test-root>\app\node_modules\http-errors\package.json
+2026-11-25 01:50:08.662   Dest filename: <test-root>\app\node_modules\http-errors\README.md
+2026-11-25 01:50:09.776   Dest filename: <test-root>\app\node_modules\multer\lib\multer-error.js
+2026-11-25 01:50:11.014   Installation process succeeded.
+2026-11-25 01:50:15.152   Need to restart Windows? No
+2026-11-25 01:50:10.939   Dest file exists.
+2026-11-25 01:50:10.939   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.939   Installing the file.
+2026-11-25 01:50:10.955   Successfully installed the file.
+2026-11-25 01:50:10.955   -- File entry --
+2026-11-25 01:50:10.955   Dest filename: <test-root>\app\seed\source\poster-autumn.svg
+2026-11-25 01:50:10.955   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.955   Dest file exists.
+2026-11-25 01:50:10.956   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.956   Installing the file.
+2026-11-25 01:50:10.958   Successfully installed the file.
+2026-11-25 01:50:10.958   -- File entry --
+2026-11-25 01:50:10.959   Dest filename: <test-root>\app\seed\source\poster-class.svg
+2026-11-25 01:50:10.959   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.959   Dest file exists.
+2026-11-25 01:50:10.959   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.959   Installing the file.
+2026-11-25 01:50:10.962   Successfully installed the file.
+2026-11-25 01:50:10.963   -- File entry --
+2026-11-25 01:50:10.963   Dest filename: <test-root>\app\seed\source\poster-welcome.svg
+2026-11-25 01:50:10.963   Time stamp of our file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.963   Dest file exists.
+2026-11-25 01:50:10.963   Time stamp of existing file: 2026-11-24 18:30:58.000
+2026-11-25 01:50:10.964   Installing the file.
+2026-11-25 01:50:10.967   Successfully installed the file.
+2026-11-25 01:50:10.967   -- File entry --
+2026-11-25 01:50:10.967   Dest filename: <test-root>\app\ops\install-common.ps1
+2026-11-25 01:50:10.968   Time stamp of our file: 2026-11-25 00:57:08.000
+2026-11-25 01:50:10.968   Dest file exists.
+2026-11-25 01:50:10.968   Time stamp of existing file: 2026-11-25 00:57:08.000
+2026-11-25 01:50:10.968   Installing the file.
+2026-11-25 01:50:10.972   Successfully installed the file.
+2026-11-25 01:50:10.972   -- File entry --
+2026-11-25 01:50:10.972   Dest filename: <test-root>\app\ops\resolve-data-dir.ps1
+2026-11-25 01:50:10.973   Time stamp of our file: 2026-11-24 22:41:02.000
+2026-11-25 01:50:10.973   Dest file exists.
+2026-11-25 01:50:10.973   Time stamp of existing file: 2026-11-24 22:41:02.000
+2026-11-25 01:50:10.973   Installing the file.
+2026-11-25 01:50:10.977   Successfully installed the file.
+2026-11-25 01:50:10.977   -- File entry --
+2026-11-25 01:50:10.977   Dest filename: <test-root>\app\ops\stop.ps1
+2026-11-25 01:50:10.977   Time stamp of our file: 2026-11-24 22:59:08.000
+2026-11-25 01:50:10.977   Dest file exists.
+2026-11-25 01:50:10.978   Time stamp of existing file: 2026-11-24 22:59:08.000
+2026-11-25 01:50:10.978   Installing the file.
+2026-11-25 01:50:10.980   Successfully installed the file.
+2026-11-25 01:50:10.981   -- File entry --
+2026-11-25 01:50:10.981   Dest filename: <test-root>\app\ops\watchdog-health.mjs
+2026-11-25 01:50:10.981   Time stamp of our file: 2026-11-24 20:17:54.000
+2026-11-25 01:50:10.981   Dest file exists.
+2026-11-25 01:50:10.981   Time stamp of existing file: 2026-11-24 20:17:54.000
+2026-11-25 01:50:10.981   Installing the file.
+2026-11-25 01:50:10.984   Successfully installed the file.
+2026-11-25 01:50:10.984   -- File entry --
+2026-11-25 01:50:10.984   Dest filename: <test-root>\app\ops\watchdog.mjs
+2026-11-25 01:50:10.984   Time stamp of our file: 2026-11-24 21:12:20.000
+2026-11-25 01:50:10.984   Dest file exists.
+2026-11-25 01:50:10.984   Time stamp of existing file: 2026-11-24 21:12:20.000
+2026-11-25 01:50:10.984   Installing the file.
+2026-11-25 01:50:10.987   Successfully installed the file.
+2026-11-25 01:50:10.988   -- File entry --
+2026-11-25 01:50:10.988   Dest filename: <test-root>\app\tools\install.ps1
+2026-11-25 01:50:10.988   Time stamp of our file: 2026-11-24 23:32:36.000
+2026-11-25 01:50:10.988   Dest file exists.
+2026-11-25 01:50:10.988   Time stamp of existing file: 2026-11-24 23:32:36.000
+2026-11-25 01:50:10.988   Installing the file.
+2026-11-25 01:50:10.992   Successfully installed the file.
+2026-11-25 01:50:10.992   -- File entry --
+2026-11-25 01:50:10.993   Dest filename: <test-root>\app\tools\uninstall.ps1
+2026-11-25 01:50:10.993   Time stamp of our file: 2026-11-24 23:42:22.000
+2026-11-25 01:50:10.993   Dest file exists.
+2026-11-25 01:50:10.993   Time stamp of existing file: 2026-11-24 23:42:22.000
+2026-11-25 01:50:10.993   Installing the file.
+2026-11-25 01:50:10.996   Successfully installed the file.
+2026-11-25 01:50:10.996   -- File entry --
+2026-11-25 01:50:10.997   Dest filename: <test-root>\app\tools\set-autostart.ps1
+2026-11-25 01:50:10.997   Time stamp of our file: 2026-11-24 22:59:02.000
+2026-11-25 01:50:10.997   Dest file exists.
+2026-11-25 01:50:10.997   Time stamp of existing file: 2026-11-24 22:59:02.000
+2026-11-25 01:50:10.997   Installing the file.
+2026-11-25 01:50:11.000   Successfully installed the file.
+2026-11-25 01:50:11.000   -- File entry --
+2026-11-25 01:50:11.001   Dest filename: <test-root>\app\docs\README.md
+2026-11-25 01:50:11.001   Time stamp of our file: 2026-11-24 21:31:32.000
+2026-11-25 01:50:11.001   Dest file exists.
+2026-11-25 01:50:11.001   Time stamp of existing file: 2026-11-24 21:31:32.000
+2026-11-25 01:50:11.001   Installing the file.
+2026-11-25 01:50:11.004   Successfully installed the file.
+2026-11-25 01:50:11.005   Saving uninstall information.
+2026-11-25 01:50:11.005   Renaming uninstaller.
+2026-11-25 01:50:11.007   Deleting uninstall key left over from previous non administrative install.
+2026-11-25 01:50:11.008   Creating new uninstall key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1
+2026-11-25 01:50:11.008   Writing uninstall key values.
+2026-11-25 01:50:11.009   Detected previous administrative 64-bit install? No
+2026-11-25 01:50:11.009   Detected previous administrative 32-bit install? No
+2026-11-25 01:50:15.156   Deinitializing Setup.
+2026-11-25 01:50:15.163   Log closed.
