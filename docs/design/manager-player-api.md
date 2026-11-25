@@ -2,8 +2,11 @@
 
 작성일: 2026-11-24
 
-기준: `main` `d30b301e961dd64f749cfc00bc23ca6111750ac4`
-상태: 설계 초안. 아래 `목표 계약`은 구현된 API라는 뜻이 아니다.
+최종 갱신: 2026-11-25
+
+기준: `main` `a9394436c0485a5500789aa2c7c2d3ec3c299cd3` (2026-11-25 작업 기준). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합된 상태다.
+
+확인 시점 `origin/main`: `7d802e1606fb5c735563d49e2f7b382077d9eaae` (PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12) 문서·증거 후속 병합). 이 문서의 `2. 기준 main의 API`는 현재 구현, `3. 목표 계약 표`는 아직 구현되지 않은 목표다.
 
 상위 아키텍처: [Manager / Player 분리와 3가지 배포 모드](manager-player-architecture.md)
 
@@ -18,27 +21,43 @@
 
 ## 2. 기준 `main`의 API
 
-확인 위치: [`src/app.ts`](../../src/app.ts), [`src/routes/player.ts`](../../src/routes/player.ts), [`src/routes/devices.ts`](../../src/routes/devices.ts), [`src/routes/topology.ts`](../../src/routes/topology.ts), [`src/publishing.ts`](../../src/publishing.ts), [`public/player/player.js`](../../public/player/player.js).
+확인 위치: [`src/app.ts`](../../src/app.ts), [`src/routes/player.ts`](../../src/routes/player.ts), [`src/routes/player-control.ts`](../../src/routes/player-control.ts), [`src/player-control.ts`](../../src/player-control.ts), [`src/routes/devices.ts`](../../src/routes/devices.ts), [`src/routes/topology.ts`](../../src/routes/topology.ts), [`src/publishing.ts`](../../src/publishing.ts), [`public/admin/app.js`](../../public/admin/app.js), [`public/player/player.js`](../../public/player/player.js), [`installer/ops/watchdog.mjs`](../../installer/ops/watchdog.mjs).
 
 | 현재 경로 | 현재 용도 / 인증 | 현재 사실과 분리 시 주의 |
 |---|---|---|
-| `POST /api/player/register` | pair code + `hardwareId`로 연결, Player token 발급 | token은 현재 DB의 device row에 저장된다. 화면 정보 일부를 보고하고, 동일 hardware면 기존 token을 반환할 수 있다. 실패 응답은 잘못된 코드 404, 기기 충돌 409 등이다. |
+| `POST /api/player/register` | pair code + `hardwareId`로 연결, Player token 발급 | token은 현재 DB의 device row에 평문으로 저장된다(hash 아님). 화면 정보 일부를 보고하고, 동일 hardware면 기존 token을 반환할 수 있다. pair code는 현재 만료·1회 소비·실패 횟수 계약이 없다. 실패 응답은 잘못된 코드 404, 기기 충돌 409 등이다. |
 | `GET /api/player/manifest` | Bearer device token 필요 | 현재 게시 snapshot 기반 manifest와 `serverTime`을 응답한다. 현재 `ETag`/304 계약은 없다. |
 | `POST /api/player/heartbeat` | Bearer device token 필요 | state, current content ID, error 및 last seen/IP를 저장한다. 응답에 published version과 server time이 있다. |
 | `GET /api/player/config` | 현재 공개 설정/샘플 정보 | 독립 설치 안내 등 공개 설정만 전달한다. 등록 비밀·관리자 세션을 전달하지 않는다. |
 | `GET /api/time` | no-store 시각 조회 | 현재 Manager 서버 시각을 전달한다. 시간 offset protocol은 추가 정의가 필요하다. |
+| `GET /api/player/state` | 관리자 session + loopback 제한(`0000` 테스트 기본값 동안) | `Cache-Control: no-store`로 `{ player: { schemaVersion, desired, running, pid, startedAt, deviceId, playerUrl, lastError, updatedAt } }`를 반환한다. `data/control/player-state.json`을 읽고, 파일이 없거나 깨졌으면 stopped 기본값을 반환한다. Player token용 API가 아니라 관리자 화면용 상태 조회다. |
+| `POST /api/player/launch` | 관리자 session + loopback 제한 | body `{ deviceId }`. 빈 값 `400`, 없는 기기 `404`. 기기 존재를 확인한 뒤 `data/control/player-command.json`에 launch 명령을 원자적으로 쓰고 `202 { ok, accepted, commandId, playerUrl, player }`를 반환한다. 실제 Edge 기동은 로컬 watchdog이 수행하므로 API 응답은 접수까지만 보장한다. |
+| `POST /api/player/stop` | 관리자 session + loopback 제한 | `data/control/player-command.json`에 stop 명령을 쓰고 `202 { ok, accepted, commandId, player }`를 반환한다. 실제 중지는 watchdog이 수행한다. |
 | `POST /api/devices/:id/publish` | 관리자 세션 | 단일 장비 publication을 생성한다. 이미 생성된 요청을 구별하는 멱등 키나 `If-Match` 조건은 현재 계약에 없다. |
 | `POST /api/groups/:id/publish` | 관리자 세션 | topology snapshot을 관련 장비별 publication으로 기록한다. |
 | `GET/POST /api/contents`, `GET/PUT/POST /api/playlists`, `/api/sites`, `/api/groups`, `/api/displays` | 관리자 세션 | Manager CRUD·미리보기·배치 변경 경로다. Player token으로 호출할 수 없다. |
 | 업로드 정적 경로 | 현재 Express `config.uploadDir` 제공 | 관리자와 Player가 같은 origin을 쓰는 전제다. 중앙 모드에서는 아래처럼 장비 인증·immutable URL·range 처리 계약을 별도로 정한다. |
 
-기준 `main`의 API를 인용해 목표 기능이 이미 지원되는 것으로 표현하지 않는다. 특히 manifest ETag, per-device token hash, 단회 등록 코드, 표준 오류 형식, 멱등 게시, media ACL은 목표다.
+기준 `main`의 API를 인용해 목표 기능이 이미 지원되는 것으로 표현하지 않는다. 특히 manifest ETag, per-device token hash, 1회용 등록 코드, 표준 오류 형식, 멱등 게시, media ACL은 목표다. 현재 Player JS는 발급받은 token을 브라우저 `localStorage`에 보관하며, 이는 [아키텍처 결정 2](manager-player-architecture.md#player-host-경계와-실행-방식-결정-2)의 Host + DPAPI로 대체할 대상이다.
+
+### 현재 구현: 관리자 기본 화면과 재생기 온디맨드 (#11)
+
+기준 `a939443`에서 확인한 흐름이다.
+
+1. 로그온 예약 작업이 watchdog과 서버를 시작한다. watchdog은 서버 health가 준비되면 기본 브라우저로 `/admin/`을 최대 한 번 열고, 전체화면 재생기는 시작하지 않는다.
+2. `GET /`는 `/admin/`으로 redirect한다. 로그인 뒤 관리자 대시보드가 기본 화면이다.
+3. 대시보드나 기기 카드의 **재생기 실행**이 `POST /api/player/launch`에 `{ deviceId }`를 보낸다. 서버는 기기 존재와 관리자 session을 확인하고 `202`로 명령 접수 ID를 반환한다.
+4. watchdog이 `data/control/player-command.json`을 읽어 Edge를 `http://127.0.0.1:<port>/player/?code=<pairing_code>&reconnect=1`로 실행한다. 실행 결과는 `data/control/player-state.json`에 기록되고, 관리자 UI는 `GET /api/player/state`를 약 6초까지 polling해 desired/running/PID/오류를 표시한다.
+5. **중지**는 `POST /api/player/stop`으로 command를 쓰고, watchdog이 재생기를 종료한다. 사용자가 재생기 창을 닫으면 desired가 `stopped`로 바뀌며 자동 재실행하지 않는다. 비정상 종료만 마지막 desired가 `running`일 때 제한적으로 복구한다.
+6. `/api/dashboard`는 `playerControl`과 기기별 현재 송출을 함께 반환한다. 재생 중 `playing:<contentId>`와 일치하는 항목을 **지금 화면**으로 표시한다.
+
+현재 제한: player control API는 관리자 전용이며 Player token 인증이 아니다. `0000` 테스트 기본값 동안 loopback만 허용하고, 암호 변경 후에는 LAN 관리자도 서버 PC의 Edge 실행을 요청할 수 있다. TLS·token hash·회전 API·1회용 등록 코드·ETag는 아직 없다. 실제 재부팅·로그온, 별도 PC LAN, 물리 모니터, 24시간 soak, CI는 [1차 마감 검증](../install/verification.md)에서도 `NOT_RUN`이다.
 
 ## 3. 목표 계약 표
 
 | 동작 | 목표 HTTP 계약 | 인증 / 주요 필드 | 오류·재시도·멱등성 |
 |---|---|---|---|
-| 장비 생성·등록 코드 발급 | 관리자 `POST /api/devices`; 재발급 `POST /api/devices/:id/regenerate-code`; Player `POST /api/player/register` | 관리자 세션. Player 요청: `pairingCode`, `hardwareId`, `requestId`, `playerVersion`, `capabilities`, 관측 `displays[]`(논리 ID, width, height, orientation, rotation, refresh rate 가능 여부). 성공 응답은 장비 ID, 단 한 번 보여 주는 token, Manager URL, polling 정책, server time. | Pairing code는 짧은 수명·1회 사용·시도 제한. 같은 `Idempotency-Key` 재요청은 연결 레코드를 중복 생성하지 않는다. token 응답 유실은 같은 키의 제한 시간 내 안전한 replay 또는 관리자 재발급 흐름으로 복구한다. 코드 소진/다른 hardware 연결은 `409`; 만료·폐기는 `410`. |
+| 장비 생성·등록 코드 발급 | 관리자 `POST /api/devices`; 재발급 `POST /api/devices/:id/regenerate-code`; Player `POST /api/player/register` | 관리자 세션. Player 요청: `pairingCode`, `hardwareId`, `requestId`, `playerVersion`, `capabilities`, Host가 Windows DisplayConfig/Win32로 관측한 `displays[]`(논리 ID, width, height, orientation, rotation, refresh rate 가능 여부). browser 값은 보조 검증용이다. 성공 응답은 장비 ID, 단 한 번 보여 주는 token, Manager URL, polling 정책, server time. | Pairing code는 짧은 수명·1회 사용·시도 제한. 같은 `Idempotency-Key` 재요청은 연결 레코드를 중복 생성하지 않는다. token 응답 유실은 같은 키의 제한 시간 내 안전한 replay 또는 관리자 재발급 흐름으로 복구한다. 코드 소진/다른 hardware 연결은 `409`; 만료·폐기는 `410`. |
 | token 확인 / 철회 / 회전 | 관리자 `POST /api/devices/:id/token/rotate`, `DELETE /api/devices/:id/token` (경로는 구현 시 확정) | 관리자 세션과 재인증. 장비 token은 Bearer, opaque random 값. 서버는 token hash, scope, 생성·회전·폐기 시각만 저장한다. | 회전은 한 트랜잭션에서 이전 token을 즉시 폐기하고 새 token을 한 번만 보여 준다. 분실 응답은 새 회전으로 복구. token 없는 요청 `401`, 비활성 장비 `403`. 로그에는 원문을 쓰지 않는다. |
 | Manifest pull | `GET /api/player/manifest` | `Authorization: Bearer <device-token>`, `If-None-Match: "<sha256>"`. 성공 JSON: `schemaVersion`, `publicationVersion`, `etag`, `issuedAt`, `serverTime`, `minPlayerVersion`, `device`, `displays[]`, `playlists/schedules/wall`, immutable `assets[]`. | 변경 없음은 `304 Not Modified`; 변경은 `200`. 읽기 전용이므로 연결 실패·`5xx`는 exponential backoff+jitter로 재시도한다. `401/403`은 token 재시도 루프 대신 등록 대기/관리자 조치를 표시한다. 서버는 게시 전 상태를 노출하지 않는다. |
 | Heartbeat / 상태 보고 | `POST /api/player/heartbeat` | Bearer token. `eventId`, `sequence`, `playerVersion`, `publicationVersion`, `state`, `currentContentId`, `displayStates[]`, last successful pull, cache health, OS/Edge version, 제한된 오류 코드와 시각. IP는 서버가 관측한다. | `eventId`로 중복 제거하고 동일 heartbeat 재전송은 동일 상태로 수렴한다. 15초 기본 주기 + ±3초 jitter. 단절 중 큐는 제한된 크기로 저장하고 최신 health snapshot을 우선 전송한다. 내용 없는 일반 상태는 drop 가능하나 오류 전이와 복구 이벤트를 보존한다. |
@@ -126,4 +145,4 @@ Player의 backoff는 요청 종류별로 분리한다. `401/403/409/410`에는 �
 5. Manager/Player 역할을 배포해 LAN에서 여러 Player가 동일 계약으로 동작하는지 검증한다.
 6. WAN TLS, reverse proxy, 업로드 상한, 사용자/장비 접근 정책을 확정한 이후 central 배포 준비를 진행한다.
 
-계약 구현은 [아키텍처 로드맵](manager-player-architecture.md#12-단계별-로드맵과-게이트)의 gate를 따른다. 브라우저 Origin이 다른 배포에서는 CORS allowlist를 Manager URL 기준으로 고정하고 wildcard credential 허용을 하지 않는다. 가능하면 Player Host가 API/media 통신을 중개해 브라우저에 token을 노출하지 않는다.
+계약 구현은 [아키텍처 로드맵](manager-player-architecture.md#12-단계별-로드맵과-게이트)의 gate를 따른다. LAN/central 배포는 PR #4/#6 PASS와 현장 검증 전에는 시작하지 않고, 관리자 암호 변경 전에는 네트워크 listen을 열지 않는다. 브라우저 Origin이 다른 배포에서는 CORS allowlist를 Manager URL 기준으로 고정하고 wildcard credential 허용을 하지 않는다. Player Host가 API/media 통신을 중개해 브라우저에 token을 노출하지 않는다.
