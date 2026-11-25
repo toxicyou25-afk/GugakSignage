@@ -8,6 +8,18 @@
 - 테스트 브라우저: 격리된 user-data-dir와 headless 모드
 - 기존 운영 위치: %ProgramFiles%\GugakSignage와 %ProgramData%\GugakSignage는 시험 전후 모두 없음
 
+## GUGAK-UX-001 재검증 (2026-11-25)
+
+- 기준: main `966888e6f033f8cf9393b3d6ea725475e4d0199d`, Windows PowerShell 5.1, Node.js v24.22.2
+- npm ci / typecheck / build: PASS
+- npm test: PASS, 51/51
+- npm test --prefix poc: PASS, 61/61
+- verify:ui / verify:first-run / verify:schedule / verify:multimonitor / verify:sw-update: PASS
+- installer/test-guards.ps1: PASS. 관리자 바로가기 대상·port fallback, fresh 기본 데이터 폴더와 이전 설치 증거 분리, fresh explicit DATADIR 허용, stale manifest fail-closed, equal/inside/reverse/dotdot 경로 guard 문구를 확인
+- installer/test-install.ps1: PASS. 관리자·재생기 바로가기 생성, logon 시 재생기 미시작, 관리자 API 실행, 명시적 중지 후 미재시작, 사용자 창 닫기 후 미재시작, 재실행, 이전 서버 인스턴스/만료 명령 무시, 정상 Edge PID 검증 채택, 서버·재생기 복구, 제거 보존을 확인
+- installer/test-inno.ps1: PASS (Inno Setup 6.7.3, ISCC.exe, setup SHA-256 `d65e707edce946260aca347e063aea988e4fda410b49af9c708b29713cbec270`). `/DATADIR` 명시와 임시 LOCALAPPDATA/Profile/Shortcut 경로를 사용했고 생산 `%LOCALAPPDATA%\GugakSignage`와 ProgramData 경로가 변경되지 않음을 확인
+- 기본 브라우저로 관리자 페이지를 실제 여는 동작: NOT_RUN (시험 중 운영자 데스크톱에 창을 남기지 않기 위해 `-PrintOnly` 대상 판정과 바로가기 생성만 검증)
+
 ## 프로젝트 검증
 
 | 명령 | 결과 |
@@ -105,6 +117,7 @@ PowerShell 이식용 ZIP SHA-256:
 ## 미검증 항목
 
 - 실제 Windows 재부팅 후 자동 로그인과 At log on 실행: NOT_RUN
+- 운영 기본 브라우저로 관리자 페이지를 실제 여는 동작: NOT_RUN
 - 실제 현장 물리 장비와 모니터, 24시간 연속 운영: NOT_RUN
 - 방화벽 규칙 생성·삭제: 시스템 설정 변경을 피해 NOT_RUN
 - 프로세스는 살아 있으나 CDP renderer가 실제로 멈춘 상태의 재현: NOT_RUN

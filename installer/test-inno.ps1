@@ -39,6 +39,12 @@ function Test-ServerHealth {
     }
 }
 
+function Test-OwnedProcess {
+    param([int]$ProcessId)
+    if (-not $ProcessId) { return $false }
+    return [bool](Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+}
+
 function Wait-Until {
     param([scriptblock]$Condition, [int]$TimeoutSeconds, [string]$Description)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -184,6 +190,13 @@ $conflictLog = Join-Path $testRoot "inno-conflict.log"
 $reupgradeLog = Join-Path $testRoot "inno-same-version-reupgrade.log"
 $uninstallerLog = Join-Path $testRoot "inno-uninstall.log"
 $configBeforeLegacy = ""
+$productionLocalData = Join-Path $env:LOCALAPPDATA "GugakSignage"
+$productionLocalItemBefore = Get-Item -LiteralPath $productionLocalData -ErrorAction SilentlyContinue
+$productionLocalBefore = [ordered]@{
+    exists = [bool]$productionLocalItemBefore
+    lastWriteUtc = if ($productionLocalItemBefore) { $productionLocalItemBefore.LastWriteTimeUtc.ToString("o") } else { $null }
+}
+$originalLocalAppData = $env:LOCALAPPDATA
 $startedAt = [DateTime]::UtcNow
 $report = [ordered]@{
     startedAt = $startedAt.ToString("o")
@@ -195,9 +208,13 @@ $report = [ordered]@{
     result = "running"
     checks = [ordered]@{ evidenceUrlsSanitized = $true }
     productionPathsBefore = Get-ProductionPathSnapshot
+    productionLocalDataBefore = $productionLocalBefore
 }
 
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+$isolatedLocalAppData = Join-Path $testRoot "isolated-localappdata"
+New-Item -ItemType Directory -Path $isolatedLocalAppData -Force | Out-Null
+$env:LOCALAPPDATA = $isolatedLocalAppData
 try {
     $installArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /HEADLESS=1 /DIR="' + $installDir + '" /DATADIR="' + $dataDir + '" /PORT=' + $port + ' /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $installerLog + '"'
     $installer = Start-Process -FilePath $SetupExe -ArgumentList $installArguments -Wait -PassThru -WindowStyle Hidden
@@ -210,6 +227,10 @@ try {
     $report.checks.isolatedInstallDir = $true
     $report.checks.isolatedDataDir = $true
     $report.checks.headlessTestBrowser = [bool]$config.browserHeadless
+    if (@($config.adminShortcuts).Count -ne 2) { throw "EXE 설치가 관리자 바로가기 두 개를 install.json에 기록하지 않았습니다." }
+    if ($config.adminAutoOpen.enabled -ne $false) { throw "headless EXE 설치가 관리자 페이지 자동 열기를 끄지 않았습니다." }
+    $report.checks.adminShortcutsRecorded = $true
+    $report.checks.headlessDisablesAdminAutoOpen = $true
 
     $shortcuts = @(
         (Join-Path $desktopDir "GugakSignage.lnk"),
@@ -219,6 +240,18 @@ try {
         if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "바로가기가 없습니다: $shortcutPath" }
         if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) { throw "바로가기 소유권 확인 실패: $shortcutPath" }
     }
+    $adminShortcuts = @(
+        (Join-Path $desktopDir "GugakSignage 관리자.lnk"),
+        (Join-Path $startMenuDir "GugakSignage 관리자.lnk")
+    )
+    foreach ($shortcutPath in $adminShortcuts) {
+        if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
+        if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) { throw "관리자 바로가기 소유권 확인 실패: $shortcutPath" }
+        $adminShortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+        if ($adminShortcut.IconLocation -notlike "*msedge.exe*" -and $adminShortcut.IconLocation -notlike "*chrome.exe*") {
+            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($adminShortcut.IconLocation)"
+        }
+    }
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
     if (@($task.Triggers).Count -ne 1 -or -not ([string]$task.Triggers[0].CimClass.CimClassName).Contains("LogonTrigger")) {
         throw "At log on 작업 트리거가 없습니다."
@@ -226,22 +259,42 @@ try {
     if (-not (Test-ScheduledTaskOwnedByInstall -Task $task -InstallDir $installDir)) { throw "작업 스케줄러 소유권 확인 실패." }
     $report.checks.desktopShortcut = $true
     $report.checks.startMenuShortcut = $true
+    $report.checks.adminDesktopShortcut = $true
+    $report.checks.adminStartMenuShortcut = $true
+    $report.checks.adminShortcutIcon = $true
     $report.checks.scheduledTaskAtLogOn = $true
     $report.checks.separateDataFolder = $true
 
     Wait-Until -TimeoutSeconds 90 -Description "EXE 설치 서버 health" -Condition { Test-ServerHealth -PortNumber $port }
-    $loginClient = [System.Net.Http.HttpClient]::new()
-    try {
-        $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
-        $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
-        if (-not $loginResponse.IsSuccessStatusCode) { throw "Inno 설치의 테스트 관리자 비밀번호 0000 로그인이 실패했습니다." }
-    } finally {
-        $loginClient.Dispose()
+    $cookieContainer = [System.Net.CookieContainer]::new()
+    $httpHandler = [System.Net.Http.HttpClientHandler]::new()
+    $httpHandler.CookieContainer = $cookieContainer
+    $adminApiClient = [System.Net.Http.HttpClient]::new($httpHandler)
+    $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+    $loginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
+    if (-not $loginResponse.IsSuccessStatusCode) { throw "Inno 설치의 테스트 관리자 비밀번호 0000 로그인이 실패했습니다." }
+    if ($cookieContainer.GetCookies([Uri]::new("http://127.0.0.1:$port/")).Count -lt 1) {
+        throw "Inno 설치 관리자 세션 쿠키를 받지 못했습니다."
     }
     $report.checks.testAdminPasswordLogin = $true
     $statePath = Join-Path $dataDir "logs\watchdog-state.json"
     Wait-Until -TimeoutSeconds 30 -Description "EXE 설치 watchdog 상태" -Condition { Test-Path -LiteralPath $statePath }
     $state = Read-JsonFile -Path $statePath
+    $initialPlayerState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($state.browserPid -or $initialPlayerState.running -or $initialPlayerState.desired -ne "stopped") {
+        throw "EXE 자동 실행이 관리자 요청 없이 재생기를 시작했습니다."
+    }
+    $report.checks.playerOffUntilRequested = $true
+    $deviceList = ConvertFrom-Json ($adminApiClient.GetStringAsync("http://127.0.0.1:$port/api/devices").GetAwaiter().GetResult())
+    $deviceId = [string](@($deviceList.devices)[0].id)
+    $launchBody = @{ deviceId = $deviceId } | ConvertTo-Json -Compress
+    $launchResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/player/launch", [System.Net.Http.StringContent]::new($launchBody, [Text.Encoding]::UTF8, "application/json")).GetAwaiter().GetResult()
+    if ([int]$launchResponse.StatusCode -ne 202) { throw "EXE 재생기 실행 API가 실패했습니다: HTTP $([int]$launchResponse.StatusCode)" }
+    Wait-Until -TimeoutSeconds 25 -Description "EXE 관리자 요청 재생기" -Condition {
+        $current = Read-JsonFile -Path $statePath
+        return [bool]($current.browserPid -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
+    }
+    $report.checks.playerLaunchedFromAdminApi = $true
     $debugPort = [int]$config.debugPort
     $innoPlayerJson = Join-Path $evidenceDir "player-inno-installed.json"
     $innoPlayerPng = Join-Path $evidenceDir "player-inno-installed.png"
@@ -394,10 +447,10 @@ try {
     $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList $uninstallArguments -Wait -PassThru -WindowStyle Hidden
     if ($uninstallProcess.ExitCode -ne 0) { throw "Inno Setup 제거 실패: exit=$($uninstallProcess.ExitCode)" }
     Wait-Until -TimeoutSeconds 60 -Description "Inno 기본 제거 완료" -Condition {
+        $remainingShortcuts = @(@($shortcuts) + @($adminShortcuts) | Where-Object { Test-Path -LiteralPath $_ })
         return (-not (Test-Path -LiteralPath $installDir)) -and
             (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) -and
-            (-not (Test-Path -LiteralPath $shortcuts[0])) -and
-            (-not (Test-Path -LiteralPath $shortcuts[1]))
+            $remainingShortcuts.Count -eq 0
     }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir ".env"))) { throw "기본 제거가 .env 데이터를 삭제했습니다." }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir "signage.sqlite"))) { throw "기본 제거가 SQLite 데이터를 삭제했습니다." }
@@ -417,10 +470,19 @@ try {
     $report.error = $_.Exception.Message
     throw
 } finally {
+    $env:LOCALAPPDATA = $originalLocalAppData
     $report.finishedAt = [DateTime]::UtcNow.ToString("o")
     $report.productionPathsAfter = Get-ProductionPathSnapshot
     $report.checks.productionPathsUntouched = (($report.productionPathsBefore | ConvertTo-Json -Compress) -eq
         ($report.productionPathsAfter | ConvertTo-Json -Compress))
+    $productionLocalItemAfter = Get-Item -LiteralPath $productionLocalData -ErrorAction SilentlyContinue
+    $productionLocalAfter = [ordered]@{
+        exists = [bool]$productionLocalItemAfter
+        lastWriteUtc = if ($productionLocalItemAfter) { $productionLocalItemAfter.LastWriteTimeUtc.ToString("o") } else { $null }
+    }
+    $report.productionLocalDataAfter = $productionLocalAfter
+    $report.checks.productionLocalDataUntouched = (($productionLocalBefore | ConvertTo-Json -Compress) -eq
+        ($productionLocalAfter | ConvertTo-Json -Compress))
     if ($report.result -ne "passed" -and (Test-Path -LiteralPath (Join-Path $installDir "tools\uninstall.ps1"))) {
         if ($configBeforeLegacy -and -not (Test-Path -LiteralPath (Join-Path $installDir "install.json"))) {
             [IO.File]::WriteAllText((Join-Path $installDir "install.json"), $configBeforeLegacy, [Text.UTF8Encoding]::new($false))

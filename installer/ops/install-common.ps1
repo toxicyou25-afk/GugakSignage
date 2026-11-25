@@ -250,6 +250,21 @@ function Test-ShortcutOwnedByInstall {
         (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
 }
 
+function Test-AdminShortcutOwnedByInstall {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShortcutPath,
+        [Parameter(Mandatory = $true)][string]$InstallDir
+    )
+    if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $launcher = Join-Path $InstallDir "ops\admin-launch.vbs"
+    return ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
+        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
+}
+
 function Test-ScheduledTaskOwnedByInstall {
     param(
         [Parameter(Mandatory = $true)]$Task,
