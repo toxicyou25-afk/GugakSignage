@@ -1,0 +1,28 @@
+{
+  "capturedAtUtc": "2026-11-25T03:13:30Z",
+  "staleHeadlessEdge": {
+    "profile": "%TEMP%\\GugakSignage-install-test-20261125-000414-ac74fdaa",
+    "processesKilled": 8,
+    "remainingProcesses": 0
+  },
+  "tempDirRemoval": {
+    "attempted": true,
+    "result": "BLOCKED_BY_TOOL_POLICY",
+    "path": "%TEMP%\\GugakSignage-install-test-20261125-000414-ac74fdaa",
+    "note": "Headless Edge processes were stopped; recursive removal of the old test profile directory was rejected by the execution policy and left in place."
+  },
+  "playwright": "Isolated headless Edge sessions were closed. No Playwright browser remains.",
+  "scheduledTasks": {
+    "gugak": [
+      "GugakSignage-Watchdog"
+    ],
+    "extraTestTasks": []
+  },
+  "finalServiceState": {
+    "watchdogPid": 46464,
+    "serverPid": 27796,
+    "health": 200,
+    "player": "stopped"
+  },
+  "serverRecoveryVerified": true
+}

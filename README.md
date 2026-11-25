@@ -92,7 +92,7 @@ npm start -- --port 4174
 
 ## 1차 동작본(MVP): 관리 서버 + 윈도우 재생기
 
-owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입니다. 이제 관리 화면에서 콘텐츠를 올리고, 기기에 등록 코드를 발급하고, 재생목록·시간표를 저장·게시하면 재생기가 전체화면으로 순환 재생합니다. 서버가 끊기면 재생기는 마지막 목록을 로컬 캐시에서 계속 재생합니다.
+owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입니다. 관리자 페이지가 기본 화면이며, 재생기는 대시보드나 기기 카드의 **재생기 실행** 버튼으로 시작합니다. 관리 화면에서 콘텐츠를 올리고, 기기에 등록 코드를 발급하고, 재생목록·시간표를 저장·게시하면 실행한 재생기가 전체화면으로 순환 재생합니다. 서버가 끊기면 재생기는 마지막 목록을 로컬 캐시에서 계속 재생합니다.
 
 이 MVP는 이제 **장소 → 화면 그룹 → 모니터·배치 → 화면별 재생목록** 흐름과 **다중 모니터 동기화·가상 미리보기**를 포함합니다. 기존 기기·재생목록·시간표 API는 그대로 남아 있고, 장소·화면 게시는 `poc/packages/engine`의 기존 `buildLayout`·`buildRenderPlan`을 서버 미리보기와 브라우저 재생기가 함께 사용합니다. 세부 계약은 [다중 모니터 설계](docs/design/multimonitor.md)에 있습니다.
 
@@ -100,12 +100,11 @@ owner가 확정한 1차 범위는 **관리 서버와 윈도우 PC 재생기**입
 
 준비물은 Node.js 24 이상(또는 Docker Desktop)과 Edge/Chrome입니다. 첫 실행 시 샘플 포스터 3장, 동영상 1개, 안내 URL, 재생목록 1개, 등록 코드 **GUGAK1**인 샘플 기기가 자동으로 들어갑니다.
 
-**1) 서버 실행 — Docker Compose**
+**1) 서버 실행 — Docker Compose 첫 설정**
 
 ```powershell
-Copy-Item .env.example .env
-# .env에서 ADMIN_PASSWORD와 SESSION_SECRET을 반드시 바꿉니다.
-docker compose up --build -d
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose -f docker-compose.local.yml up --build -d
 ```
 
 **1) 서버 실행 — Node.js (Docker 없이)**
@@ -117,18 +116,79 @@ npm run dev
 
 - 관리 화면: <http://localhost:3000/admin/>
 - 재생기: <http://localhost:3000/player/>
-- 기본 비밀번호: `gugak1234` — 운영 전 `ADMIN_PASSWORD`로 바꾸세요.
+- 새 DB의 테스트 기본 비밀번호: `0000`
 - 데이터: `data/signage.sqlite`, 업로드 파일: `data/uploads/`
+
+기존 `.env`에 `ADMIN_PASSWORD`가 있거나 DB에 이미 관리자 비밀번호가 저장되어 있으면 기존 비밀번호를 유지합니다. 설정 화면에서 바꾼 비밀번호는 DB에 해시로 저장되어 서버를 다시 시작해도 유지되며, 변경할 때 모든 관리자 세션이 종료됩니다.
+
+#### 관리자 LAN 공개 순서
+
+관리자 네트워크 제한은 요청마다 DB에 저장된 현재 비밀번호 상태를 확인합니다. **로컬 초기 설정 → 로컬에서 비밀번호 변경 → 필요한 경우 HOST·포트 공개·방화벽 적용** 순서를 지키세요.
+
+- 새 DB의 비밀번호가 `0000`인 동안 로그인·관리 세션·보호 API와 `/admin/` 화면은 실제 TCP peer가 loopback일 때만 허용됩니다. LAN IP로 들어온 관리자 요청은 `403`으로 거부합니다. `X-Forwarded-For`, `Forwarded`, `Via`, `CF-Connecting-IP` 같은 전달 헤더는 주소 판정에 쓰지 않습니다. 초기 설정 중에는 전달 헤더가 붙은 loopback 요청도 fail-closed로 거부하며, 같은 PC의 reverse proxy를 통한 초기 설정은 지원하지 않습니다.
+- 비밀번호를 `0000`이 아닌 값으로 바꾸면 서버는 재시작 없이 다음 관리자 요청부터 LAN을 허용합니다. 기존 관리자 세션은 모두 종료되므로 새 비밀번호로 다시 로그인합니다.
+- 기존 DB의 비밀번호가 이미 `0000`이 아니면 제한은 처음부터 적용되지 않아 기존 LAN 동작이 유지됩니다.
+
+| 실행 방식 | 초기 네트워크 설정 | `0000`일 때 | 비밀번호 변경 후 LAN 전환 |
+|---|---|---|---|
+| Node 직접 실행 | `.env`의 `HOST`(기본 `0.0.0.0`) | loopback만 허용 | `HOST=0.0.0.0`이면 재시작 없이 허용. `HOST=127.0.0.1`이면 `HOST`를 바꾸고 재시작 |
+| Docker 첫 설정 | `docker-compose.local.yml`이 `127.0.0.1:3000`에만 게시 | 컨테이너에는 호스트 접속이 loopback으로 보이지 않아 차단 | 컨테이너 안에서 `npm run admin:change-password` 실행 후 일반 Compose로 재시작 |
+| Docker 기존 설치 | `docker-compose.yml`이 `3000:3000` 게시 | loopback만 허용 | 실행 중인 컨테이너에서 `docker compose exec signage npm run admin:change-password` 실행. 포트 게시가 이미 LAN이면 재시작 없이 허용 |
+| Windows 설치본 | 데이터 폴더 `.env`의 `HOST=0.0.0.0`(기본 `%ProgramData%\GugakSignage\.env`) | loopback만 허용 | 서버 PC에서 `http://127.0.0.1:<PORT>/admin/`로 변경. 방화벽 TCP 포트가 열려 있으면 재시작 없이 허용 |
+
+**Node.js 직접 실행**
+
+```powershell
+npm ci
+npm run dev
+```
+
+같은 PC에서 <http://localhost:3000/admin/>에 로그인해 **설정**에서 비밀번호를 바꿉니다. `.env`의 `HOST`가 `0.0.0.0`이면 변경 즉시 LAN 관리가 허용됩니다. `HOST=127.0.0.1`이면 LAN 관리와 재생기 제공을 위해 `HOST=0.0.0.0`으로 바꾸고 서버를 재시작합니다. Windows 방화벽에서 TCP 3000(또는 지정한 `PORT`)을 허용해야 합니다.
+
+**Docker 첫 설정과 LAN 전환**
+
+`docker-compose.local.yml`은 호스트 loopback에만 포트를 게시합니다. 컨테이너 NAT에서는 호스트 브라우저의 접속도 loopback으로 보이지 않으므로 초기 관리자 화면은 fail-closed로 거부됩니다. 아래 명령으로 컨테이너 안의 loopback을 통해 비밀번호를 바꿉니다. 입력값은 화면에 표시되지 않습니다.
+
+```powershell
+docker compose -f docker-compose.local.yml exec signage npm run admin:change-password
+```
+
+그다음 로컬 전용 컨테이너를 종료하고 일반 Compose 파일로 재시작합니다. `down`에 `-v`를 붙이지 마세요. 이름 있는 데이터 볼륨을 보존합니다.
+
+```powershell
+docker compose -f docker-compose.local.yml down
+docker compose up --build -d
+```
+
+이미 `docker-compose.yml`로 실행 중인 설치에서 DB 비밀번호가 `0000`이면 컨테이너를 재시작하지 않고 `docker compose exec signage npm run admin:change-password`로 바꿀 수 있습니다. `SESSION_SECRET`도 `.env`에서 고유한 값으로 설정하세요.
+
+**Windows 설치본**
+
+Windows 설치 프로그램은 Draft PR #4의 설치본을 기준으로 하며, 데이터 폴더의 `.env`를 사용합니다. 기본 데이터 폴더는 `%ProgramData%\GugakSignage`이고 기본 `HOST`는 `0.0.0.0`입니다. 서버 PC에서 <http://127.0.0.1:3000/admin/>에 접속해 비밀번호를 바꾸면, 포트와 방화벽이 LAN에 열려 있는 경우 재시작이나 재설치 없이 다른 PC에서 관리자 로그인을 사용할 수 있습니다. 설치 시 방화벽 규칙을 만들지 않았다면 관리자 PowerShell에서 설치 스크립트를 `-ConfigureOnly -OpenFirewall`로 다시 실행하거나 조직 방화벽 정책으로 TCP 포트를 엽니다. `HOST`나 `PORT`를 바꾼 경우에만 `set-autostart.ps1 -Restart`로 서버를 재시작합니다.
+
+기본 설치 폴더 기준 명령입니다.
+
+```powershell
+# 방화벽 규칙은 필요한 경우에만
+& "$env:ProgramFiles\GugakSignage\tools\install.ps1" -ConfigureOnly -OpenFirewall
+
+# .env의 HOST나 PORT를 바꾼 경우에만
+& "$env:ProgramFiles\GugakSignage\tools\set-autostart.ps1" -Restart
+```
+
+`ADMIN_PASSWORD`는 새 DB를 만들 때만 쓰입니다. DB의 비밀번호를 바꾼 뒤 `.env`에 `0000`이 남아 있으면 DB를 새로 만들 때 다시 기본 비밀번호가 될 수 있으므로, 운영 절차에 맞춰 `.env` 값도 갱신하거나 제거하세요.
 
 **2) 관리 화면 로그인 → 기기에서 등록 코드 확인**
 
-1. <http://localhost:3000/admin/>에 접속합니다. 기본 비밀번호는 `gugak1234`입니다.
+1. Node 실행은 <http://localhost:3000/admin/>에 접속합니다. 새 DB이며 `ADMIN_PASSWORD`가 지정되지 않은 테스트 환경에서는 기본 비밀번호 `0000`으로 로그인합니다. Docker 첫 설정은 위의 대화형 명령으로 비밀번호를 변경한 뒤 일반 Compose로 전환하세요.
 2. 왼쪽 **기기** 메뉴를 엽니다. 샘플 기기 **로비 안내 화면** 카드에 큰 글씨로 **등록 코드 `GUGAK1`**이 표시됩니다.
-3. 코드 옆의 `복사`를 누르거나 `재생기 열기`를 누릅니다. 새 기기를 만들었다면 그 카드의 6자리 코드를 사용합니다.
+3. 코드 옆의 `복사`를 누르거나 **재생기 실행**을 누릅니다. 새 기기를 만들었다면 그 카드의 6자리 코드를 사용합니다.
 
-개발/샘플 모드에서 관리자 비밀번호가 기본값이면 로그인 화면에 `gugak1234` 힌트가 표시됩니다. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
+테스트 기본 비밀번호를 사용하면 로그인 화면과 관리자 화면에 로컬 전용 안내가 표시됩니다. Node 실행은 관리자 화면의 **설정**에서 현재 비밀번호를 확인하고 새 비밀번호를 저장할 수 있습니다. 비밀번호 변경 시 기존 세션이 종료되므로 새 비밀번호로 다시 로그인하고, LAN 관리는 HOST·포트 공개와 방화벽 설정을 확인하세요. 재생기를 코드 없이 열어도 첫 화면의 **관리 화면에서 등록 코드 확인** 링크와 **샘플 코드 `GUGAK1`로 연결** 버튼으로 바로 시작할 수 있습니다. 직접 주소는 <http://localhost:3000/player/?code=GUGAK1>입니다.
 
 **3) 윈도우 재생기 실행**
+
+Windows 설치본은 관리자 대시보드나 **기기** 카드의 **재생기 실행** 버튼으로 재생기를 시작합니다. 서버가 기록한 로컬 실행 요청을 watchdog이 받아 설치된 Edge 앱 창으로 엽니다. **중지**를 누르거나 재생기 창을 닫으면 자동으로 다시 열지 않습니다. 개발 중 서버만 직접 실행했을 때는 아래 스크립트를 수동으로 사용할 수 있습니다.
 
 ```powershell
 .\start-player.cmd
@@ -140,7 +200,7 @@ npm run dev
 
 - Edge가 있으면 Edge 전체화면 앱 모드(`--app` + `--start-fullscreen`), 없으면 Chrome 키오스크(`--kiosk`)를 엽니다. Edge의 `--kiosk`는 InPrivate로 열려 등록 정보와 캐시가 종료 시 지워지므로, 캐시 유지를 위해 앱 모드를 씁니다. 두 방식 모두 주소창 없는 전체화면이며 전용 프로필(`%LOCALAPPDATA%\GugakSignagePlayer`)로 등록 정보를 유지하고, CSS로 커서를 숨깁니다.
 - 처음 한 번은 관리 화면의 6자리 코드를 입력합니다. `?code=`가 포함된 주소로 열면 자동 연결되고, 코드가 없으면 첫 화면의 샘플 코드 버튼이나 관리 화면 링크를 쓸 수 있습니다.
-- 부팅 시 자동 실행은 `start-player.cmd`의 바로 가기를 `shell:startup` 폴더에 넣으면 됩니다. PC 절전 해제와 자동 로그온은 현장 정책에 맞춰 별도로 설정하세요.
+- Windows 설치본의 로그온 자동 실행은 watchdog 작업이 관리자 페이지를 열고, 재생기는 관리자 버튼을 기다립니다. `start-player.cmd`를 `shell:startup`에 넣어 재생기를 자동 실행하지 마세요. PC 절전 해제와 자동 로그온은 현장 정책에 맞춰 별도로 설정하세요.
 
 **4) 내 콘텐츠로 바꾸기 — 업로드 → 재생목록 → 게시**
 
@@ -172,20 +232,20 @@ npm ci
 npm run dev
 ```
 
-- 관리 화면: <http://localhost:3000/admin/> / 초기 비밀번호 `gugak1234`
+- 관리 화면: <http://localhost:3000/admin/> / 신규 테스트 DB의 기본 비밀번호 `0000`
 - 샘플 기기 코드: **`GUGAK1`** (기기 메뉴 → 로비 안내 화면 카드)
 - 샘플 포스터·영상·재생목록 시드는 `seed/`에 포함되어 첫 실행 시 `data/uploads/`와 SQLite DB로 복사·생성됩니다.
 - **실제 업로드 콘텐츠, `data/signage.sqlite`, `data/uploads/`, `.env`, `node_modules/`는 Git에 포함되지 않습니다.** 새 클론은 항상 샘플 데이터로 시작하며, 기존 운영 데이터가 필요하면 별도로 백업·복원해야 합니다.
-- `.env`를 쓰려면 `.env.example`을 복사해 `ADMIN_PASSWORD`와 `SESSION_SECRET`을 변경합니다.
+- `.env`를 쓰려면 `.env.example`을 복사합니다. 운영 전에 관리 화면에서 비밀번호를 바꾸고 `SESSION_SECRET`을 고유한 값으로 변경합니다.
 
 ### 검증 결과
 
 | 명령 | 결과 |
 |---|---|
 | `npm run typecheck` | 통과 |
-| `npm test` | 17/17 통과 (기존 16건 유지 + 샘플 이미지·영상·URL wall 회귀 1건) |
-| `npm run verify:first-run` | 통과 — 관리자 비밀번호 힌트·기기 코드 `GUGAK1`·코드 없는 재생기 샘플 연결·이미지 재생·세로 화면 비율·기존 연결 복구·연결된 기기 코드 링크 유지 |
-| `npm run verify:ui` | 통과 — 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
+| `npm test` | 통과 — 51/51, 0 실패. 재생기 실행·중지 명령의 서버 인스턴스/TTL 검증, 무관한 PID 채택 거부, 정상 Edge 채택·종료 전 재검증, watchdog 시작 시 관리자 페이지 열기 판단, 현재 송출 모델, 기본 비밀번호 loopback 허용·LAN 차단 포함 |
+| `npm run verify:first-run` | 통과 — 관리자 비밀번호 경고·설정 변경·이전 비밀번호 거부·재시작 후 로그인·샘플 기기와 재생기 검증 |
+| `npm run verify:ui` | 통과 — 샘플 배너·4단계 링크, 재생기 실행/중지 버튼, 재생기가 꺼진 현재 송출 목록, 코드 없는 재생기 첫 화면·샘플 원클릭 연결·404 안내, 관리 화면 업로드·재생목록·게시, 현재 항목 강조, 재생기 영상·URL, IndexedDB 캐시, 서버 종료 후 다음 항목 재생, 오프라인 재실행 |
 | `npm run verify:schedule` | 통과 — 기본 목록 없는 시간표 전용 기기에서 온라인 시작과 서버 단절 중 다음 시간대 자동 시작 |
 | `npm run verify:multimonitor` | 통과 — 격리 DB에서 4화면 설정·화면별 콘텐츠·PC 배정·RenderPlan 미리보기·게시, URL 단독 iframe·오프라인 대체 화면, 한 PC 4화면 캔버스, 모니터별 분리 창 |
 | `npm run verify:sw-update` | 통과 — 같은 persistent Edge profile에서 v3 셸 캐시 후 같은 origin에 HEAD 배포, `registration.update()` 뒤 v4 캐시·새 player.js·URL engine 자산 사용 확인 |
@@ -259,6 +319,14 @@ python -m http.server 4173 --directory prototype
 - 오픈소스 코드·디자인 자원을 쓰면 라이선스와 출처를 문서화한다.
 - 실제 서비스 화면 캡처는 조사 목적으로만 보관하고 배포물에 넣지 않는다.
 - 확인 없이 기존 프로그램·USB·파일을 삭제하지 않는다.
+
+## Windows 설치·무인 운영
+
+현장 PC의 설치, 로그인 후 자동 실행, watchdog 복구, 로그 위치, 자동 실행 해제와 제거 절차는 [Windows 설치·무인 운영 안내](docs/install/README.md)에 정리했습니다.
+
+설치 프로그램은 기존 재생기·watchdog 바로가기와 함께 바탕화면과 시작 메뉴에 **GugakSignage 관리자** 바로가기를 만듭니다. 이 바로가기는 `install.json`의 포트(없으면 3000)로 기본 브라우저의 일반 창을 열며 관리자 권한을 요청하지 않습니다. 로그온 자동 실행에서도 watchdog은 서버가 준비되면 관리자 페이지를 기본 창으로 열고 전체화면 재생기는 시작하지 않습니다. 재생기는 대시보드나 기기 카드의 **재생기 실행** 버튼을 누를 때만 Edge 앱 창으로 시작하며, **중지** 버튼이나 창 닫기로 끄면 watchdog이 자동으로 다시 띄우지 않습니다. headless·CI 설치에서는 `install.json`의 `adminAutoOpen.enabled`를 `false`로 기록해 관리자 자동 열기를 끌 수 있습니다.
+
+관리자 대시보드의 **현재 송출** 카드는 재생기가 꺼져 있어도 기기별 배정 재생목록, 게시본의 활성 항목(썸네일·이름·표시 시간·fit·순서), 게시 버전·시각, 마지막 오류를 보여 줍니다. **재생기 실행**과 **미리보기** 버튼을 제공하고, 재생기가 켜져 있을 때 `playerState`가 `playing:<contentId>`인 항목은 현재 화면으로 강조됩니다. 새 설치처럼 샘플만 있거나 사용자 게시가 없으면 콘텐츠·재생목록·기기로 바로 이동하는 샘플 안내 배너가 표시됩니다. 기존 4단계 안내도 각 단계의 관리 화면으로 이동하는 링크입니다.
 
 ## 라이선스
 

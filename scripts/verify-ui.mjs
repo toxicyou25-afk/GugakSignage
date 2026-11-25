@@ -26,6 +26,51 @@ const report = {
 let server = null;
 let serverLog = '';
 let browser = null;
+let controlWatcher = null;
+
+function startFakePlayerControl() {
+  const controlDir = path.join(tempDir, 'control');
+  const commandPath = path.join(controlDir, 'player-command.json');
+  const statePath = path.join(controlDir, 'player-state.json');
+  fs.mkdirSync(controlDir, { recursive: true });
+  let running = false;
+  let deviceId = null;
+  let playerUrl = null;
+  let startedAt = null;
+  const writeState = () => {
+    fs.writeFileSync(statePath, JSON.stringify({
+      schemaVersion: 1,
+      desired: running ? 'running' : 'stopped',
+      running,
+      pid: running ? process.pid : null,
+      startedAt: running ? startedAt : null,
+      deviceId,
+      playerUrl,
+      lastError: null,
+      updatedAt: new Date().toISOString(),
+    }, null, 2), 'utf8');
+  };
+  writeState();
+  const timer = setInterval(() => {
+    try {
+      if (!fs.existsSync(commandPath)) return;
+      const command = JSON.parse(fs.readFileSync(commandPath, 'utf8'));
+      fs.rmSync(commandPath, { force: true });
+      if (command.action === 'launch') {
+        running = true;
+        deviceId = command.deviceId || null;
+        playerUrl = command.playerUrl || null;
+        startedAt = new Date().toISOString();
+      } else if (command.action === 'stop') {
+        running = false;
+      }
+      writeState();
+    } catch {
+      // The verification control watcher ignores partially written commands.
+    }
+  }, 150);
+  return () => clearInterval(timer);
+}
 
 function sanitizeLog(text) {
   return String(text)
@@ -107,6 +152,7 @@ async function cacheKeyCount(page) {
 }
 
 try {
+  controlWatcher = startFakePlayerControl();
   startServer();
   await waitForHealth();
   step('서버 시작', { url: base });
@@ -125,9 +171,41 @@ try {
   await admin.fill('#password', 'verify-password');
   await admin.click('#login-form button[type=submit]');
   await admin.waitForSelector('.hero', { timeout: 10_000 });
+  await admin.waitForSelector('.sample-banner', { timeout: 10_000 });
+  const sampleBannerText = await admin.locator('.sample-banner h2').innerText();
+  if (sampleBannerText !== '지금은 샘플 콘텐츠가 표시 중입니다. 내 이미지를 올리고 재생목록을 게시하세요.') {
+    throw new Error(`샘플 콘텐츠 배너 문구가 올바르지 않습니다: ${sampleBannerText}`);
+  }
+  const sampleActions = await admin.locator('.sample-banner a').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  if (!sampleActions.includes('#/contents') || !sampleActions.includes('#/playlists') || !sampleActions.includes('#/devices')) {
+    throw new Error(`샘플 배너의 콘텐츠·재생목록·기기 버튼이 부족합니다: ${sampleActions.join(', ')}`);
+  }
+  const stepLinks = await admin.locator('.steps a.step').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  if (stepLinks.length !== 4 || stepLinks[0] !== '#/contents' || stepLinks[1] !== '#/devices' || stepLinks[2] !== '#/playlists' || stepLinks[3] !== '#/devices') {
+    throw new Error(`4단계 안내 링크가 올바르지 않습니다: ${stepLinks.join(', ')}`);
+  }
+  if (await admin.locator('.broadcast-card .broadcast-item').count() < 1) {
+    throw new Error('재생기가 꺼진 상태에서도 현재 송출 항목이 표시되지 않습니다.');
+  }
+  if (await admin.locator('.broadcast-item.is-current').count()) {
+    throw new Error('재생기가 꺼진 상태에서 현재 항목이 강조되었습니다.');
+  }
   await admin.waitForTimeout(400);
   await admin.screenshot({ path: path.join(evidenceDir, '02-admin-dashboard.png'), fullPage: true });
-  step('로그인 후 대시보드 확인', { title: await admin.title() });
+  step('로그인 후 대시보드의 샘플 배너와 클릭 가능한 4단계 안내 확인', {
+    title: await admin.title(),
+    sampleActions,
+    stepLinks,
+  });
+
+  await admin.locator('.broadcast-card [data-action=launch-player]').first().click();
+  await admin.waitForSelector('.broadcast-card [data-action=stop-player]', { timeout: 8_000 });
+  await admin.locator('[data-action=stop-player]').first().click();
+  await admin.waitForSelector('.broadcast-card [data-action=launch-player]', { timeout: 8_000 });
+  await admin.locator('.broadcast-card [data-action=launch-player]').first().click();
+  await admin.waitForSelector('[data-action=stop-player]', { timeout: 8_000 });
+  await admin.screenshot({ path: path.join(evidenceDir, '26-admin-player-controls.png'), fullPage: true });
+  step('대시보드 재생기 실행·중지와 실행 상태 표시 확인');
 
   await admin.click('a[data-nav=contents]');
   await admin.waitForSelector('.content-grid');
@@ -170,6 +248,10 @@ try {
 
   await admin.click('a[data-nav=devices]');
   await admin.waitForSelector('.device-card');
+  if (!(await admin.locator('.device-card [data-action=launch-player]').count()) &&
+      !(await admin.locator('.device-card [data-action=stop-player]').count())) {
+    throw new Error('기기 카드에서 재생기 실행·중지 제어를 찾지 못했습니다.');
+  }
   await admin.click('[data-action=device-settings]');
   await admin.waitForSelector('#device-settings-form');
   const playlistLabel = await admin.locator('#device-default-playlist option').allTextContents();
@@ -238,6 +320,34 @@ try {
   if (!urlHeading.includes('오늘의 안내')) throw new Error(`URL 콘텐츠가 표시되지 않았습니다: ${urlHeading}`);
   await player.screenshot({ path: path.join(evidenceDir, '10-player-url.png') });
   step('재생기 URL 콘텐츠 표시 확인', { heading: urlHeading });
+
+  await admin.click('a[data-nav=dashboard]');
+  await admin.waitForSelector('.broadcast-card', { timeout: 15_000 });
+  // The player sends a heartbeat every 15 seconds, so refresh the admin view
+  // until a heartbeat carrying playing:<contentId> has reached the dashboard.
+  let currentHighlights = 0;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await admin.click('#refresh-button');
+    await admin.waitForTimeout(350);
+    currentHighlights = await admin.locator('.broadcast-item.is-current').count();
+    if (currentHighlights === 1) break;
+    await admin.waitForTimeout(750);
+  }
+  if (currentHighlights !== 1) throw new Error('현재 재생 중인 항목이 대시보드에 하나로 강조되지 않았습니다.');
+  const broadcastCard = admin.locator('.broadcast-card').first();
+  const broadcastText = await broadcastCard.innerText();
+  for (const expected of ['MVP 검증 재생목록', 'v2', 'poster-class', 'sample-video', '지금 화면', '재생기 미리보기', '마지막 오류']) {
+    if (!broadcastText.includes(expected)) throw new Error(`현재 송출 카드에 '${expected}'가 없습니다: ${broadcastText}`);
+  }
+  const currentItem = await admin.locator('.broadcast-item.is-current').first().innerText();
+  if (!currentItem.includes('번') || !currentItem.includes('초') || (!currentItem.includes('contain') && !currentItem.includes('cover'))) {
+    throw new Error(`현재 항목에 순서·표시 시간·fit 정보가 부족합니다: ${currentItem}`);
+  }
+  const previewHref = await broadcastCard.locator('a', { hasText: '재생기 미리보기' }).getAttribute('href');
+  if (!previewHref?.startsWith('/player/')) throw new Error(`재생기 미리보기 링크가 올바르지 않습니다: ${previewHref}`);
+  if (await admin.locator('.sample-banner').count()) throw new Error('사용자 콘텐츠를 게시한 뒤에도 샘플 배너가 남아 있습니다.');
+  await admin.screenshot({ path: path.join(evidenceDir, '25-admin-current-broadcast.png'), fullPage: true });
+  step('대시보드 현재 송출 카드에서 실제 항목·현재 재생 강조·게시 버전 확인', { previewHref, currentItem });
 
   let cachedKeys = -1;
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -312,6 +422,7 @@ try {
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close().catch(() => {});
+  if (controlWatcher) controlWatcher();
   await stopServer();
   report.serverLog = sanitizeLog(serverLog);
   if (report.error) report.error = sanitizeLog(report.error);

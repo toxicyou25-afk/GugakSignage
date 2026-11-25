@@ -1,0 +1,57 @@
+{
+  "tables": {},
+  "hashes": {
+    "contents": "6c47242bd2c23cb5dee4f3352f965873b9d1127e36907c09bbdb78af3be07b8c",
+    "devices": "dcc6cdea8964fd3b4b319e3c7170384b39a55ee0eaa1f64aa069249fe79afb1d",
+    "display_groups": "875688951af0704d57aeb686f351a99040a045bfa32babbf9d1d12c5f745e502",
+    "displays": "ebf3457f7f753f4d851307c1e23b5a0929ed34d78fbddb4b0a92a29829492982",
+    "layouts": "79789380764c93dc0dbc3536e2b69d831db39364340aa81e446d1c165717d9aa",
+    "meta": "5dd00a34814cae2572dc280959e85b72afff7d3a7ce3bad4792e188f2a8fc550",
+    "playlist_items": "161761fc548a25f3213bbbc7f29e3f6ae08ce9d52771f52fe27c18c295c86df9",
+    "playlists": "613828064826219732cab038f6da3ca870bc38401808f0463bdbaf56511851ab",
+    "publications": "3c22377a0c3af1f2ebb7324060f6f3ee6647be9c21e6799c5e28f83603c22010",
+    "schedules": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "sites": "a1523dbd3bed9449161e791954704e09a109ac3ae2142b8a5edba22dde2b4c44"
+  },
+  "rowCounts": {
+    "contents": 5,
+    "devices": 1,
+    "display_groups": 1,
+    "displays": 1,
+    "layouts": 1,
+    "meta": 5,
+    "playlist_items": 5,
+    "playlists": 1,
+    "publications": 3,
+    "schedules": 0,
+    "sites": 1
+  },
+  "contents": [
+    {
+      "id": "ct-sample-notice",
+      "name": "오늘의 안내 (샘플 웹페이지)"
+    },
+    {
+      "id": "ct-sample-poster-autumn",
+      "name": "가을 국악 한마당 포스터"
+    },
+    {
+      "id": "ct-sample-poster-class",
+      "name": "국악 체험 교실 포스터"
+    },
+    {
+      "id": "ct-sample-poster-welcome",
+      "name": "인포메이션센터 안내"
+    },
+    {
+      "id": "ct-sample-video-bbb",
+      "name": "샘플 영상 (Big Buck Bunny)"
+    }
+  ],
+  "playlists": [
+    {
+      "id": "pl-sample-lobby",
+      "name": "로비 기본 순환"
+    }
+  ]
+}

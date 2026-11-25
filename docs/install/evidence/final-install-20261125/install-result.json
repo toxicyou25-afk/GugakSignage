@@ -1,0 +1,70 @@
+{
+  "sourceCommit": "a9394436c0485a5500789aa2c7c2d3ec3c299cd3",
+  "method": "Inno Setup 6.7.3 per-user install: /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
+  "startedAtUtc": "2026-11-25T03:06:03.2776605Z",
+  "finishedAtUtc": "2026-11-25T03:06:15.6996265Z",
+  "exitCode": 0,
+  "installDir": "%LOCALAPPDATA%\\Programs\\GugakSignage",
+  "dataDir": "%LOCALAPPDATA%\\GugakSignage",
+  "existingInstallDetectedByInstallScript": true,
+  "existingInstallCreatedAt": "2026-11-24T17:13:18.5007783Z",
+  "installJsonUpdatedAt": "2026-11-25T03:06:13.5176389Z",
+  "installJson": {
+    "schemaVersion": 2,
+    "product": "GugakSignage",
+    "ownershipMarker": "GugakSignage installer",
+    "installDir": "%USERPROFILE%\\AppData\\Local\\Programs\\GugakSignage",
+    "dataDir": "%USERPROFILE%\\AppData\\Local\\GugakSignage",
+    "envFile": "%USERPROFILE%\\AppData\\Local\\GugakSignage\\.env",
+    "logDir": "%USERPROFILE%\\AppData\\Local\\GugakSignage\\logs",
+    "port": 3000,
+    "playerUrl": "http://127.0.0.1:3000/player/?code=GUGAK1&reconnect=1",
+    "browserPath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "nodePath": "C:\\Program Files\\nodejs\\node.exe",
+    "profileDir": "%USERPROFILE%\\AppData\\Local\\GugakSignagePlayer",
+    "taskName": "GugakSignage-Watchdog",
+    "firewallRuleName": "GugakSignage-Server",
+    "debugPort": 9223,
+    "browserHeadless": false,
+    "shortcuts": [
+      "%USERPROFILE%\\Desktop\\GugakSignage.lnk",
+      "%USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\GugakSignage\\GugakSignage.lnk"
+    ],
+    "adminShortcuts": [
+      "%USERPROFILE%\\Desktop\\GugakSignage 愿由ъ옄.lnk",
+      "%USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\GugakSignage\\GugakSignage 愿由ъ옄.lnk"
+    ],
+    "adminAutoOpen": {
+      "enabled": true
+    },
+    "autoStartRegistered": true,
+    "createdAt": "2026-11-24T17:13:18.5007783Z",
+    "updatedAt": "2026-11-25T03:06:13.5176389Z",
+    "watchdog": {
+      "healthIntervalMs": 5000,
+      "browserCheckIntervalMs": 15000,
+      "serverStartupGraceMs": 120000,
+      "browserStartupGraceMs": 120000,
+      "browserTargetMissingGraceMs": 15000,
+      "serverHealthFailureThreshold": 5,
+      "browserHealthFailureThreshold": 3,
+      "serverHeartbeatMaxAgeMs": 90000,
+      "serverBackoffInitialMs": 2000,
+      "serverBackoffMaxMs": 60000,
+      "browserBackoffInitialMs": 3000,
+      "browserBackoffMaxMs": 60000,
+      "maxConsecutiveFailures": 8,
+      "stableResetMs": 60000,
+      "logMaxBytes": 5242880
+    }
+  },
+  "uninstallRegistry": {
+    "key": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1",
+    "note": "The previous per-user uninstall key was absent before this run; Setup created a new key and appended to unins000.dat."
+  },
+  "logs": {
+    "innoKeyLines": "inno-setup-key-lines.txt",
+    "installTranscript": "install-transcript.txt"
+  },
+  "result": "success"
+}

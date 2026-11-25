@@ -1,0 +1,24 @@
+﻿{
+  "checkedAt": "2026-11-25T00:10:34.063Z",
+  "expected": "online",
+  "url": "<test-url>/player/?code=GUGAK1&reconnect=1",
+  "state": {
+    "playerReady": true,
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 1,
+    "playlistId": "pl-sample-lobby",
+    "queueLength": 5,
+    "index": 4,
+    "currentContentId": "ct-sample-notice",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-25T00:10:33.646Z",
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": -2,
+    "shellVersion": "v4",
+    "visibility": "visible"
+  },
+  "screenshot": null
+}

@@ -33,3 +33,23 @@ test('.env 파일을 서버 설정 생성 전에 읽는다', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('GUGAK_ENV_FILE은 설치된 서버의 환경 파일 위치를 지정한다', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-env-file-'));
+  const envPath = path.join(tempDir, 'installed.env');
+  const previousEnvFile = process.env.GUGAK_ENV_FILE;
+  const previousPort = process.env.PORT;
+  try {
+    fs.writeFileSync(envPath, 'PORT=43210\n', 'utf8');
+    process.env.GUGAK_ENV_FILE = envPath;
+    delete process.env.PORT;
+    assert.equal(loadLocalEnv(), true);
+    assert.equal(process.env.PORT, '43210');
+  } finally {
+    if (previousEnvFile === undefined) delete process.env.GUGAK_ENV_FILE;
+    else process.env.GUGAK_ENV_FILE = previousEnvFile;
+    if (previousPort === undefined) delete process.env.PORT;
+    else process.env.PORT = previousPort;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
