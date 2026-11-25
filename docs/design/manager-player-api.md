@@ -4,9 +4,9 @@
 
 최종 갱신: 2026-11-25
 
-기준: `main` `a9394436c0485a5500789aa2c7c2d3ec3c299cd3` (2026-11-25 작업 기준). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합된 상태다.
+기준: `main` `7d802e1606fb5c735563d49e2f7b382077d9eaae` (2026-11-25 현재 main). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합됐고, PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12)는 문서·증거만 추가했다.
 
-확인 시점 `origin/main`: `7d802e1606fb5c735563d49e2f7b382077d9eaae` (PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12) 문서·증거 후속 병합). 이 문서의 `2. 기준 main의 API`는 현재 구현, `3. 목표 계약 표`는 아직 구현되지 않은 목표다.
+동작 확인 기준: `a9394436c0485a5500789aa2c7c2d3ec3c299cd3`. 런타임 코드는 `7d802e1`과 같다. 이 문서의 `2. 기준 main의 API`는 현재 구현, `3. 목표 계약 표`는 아직 구현되지 않은 목표다.
 
 상위 아키텍처: [Manager / Player 분리와 3가지 배포 모드](manager-player-architecture.md)
 

@@ -4,9 +4,9 @@
 
 최종 갱신: 2026-11-25
 
-기준: `main` `a9394436c0485a5500789aa2c7c2d3ec3c299cd3` (2026-11-25 작업 기준). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합된 상태다.
+기준: `main` `7d802e1606fb5c735563d49e2f7b382077d9eaae` (2026-11-25 현재 main). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합됐고, PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12)는 문서·증거만 추가했다.
 
-확인 시점 `origin/main`: `7d802e1606fb5c735563d49e2f7b382077d9eaae` (PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12) 문서·증거 후속 병합). #12는 `docs/`와 검증 증거만 추가했으며, 이 문서가 인용하는 런타임 코드는 `a939443`과 같다.
+동작 확인 기준: `a9394436c0485a5500789aa2c7c2d3ec3c299cd3`. 런타임 코드는 `7d802e1`과 같다.
 
 상태: 설계 문서. `현재 구현`은 위 기준 SHA에서 확인한 동작이고, `목표`는 아직 구현되지 않은 계약이다. PR 병합은 gate PASS를 뜻하지 않는다.
 
@@ -51,7 +51,7 @@ Manager는 직원이 브라우저만으로 이미지, 재생목록, 장소, 화�
 
 ## 3. 기준 main의 현재 구조와 재사용 자산
 
-아래는 `a9394436c0485a5500789aa2c7c2d3ec3c299cd3`에서 확인한 구조다. PR #4/#6/#8/#9/#11은 `main`에 병합됐고, 이 문서의 `현재` 서술은 그 코드를 기준으로 한다. 설치·실행 로컬 검증은 [1차 마감 설치·실행 검증](../install/verification.md)에 있고, 실제 재부팅·물리 모니터·별도 PC LAN은 그 검증에서도 `NOT_RUN`이다.
+아래는 `a9394436c0485a5500789aa2c7c2d3ec3c299cd3`에서 확인한 구조이며, 병합한 `main` `7d802e1`의 런타임 코드도 같다. PR #4/#6/#8/#9/#11은 `main`에 병합됐고, 이 문서의 `현재` 서술은 그 코드를 기준으로 한다. 설치·실행 로컬 검증은 [1차 마감 설치·실행 검증](../install/verification.md)에 있고, 실제 재부팅·물리 모니터·별도 PC LAN은 그 검증에서도 `NOT_RUN`이다.
 
 | 영역 | 현재 자산과 책임 | 분리 설계에서의 재사용 / 주의점 |
 |---|---|---|
