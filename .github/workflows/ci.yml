@@ -104,6 +104,9 @@ jobs:
           if (-not [string]::Equals($sourceContent, $installedContent, [StringComparison]::Ordinal)) {
             throw 'The installed runner admission hook does not match the reviewed repository hook.'
           }
+      - name: Verify runner service recovery parsing
+        shell: powershell
+        run: .\scripts\runner\Test-RunnerServiceRecoveryParsing.ps1
       - name: Verify runner control ACLs
         if: ${{ runner.environment == 'self-hosted' }}
         shell: powershell
