@@ -86,8 +86,44 @@ function Set-RunnerRootPermissions {
     }
 }
 
+function Set-ExplicitDirectoryAccess {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $acl = Get-Acl -LiteralPath $Path
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in @($acl.Access)) {
+        $acl.RemoveAccessRuleAll($rule)
+    }
+
+    $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $propagation = [Security.AccessControl.PropagationFlags]::None
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    $grants = @(
+        [pscustomobject]@{ Identity = $identity; Rights = [Security.AccessControl.FileSystemRights]::FullControl },
+        [pscustomobject]@{ Identity = 'NT AUTHORITY\SYSTEM'; Rights = [Security.AccessControl.FileSystemRights]::FullControl },
+        [pscustomobject]@{ Identity = 'BUILTIN\Administrators'; Rights = [Security.AccessControl.FileSystemRights]::FullControl },
+        [pscustomobject]@{ Identity = 'NT AUTHORITY\LOCAL SERVICE'; Rights = [Security.AccessControl.FileSystemRights]::Modify }
+    )
+    $seen = @{}
+    foreach ($grant in $grants) {
+        $key = $grant.Identity.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) {
+            continue
+        }
+        $seen[$key] = $true
+        $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+            $grant.Identity,
+            $grant.Rights,
+            $inheritance,
+            $propagation,
+            $allow
+        ))
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
 function Set-RunnerWritablePermissions {
-    $icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
     $writableDirectories = @(
         (Join-Path $runnerRoot '_work'),
         $temporaryDirectory,
@@ -98,11 +134,33 @@ function Set-RunnerWritablePermissions {
         (Join-Path $runnerDirectory '_work'),
         (Join-Path $runnerDirectory '_diag')
     )
+    $broadWriteSids = @('S-1-5-11', 'S-1-5-32-545', 'S-1-1-0')
+    $localServiceSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalServiceSid, $null)
     foreach ($directory in $writableDirectories) {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
-        & $icacls $directory '/grant:r' 'NT AUTHORITY\LOCAL SERVICE:(OI)(CI)M' | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not grant LocalService runtime write access to: $directory"
+        Set-ExplicitDirectoryAccess -Path $directory
+        $acl = Get-Acl -LiteralPath $directory
+        if (-not $acl.AreAccessRulesProtected) {
+            throw "Runner runtime path still inherits broad ACLs: $directory"
+        }
+        $localServiceRules = @($acl.Access | Where-Object {
+            $_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+            (($_.IdentityReference -is [Security.Principal.SecurityIdentifier] -and $_.IdentityReference -eq $localServiceSid) -or
+             ($_.IdentityReference.Value -eq 'NT AUTHORITY\LOCAL SERVICE'))
+        })
+        if (-not ($localServiceRules | Where-Object { ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Modify) -eq [Security.AccessControl.FileSystemRights]::Modify })) {
+            throw "LocalService lacks Modify access on runner runtime path: $directory"
+        }
+        foreach ($rule in $acl.Access) {
+            $identityValue = if ($rule.IdentityReference -is [Security.Principal.SecurityIdentifier]) {
+                $rule.IdentityReference.Value
+            } else {
+                $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            }
+            if ($broadWriteSids -contains $identityValue -and
+                (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Modify) -ne 0)) {
+                throw "Broad identity has write access to runner runtime path: $directory"
+            }
         }
     }
 }

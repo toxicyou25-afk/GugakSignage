@@ -131,13 +131,13 @@ jobs:
       - name: Verify first-run flow
         run: npm run verify:first-run
       - name: Verify schedule and offline playback
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:schedule
       - name: Verify multimonitor administration and playback
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:multimonitor
       - name: Verify persistent profile service worker update
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:sw-update
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
