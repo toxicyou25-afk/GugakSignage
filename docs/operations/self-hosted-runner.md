@@ -109,15 +109,15 @@ Use the returned run ID with `gh run watch <run-id> --repo toxicyou25-afk/GugakS
 | --- | --- |
 | Runner | ID 2, `GugakSignage-CI-Win11`, labels `self-hosted,Windows,X64,gugaksignage-ci`, online |
 | Windows service | `actions.runner.toxicyou25-afk-GugakSignage.GugakSignage-CI-Win11`, Running, Auto, `NT AUTHORITY\\LOCAL SERVICE` |
-| Current code SHA | `b5c852742cf6c63efc0962f0390b3c2712b40008` |
-| Post-restart acceptance run | **PENDING**. Run the controlled restart, elevated installer, and empty-commit verification below on this code. No pre-restart run is acceptance evidence. |
-| Static validation | All runner scripts parse; actionlint passes; admission fixtures pass; token-transport probe passes; service recovery assertion passes. Live ACL validation remains blocked until the elevated installer repairs the broad `runner\_work` write. |
-| Identity acceptance | **PENDING** post-restart job log must report `Runner process identity: NT AUTHORITY\\LOCAL SERVICE`. |
+| Acceptance-tested runner SHA | `c9087e4e74cb91c41a848beceb14bb6560cfdfb4` (the evidence-table refresh is docs-only) |
+| Post-restart acceptance run | PASS: [run 45640644938, attempt 2](https://github.com/toxicyou25-afk/GugakSignage/actions/runs/45640644938), job 139301615375, `pull_request`, conclusion success in 2m47s with no skipped or failed steps. |
+| Static validation | All runner scripts parse; actionlint passes; admission fixtures pass; token-transport probe passes; service recovery assertion passes; ACL positive/negative fixtures and en-US/ko-KR recovery parsing fixtures pass. |
+| Identity acceptance | PASS: job log reports `Runner process identity: NT AUTHORITY\\LOCAL SERVICE`. |
 | Precreated-root ACL repair | `D:PAI` reproduced on the old hook and cached archive; dedicated-root reset preserved both; archive SHA-256 and admission tests passed |
-| Control ACLs | Installer restricts controls, `.credentials`, and `.credentials_rsaparams` to read-only service access and rejects broad write ACLs on runtime paths; post-restart job evidence is pending |
-| Service recovery | `sc.exe qfailure` assertion confirms three 60-second restart actions and an 86400-second reset period |
+| Control ACLs | PASS: installer protects controls, `.credentials`, and `.credentials_rsaparams` with read-only service access; `Assert-RunnerAclPolicy.ps1` passed in the acceptance job |
+| Service recovery | PASS: assertion parses localized `sc.exe qfailure` output and confirms three 60-second restart actions with an 86400-second reset period |
 | Token transport | Launcher probe confirmed the registration token reaches hidden console stdin and is absent from child process argv |
-| setup-node cache | The automatic npm-cache input is removed; npm still uses the isolated `_cache\npm`. Cache-warning-free evidence is pending the post-restart run. |
+| setup-node cache | PASS: the automatic npm-cache input is removed; npm uses the isolated `_cache\npm`; the acceptance job's Node cleanup had no gzip/cache warning. |
 | Required-check names | `CI / Validate on Windows` (workflow and job names unchanged) |
 | Fork selection | Workflow routes fork PRs to `windows-latest`; runner admission hook denies them before steps; no fork PR was created or run |
-| Service elevation | LocalService automatic service is installed, but the listener PID predates `disableUpdate:true`; the controlled restart below is required before acceptance |
+| Service elevation | PASS: LocalService automatic service is installed and was restarted after `disableUpdate:true` and the service PATH repair; the job-started hook launches successfully. |
