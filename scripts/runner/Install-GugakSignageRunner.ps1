@@ -33,6 +33,8 @@ $configurationLauncher = Join-Path $PSScriptRoot 'Invoke-RunnerConfiguration.ps1
 $admissionTest = Join-Path $PSScriptRoot 'Test-GugakSignageRunnerAdmission.ps1'
 $aclPolicyTest = Join-Path $PSScriptRoot 'Assert-RunnerAclPolicy.ps1'
 $autoUpdateDisableScript = Join-Path $PSScriptRoot 'Set-RunnerAutoUpdateDisabled.ps1'
+$serviceRecoveryScript = Join-Path $PSScriptRoot 'Set-RunnerServiceRecovery.ps1'
+$serviceRecoveryTest = Join-Path $PSScriptRoot 'Assert-RunnerServiceRecovery.ps1'
 
 function Assert-RunnerRootIsIsolated {
     $fullRunnerRoot = [IO.Path]::GetFullPath($runnerRoot).TrimEnd('\')
@@ -327,6 +329,15 @@ function Test-RunnerConfigurationLauncher {
     }
 }
 
+function Set-AndAssert-RunnerServiceRecovery {
+    param([Parameter(Mandatory = $true)][string]$ServiceName)
+
+    & $serviceRecoveryScript -ServiceName $ServiceName -AssertScript $serviceRecoveryTest
+    if (-not $?) {
+        throw 'Runner service failure recovery configuration failed.'
+    }
+}
+
 Assert-RunnerRootIsIsolated
 
 if ($Elevate -and -not (Test-IsElevated)) {
@@ -393,6 +404,7 @@ if (Test-Path -LiteralPath (Join-Path $runnerDirectory '.runner')) {
     Set-RunnerWritablePermissions
     Set-RunnerAutoUpdateDisabled
     Assert-RunnerAclPolicy
+    Set-AndAssert-RunnerServiceRecovery -ServiceName $existingServiceName
     Set-ServiceProcessEnvironment -ServiceName $existingServiceName
     Set-Service -Name $existingServiceName -StartupType Automatic
     Start-Service -Name $existingServiceName
@@ -444,6 +456,7 @@ Ensure-RunnerFiles
 Set-RunnerWritablePermissions
 Set-RunnerAutoUpdateDisabled
 Assert-RunnerAclPolicy
+Set-AndAssert-RunnerServiceRecovery -ServiceName $serviceName
 Set-ServiceProcessEnvironment -ServiceName $serviceName
 Set-Service -Name $serviceName -StartupType Automatic
 if ((Get-Service -Name $serviceName).Status -eq 'Running') {

@@ -108,6 +108,10 @@ jobs:
         if: ${{ runner.environment == 'self-hosted' }}
         shell: powershell
         run: .\scripts\runner\Assert-RunnerAclPolicy.ps1 -RunnerRoot 'C:\actions-runners\GugakSignage'
+      - name: Verify runner service recovery
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: .\scripts\runner\Assert-RunnerServiceRecovery.ps1 -ServiceName 'actions.runner.toxicyou25-afk-GugakSignage.GugakSignage-CI-Win11'
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
