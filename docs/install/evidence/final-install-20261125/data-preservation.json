@@ -1,0 +1,122 @@
+{
+  "env": {
+    "bytesBefore": 410,
+    "bytesAfter": 409,
+    "sha256Before": "9e4e8b3e29a5049cfdb2a1104200d0cb408900f4fe03391668095d379a5b3dff",
+    "sha256After": "b83ab219037cc2ac5c18ba3de419dcf81f3c69f0c857e8b6a1e37db5bfe0ea17",
+    "valuesPreserved": [
+      "ADMIN_PASSWORD=0000 (4 characters; not regenerated)",
+      "SESSION_SECRET (64 characters; not regenerated)",
+      "PORT=3000",
+      "HOST=0.0.0.0",
+      "DATA_DIR, DB_PATH, UPLOAD_DIR",
+      "MAX_UPLOAD_MB=300"
+    ],
+    "intentionalChange": "SEED_SAMPLES true -> false because an existing database was detected",
+    "formattingNote": "The existing-content rewrite matched the line including CRLF and removed one trailing newline byte (410 -> 409 bytes). Values were preserved."
+  },
+  "acl": {
+    "envFile": true,
+    "dataDir": true,
+    "appDir": true,
+    "allUnchanged": true
+  },
+  "uploads": {
+    "fileCount": 4,
+    "files": [
+      {
+        "path": "uploads/seed-poster-autumn.png",
+        "bytes": 581884,
+        "sha256Before": "cdaeea6fb28f7b297853c9fa313eb4e3e5a54a73a78309168df378a0fc805078",
+        "sha256After": "cdaeea6fb28f7b297853c9fa313eb4e3e5a54a73a78309168df378a0fc805078",
+        "unchanged": true
+      },
+      {
+        "path": "uploads/seed-poster-class.png",
+        "bytes": 641039,
+        "sha256Before": "28951d7b1b2d3d57ef60561a156db1f863a47e7aab5aae9beec7e4b05b39f6ee",
+        "sha256After": "28951d7b1b2d3d57ef60561a156db1f863a47e7aab5aae9beec7e4b05b39f6ee",
+        "unchanged": true
+      },
+      {
+        "path": "uploads/seed-poster-welcome.png",
+        "bytes": 100613,
+        "sha256Before": "7209f9f92f73bc4ebb8bd542b38a45a8e5c4045bf13942d40a00e3fc79e9c9dd",
+        "sha256After": "7209f9f92f73bc4ebb8bd542b38a45a8e5c4045bf13942d40a00e3fc79e9c9dd",
+        "unchanged": true
+      },
+      {
+        "path": "uploads/seed-sample-video.mp4",
+        "bytes": 991017,
+        "sha256Before": "77145c94c11f3754207499158df22406e1fe7635553c1c86dc5e881dfeb32016",
+        "sha256After": "77145c94c11f3754207499158df22406e1fe7635553c1c86dc5e881dfeb32016",
+        "unchanged": true
+      }
+    ],
+    "allUnchanged": true
+  },
+  "database": {
+    "rowCountsBefore": {
+      "contents": 5,
+      "devices": 1,
+      "display_groups": 1,
+      "displays": 1,
+      "layouts": 1,
+      "meta": 5,
+      "playlist_items": 5,
+      "playlists": 1,
+      "publications": 3,
+      "schedules": 0,
+      "sites": 1
+    },
+    "rowCountsAfter": {
+      "contents": 5,
+      "devices": 1,
+      "display_groups": 1,
+      "displays": 1,
+      "layouts": 1,
+      "meta": 5,
+      "playlist_items": 5,
+      "playlists": 1,
+      "publications": 3,
+      "schedules": 0,
+      "sites": 1
+    },
+    "rowCountsEqual": true,
+    "tableHashesBefore": {
+      "contents": "6c47242bd2c23cb5dee4f3352f965873b9d1127e36907c09bbdb78af3be07b8c",
+      "devices": "3c3fa856e8bd942805f8014c348b0c84ed666956097f68cc864175c4a3efb69a",
+      "display_groups": "875688951af0704d57aeb686f351a99040a045bfa32babbf9d1d12c5f745e502",
+      "displays": "ebf3457f7f753f4d851307c1e23b5a0929ed34d78fbddb4b0a92a29829492982",
+      "layouts": "79789380764c93dc0dbc3536e2b69d831db39364340aa81e446d1c165717d9aa",
+      "meta": "5dd00a34814cae2572dc280959e85b72afff7d3a7ce3bad4792e188f2a8fc550",
+      "playlist_items": "161761fc548a25f3213bbbc7f29e3f6ae08ce9d52771f52fe27c18c295c86df9",
+      "playlists": "613828064826219732cab038f6da3ca870bc38401808f0463bdbaf56511851ab",
+      "publications": "3c22377a0c3af1f2ebb7324060f6f3ee6647be9c21e6799c5e28f83603c22010",
+      "schedules": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "sites": "a1523dbd3bed9449161e791954704e09a109ac3ae2142b8a5edba22dde2b4c44"
+    },
+    "tableHashesAfter": {
+      "contents": "6c47242bd2c23cb5dee4f3352f965873b9d1127e36907c09bbdb78af3be07b8c",
+      "devices": "dcc6cdea8964fd3b4b319e3c7170384b39a55ee0eaa1f64aa069249fe79afb1d",
+      "display_groups": "875688951af0704d57aeb686f351a99040a045bfa32babbf9d1d12c5f745e502",
+      "displays": "ebf3457f7f753f4d851307c1e23b5a0929ed34d78fbddb4b0a92a29829492982",
+      "layouts": "79789380764c93dc0dbc3536e2b69d831db39364340aa81e446d1c165717d9aa",
+      "meta": "5dd00a34814cae2572dc280959e85b72afff7d3a7ce3bad4792e188f2a8fc550",
+      "playlist_items": "161761fc548a25f3213bbbc7f29e3f6ae08ce9d52771f52fe27c18c295c86df9",
+      "playlists": "613828064826219732cab038f6da3ca870bc38401808f0463bdbaf56511851ab",
+      "publications": "3c22377a0c3af1f2ebb7324060f6f3ee6647be9c21e6799c5e28f83603c22010",
+      "schedules": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "sites": "a1523dbd3bed9449161e791954704e09a109ac3ae2142b8a5edba22dde2b4c44"
+    },
+    "changedTables": [
+      "devices"
+    ],
+    "stableTableHashesEqual": true,
+    "devicesChangeNote": "The single devices row changed only last_seen and player_state during playback; device id, pairing code, player token field, playlist, publication, site, dimensions, and created/updated timestamps stayed the same.",
+    "metaIdentical": true,
+    "contentsHashIdentical": true,
+    "playlistsHashIdentical": true
+  },
+  "result": "preserved"
+}

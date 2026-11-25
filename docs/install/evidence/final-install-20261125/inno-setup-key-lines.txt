@@ -1,0 +1,12 @@
+Setup log: inno-upgrade-20261125-120603.log
+
+2026-11-25 12:06:06.946   Starting the installation process.
+2026-11-25 12:06:06.954   Will append to existing uninstall log: %USERPROFILE%\AppData\Local\Programs\GugakSignage\unins000.dat
+2026-11-25 12:06:09.496   Creating new uninstall key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E862C71-0C8D-4F00-9AA4-75C6A03E5F18}_is1
+2026-11-25 12:06:09.498   Detected previous administrative 64-bit install? No
+2026-11-25 12:06:09.498   Detected previous administrative 32-bit install? No
+2026-11-25 12:06:09.503   Installation process succeeded.
+2026-11-25 12:06:15.288   Need to restart Windows? No
+2026-11-25 12:06:15.297   Log closed.
+
+Setup process exit code (recorded by the runner): 0

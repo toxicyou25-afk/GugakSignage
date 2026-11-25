@@ -20,6 +20,17 @@
 - installer/test-inno.ps1: PASS (Inno Setup 6.7.3, ISCC.exe, setup SHA-256 `d65e707edce946260aca347e063aea988e4fda410b49af9c708b29713cbec270`). `/DATADIR` 명시와 임시 LOCALAPPDATA/Profile/Shortcut 경로를 사용했고 생산 `%LOCALAPPDATA%\GugakSignage`와 ProgramData 경로가 변경되지 않음을 확인
 - 기본 브라우저로 관리자 페이지를 실제 여는 동작: NOT_RUN (시험 중 운영자 데스크톱에 창을 남기지 않기 위해 `-PrintOnly` 대상 판정과 바로가기 생성만 검증)
 
+## 1차 마감 설치·실행 검증 (2026-11-25, a939443)
+
+- 기준 main: a9394436c0485a5500789aa2c7c2d3ec3c299cd3 (PR #11 병합 후)
+- 빌드: Inno Setup 6.7.3, EXE 5,049,349 bytes, SHA-256 a654e1925dd50c06798ce304358c7eb03d46a2aa5784e024557ce5eff1f11ff4 (2026-11-25 12:05:09 KST)
+- 설치: 기존 per-user 설치 위에 /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART 실행, setup exit 0
+- 데이터 보존: SQLite 행 수와 contents/playlists/publications/sites/meta 해시 동일, uploads 4/4 SHA-256 동일, .env·데이터 폴더 ACL 동일, .env 값 보존(SEED_SAMPLES true→false, 개행 1바이트 감소)
+- 실행: 예약 작업 수동 시작 뒤 health 200, watchdog/server 기동, 로그온 시 재생기 미실행, 관리자 화면의 실행 버튼으로만 재생기 기동
+- 관리자: loopback 200, 같은 PC의 LAN IPv4 관리자 요청 403, defaultPasswordWarning=true
+- NOT_RUN: 실제 재부팅·로그온, 물리 모니터/TV, 24시간 소크, 방화벽 변경, 별도 물리 PC LAN, CI, 제거
+- 상세 증적: [final-install-20261125](evidence/final-install-20261125/README.md)
+
 ## 프로젝트 검증
 
 | 명령 | 결과 |

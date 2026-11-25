@@ -1,0 +1,87 @@
+{
+  "capturedAtUtc": "2026-11-25T03:13:04.3597258Z",
+  "health": 200,
+  "adminLoopback": 200,
+  "adminLan": 403,
+  "adminMeLan": 403,
+  "healthLan": 200,
+  "login": 200,
+  "authenticated": true,
+  "defaultPasswordWarning": true,
+  "player": {
+    "schemaVersion": 1,
+    "desired": "stopped",
+    "running": false,
+    "pid": null,
+    "startedAt": null,
+    "deviceId": "dev-sample-lobby",
+    "playerUrl": "http://127.0.0.1:3000/player/?code=GUGAK1&reconnect=1",
+    "lastError": null,
+    "updatedAt": "2026-11-25T03:12:04.202Z"
+  },
+  "playerEdgeProcesses": 0,
+  "task": {
+    "name": "GugakSignage-Watchdog",
+    "state": "Ready",
+    "lastRunTime": "2026-11-25T12:12:03.0000000+09:00",
+    "lastTaskResult": 0,
+    "enabled": true
+  },
+  "adminShortcut": {
+    "path": "%USERPROFILE%\\Desktop\\GugakSignage 관리자.lnk",
+    "exists": true,
+    "target": "C:\\Windows\\System32\\wscript.exe",
+    "arguments": "//B //NoLogo \"%USERPROFILE%\\AppData\\Local\\Programs\\GugakSignage\\ops\\admin-launch.vbs\""
+  },
+  "playerShortcut": {
+    "path": "%USERPROFILE%\\Desktop\\GugakSignage.lnk",
+    "exists": true,
+    "target": "C:\\Windows\\System32\\wscript.exe",
+    "arguments": "//B //NoLogo \"%USERPROFILE%\\AppData\\Local\\Programs\\GugakSignage\\ops\\watchdog-launch.vbs\""
+  },
+  "firewallRules": [],
+  "adminStartupLog": [
+    "2026-11-25T03:06:18.958Z [INFO] admin startup decision {\"opened\":true,\"reason\":\"startup\",\"url\":\"http://127.0.0.1:3000/admin/\"}",
+    "2026-11-25T03:12:09.254Z [INFO] admin startup decision {\"opened\":true,\"reason\":\"startup\",\"url\":\"http://127.0.0.1:3000/admin/\"}"
+  ],
+  "manualScheduledTaskStart": {
+    "startedAtUtc": "2026-11-25T03:12:03.5811130Z",
+    "healthReachedAtUtc": "2026-11-25T03:12:04.9842549Z",
+    "watchdogPidBefore": 34904,
+    "watchdogPidAfter": 46464,
+    "serverPidAfter": 33744,
+    "playerDesired": "stopped",
+    "playerEdgeProcesses": 0,
+    "adminStartupOpened": true
+  },
+  "adminUi": {
+    "loginHintVisible": true,
+    "warningVisible": true,
+    "warningText": "테스트 기본 비밀번호입니다. 설정에서 변경하세요. 변경 전에는 다른 PC에서 관리자 기능을 사용할 수 없습니다.",
+    "stopButtonCountWhileRunning": 2,
+    "launchButtonCountWhileRunning": 0,
+    "deviceCardText": "로비 안내 화면 1층 인포메이션센터 · 가로 1920×1080 온라인 연결됨 재생기 실행 중 등록 코드 · 재생기 첫 화면에 입력 GUGAK1 복사 재생기 중지 미리보기 재생목록 로비 기본 순환 장소 기본 장소 모니터 1개 게시 v3 마지막 연결 방금 전 실제 화면 1920×1080 현재 상태 재생 중 재생 설정 게시 코드 재발급 연결 해제 삭제",
+    "consoleErrors": [],
+    "pageErrors": []
+  },
+  "playerCdp": {
+    "title": "국악원 사이니지 재생기",
+    "url": "http://127.0.0.1:3000/player/?code=GUGAK1&reconnect=1",
+    "state": {
+      "deviceId": "dev-sample-lobby",
+      "manifestVersion": 3,
+      "playlistId": "pl-sample-lobby",
+      "queueLength": 5,
+      "index": 4,
+      "currentContentId": "ct-sample-notice",
+      "offline": false,
+      "lastError": null,
+      "lastHeartbeatAt": "2026-11-25T03:09:37.456Z",
+      "wallGroupId": null,
+      "wallDisplayIds": [],
+      "wallPlans": {},
+      "serverOffsetMs": -1,
+      "shellVersion": "v4"
+    }
+  }
+}

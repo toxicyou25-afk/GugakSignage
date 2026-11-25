@@ -1,0 +1,20 @@
+{
+  "title": "국악원 사이니지 재생기",
+  "url": "http://127.0.0.1:3000/player/?code=GUGAK1&reconnect=1",
+  "state": {
+    "deviceId": "dev-sample-lobby",
+    "manifestVersion": 3,
+    "playlistId": "pl-sample-lobby",
+    "queueLength": 5,
+    "index": 4,
+    "currentContentId": "ct-sample-notice",
+    "offline": false,
+    "lastError": null,
+    "lastHeartbeatAt": "2026-11-25T03:09:37.456Z",
+    "wallGroupId": null,
+    "wallDisplayIds": [],
+    "wallPlans": {},
+    "serverOffsetMs": -1,
+    "shellVersion": "v4"
+  }
+}

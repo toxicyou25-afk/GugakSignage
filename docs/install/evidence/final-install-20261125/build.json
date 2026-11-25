@@ -1,0 +1,31 @@
+{
+  "source": {
+    "repository": "toxicyou25-afk/GugakSignage",
+    "ref": "main",
+    "commit": "a9394436c0485a5500789aa2c7c2d3ec3c299cd3"
+  },
+  "environment": {
+    "os": "Windows NT 10.0.26300.0",
+    "powershell": "5.1",
+    "node": "v24.22.2",
+    "npm": "11.19.1",
+    "innoSetup": "6.7.3"
+  },
+  "command": "npm ci && powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\installer\\build-installer.ps1 -SkipInstall",
+  "startedAtUtc": "2026-11-25T03:04:39.6566896Z",
+  "finishedAtUtc": "2026-11-25T03:05:09.5873631Z",
+  "exitCode": 0,
+  "innoCompileSeconds": 4.578,
+  "exe": {
+    "path": "installer/build/inno/GugakSignage-Setup-0.1.0.exe",
+    "bytes": 5049349,
+    "sha256": "a654e1925dd50c06798ce304358c7eb03d46a2aa5784e024557ce5eff1f11ff4",
+    "lastWriteUtc": "2026-11-25T03:05:09.5598848Z"
+  },
+  "portableZipSha256": "f304a1e8a26c6089858337c941a708033e0341ddf6b1c4929e2e59597208e9f6",
+  "localChecks": {
+    "npmCi": "90 packages, 0 vulnerabilities",
+    "npmTest": "51/51 pass",
+    "testGuards": "result=passed"
+  }
+}
