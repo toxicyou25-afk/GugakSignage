@@ -67,6 +67,21 @@ function Test-OwnedProcess {
     return [bool]$process
 }
 
+function Invoke-AdminPlayerControl {
+    param(
+        [Parameter(Mandatory = $true)][System.Net.Http.HttpClient]$Client,
+        [Parameter(Mandatory = $true)][int]$PortNumber,
+        [Parameter(Mandatory = $true)][ValidateSet("launch", "stop")][string]$Action,
+        [string]$DeviceId = ""
+    )
+    $payload = if ($Action -eq "launch") { @{ deviceId = $DeviceId } | ConvertTo-Json -Compress } else { "{}" }
+    $content = [System.Net.Http.StringContent]::new($payload, [Text.Encoding]::UTF8, "application/json")
+    $response = $Client.PostAsync("http://127.0.0.1:$PortNumber/api/player/$Action", $content).GetAwaiter().GetResult()
+    if ([int]$response.StatusCode -ne 202) {
+        throw "재생기 $Action API가 실패했습니다: HTTP $([int]$response.StatusCode)"
+    }
+}
+
 function Invoke-PlayerCheck {
     param(
         [string]$Expect,
@@ -236,7 +251,15 @@ try {
     $report.checks.powerShellLegacyPreservesDbAndUploads = $true
 
     Write-Host "[install-test] 임시 설치 시작: <test-root>"
-    $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir -HeadlessBrowser 2>&1 | Tee-Object -Variable installLines
+    $originalLocalAppData = $env:LOCALAPPDATA
+    $isolatedLocalAppData = Join-Path $testRoot "local-appdata"
+    New-Item -ItemType Directory -Path $isolatedLocalAppData -Force | Out-Null
+    $env:LOCALAPPDATA = $isolatedLocalAppData
+    try {
+        $installOutput = & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -Port $port -DebugPort $debugPort -TaskName $taskName -DesktopDir $desktopDir -StartMenuDir $startMenuDir -ProfileDir $profileDir -HeadlessBrowser 2>&1 | Tee-Object -Variable installLines
+    } finally {
+        $env:LOCALAPPDATA = $originalLocalAppData
+    }
     $installLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "설치 스크립트가 실패했습니다." }
 
@@ -274,15 +297,26 @@ try {
     $report.checks.environmentAclProtected = $true
     $report.checks.newInstallSeedSamples = $true
 
-    $loginClient = [System.Net.Http.HttpClient]::new()
-    try {
-        $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
-        $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
-        if (-not $loginResponse.IsSuccessStatusCode) { throw "테스트 관리자 비밀번호 0000 로그인이 실패했습니다: HTTP $([int]$loginResponse.StatusCode)" }
-    } finally {
-        $loginClient.Dispose()
+    $cookieContainer = [System.Net.CookieContainer]::new()
+    $httpHandler = [System.Net.Http.HttpClientHandler]::new()
+    $httpHandler.CookieContainer = $cookieContainer
+    $adminApiClient = [System.Net.Http.HttpClient]::new($httpHandler)
+    $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+    $loginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
+    if (-not $loginResponse.IsSuccessStatusCode) { throw "테스트 관리자 비밀번호 0000 로그인이 실패했습니다: HTTP $([int]$loginResponse.StatusCode)" }
+    $baseUri = [Uri]::new("http://127.0.0.1:$port/")
+    if ($cookieContainer.GetCookies($baseUri).Count -lt 1) {
+        throw "관리자 로그인 세션 쿠키를 받지 못했습니다."
     }
     $report.checks.testAdminPasswordLogin = $true
+
+    $installedConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    if (@($installedConfig.adminShortcuts).Count -ne 2) { throw "install.json에 관리자 바로가기 두 개가 기록되지 않았습니다." }
+    if ($installedConfig.browserHeadless -ne $true -or $installedConfig.adminAutoOpen.enabled -ne $false) {
+        throw "headless 설치의 관리자 페이지 자동 열기 설정이 꺼지지 않았습니다."
+    }
+    $report.checks.adminShortcutsRecorded = $true
+    $report.checks.headlessDisablesAdminAutoOpen = $true
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcuts = @(
@@ -297,6 +331,25 @@ try {
     }
     $report.checks.desktopShortcut = $true
     $report.checks.startMenuShortcut = $true
+    $adminShortcuts = @(
+        (Join-Path $desktopDir "GugakSignage 관리자.lnk"),
+        (Join-Path $startMenuDir "GugakSignage 관리자.lnk")
+    )
+    foreach ($shortcutPath in $adminShortcuts) {
+        if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
+        if ($shortcut.Arguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $($shortcut.Arguments)" }
+        if ($shortcut.IconLocation -notlike "*msedge.exe*" -and $shortcut.IconLocation -notlike "*chrome.exe*") {
+            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($shortcut.IconLocation)"
+        }
+        if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) {
+            throw "관리자 바로가기 소유권 확인 실패: $shortcutPath"
+        }
+    }
+    $report.checks.adminDesktopShortcut = $true
+    $report.checks.adminStartMenuShortcut = $true
+    $report.checks.adminShortcutIcon = $true
 
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
     if (@($task.Triggers).Count -ne 1) { throw "자동 실행 트리거 수가 예상과 다릅니다." }
@@ -306,7 +359,27 @@ try {
 
     $initialState = Read-WatchdogState -StatePath $statePath
     if (-not (Test-OwnedProcess -ProcessId ([int]$initialState.serverPid))) { throw "초기 서버 프로세스가 없습니다." }
-    if (-not (Test-OwnedProcess -ProcessId ([int]$initialState.browserPid))) { throw "초기 브라우저 프로세스가 없습니다." }
+    if ($initialState.browserPid) { throw "자동 실행이 사용자 동작 없이 재생기를 시작했습니다." }
+    $initialPlayerState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($initialPlayerState.desired -ne "stopped" -or $initialPlayerState.running) {
+        throw "새 설치의 재생기 의도 상태가 stopped가 아닙니다."
+    }
+    $report.checks.playerOffUntilRequested = $true
+
+    $deviceList = ConvertFrom-Json ($adminApiClient.GetStringAsync("http://127.0.0.1:$port/api/devices").GetAwaiter().GetResult())
+    $deviceId = [string](@($deviceList.devices)[0].id)
+    if (-not $deviceId) { throw "관리자 API에서 기기 ID를 얻지 못했습니다." }
+    Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action launch -DeviceId $deviceId
+    Wait-Until -TimeoutSeconds 25 -Description "관리자 요청에 따른 재생기 프로세스" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return [bool]($current.browserPid -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
+    }
+    $initialState = Read-WatchdogState -StatePath $statePath
+    $startedPlayerState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($startedPlayerState.desired -ne "running" -or -not $startedPlayerState.running -or -not $startedPlayerState.pid) {
+        throw "관리자 실행 요청의 재생기 상태가 기록되지 않았습니다."
+    }
+    $report.checks.playerLaunchedFromAdminApi = $true
     $playerOnlinePath = Join-Path $evidenceDir "player-installed.json"
     $playerScreenshot = Join-Path $evidenceDir "player-installed.png"
     $playerInitial = Invoke-PlayerCheck -Expect "online" -Screenshot $playerScreenshot -Output $playerOnlinePath
@@ -320,9 +393,47 @@ try {
         return ($current.lastBrowserStateKind -in @("playing", "cached"))
     }
 
+    Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action stop
+    Wait-Until -TimeoutSeconds 15 -Description "재생기 중지" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return (-not $current.browserPid)
+    }
+    Start-Sleep -Seconds 2
+    $stoppedPlayerState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    $stoppedWatchdogState = Read-WatchdogState -StatePath $statePath
+    if ($stoppedPlayerState.desired -ne "stopped" -or $stoppedPlayerState.running -or $stoppedWatchdogState.browserPid) {
+        throw "명시적 중지 뒤 재생기가 자동 재실행되었습니다."
+    }
+    $report.checks.playerStopsOnRequest = $true
+
+    Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action launch -DeviceId $deviceId
+    Wait-Until -TimeoutSeconds 25 -Description "재생기 재실행" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return [bool]($current.browserPid -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
+    }
+    $playerReopened = Invoke-PlayerCheck -Expect "online" -Output (Join-Path $evidenceDir "player-relaunch-installed.json")
+    $report.checks.playerRelaunchesOnRequest = $true
+    $report.checks.playerRelaunchState = $playerReopened.state
+
+    & $nodePath (Join-Path $PSScriptRoot "close-player-window.mjs") ([string]$debugPort) | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "재생기 창 닫기 검증 스크립트가 실패했습니다." }
+    Wait-Until -TimeoutSeconds 35 -Description "사용자 재생기 창 닫기" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        $player = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+        return (-not $current.browserPid -and $player.desired -eq "stopped" -and -not $player.running)
+    }
+    Start-Sleep -Seconds 3
+    $closedWatchdogState = Read-WatchdogState -StatePath $statePath
+    $closedPlayerState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($closedWatchdogState.browserPid -or $closedPlayerState.running) {
+        throw "사용자가 재생기 창을 닫은 뒤 watchdog이 재생기를 다시 실행했습니다."
+    }
+    $report.checks.userClosedPlayerStaysStopped = $true
+
     $configBeforeUpgrade = Read-JsonFile -Path (Join-Path $installDir "install.json")
     $databasePath = Join-Path $dataDir "signage.sqlite"
     $shortcutPathsBefore = @($configBeforeUpgrade.shortcuts)
+    $adminShortcutPathsBefore = @($configBeforeUpgrade.adminShortcuts)
     $taskNameBefore = [string]$configBeforeUpgrade.taskName
     $watchdogPidBeforeUpgrade = [int](Read-WatchdogState -StatePath $statePath).watchdogPid
 
@@ -347,6 +458,13 @@ try {
     for ($index = 0; $index -lt $shortcutPathsBefore.Count; $index++) {
         if (-not (Test-PathEqual -Left ([string]$shortcutPathsBefore[$index]) -Right ([string]$shortcutPathsAfter[$index]))) {
             throw "업그레이드가 바로가기 경로를 기본값으로 덮어썼습니다."
+        }
+    }
+    $adminShortcutPathsAfter = @($configAfterUpgrade.adminShortcuts)
+    if ($adminShortcutPathsAfter.Count -ne $adminShortcutPathsBefore.Count) { throw "업그레이드가 관리자 바로가기 구성 수를 변경했습니다." }
+    for ($index = 0; $index -lt $adminShortcutPathsBefore.Count; $index++) {
+        if (-not (Test-PathEqual -Left ([string]$adminShortcutPathsBefore[$index]) -Right ([string]$adminShortcutPathsAfter[$index]))) {
+            throw "업그레이드가 관리자 바로가기 경로를 기본값으로 덮어썼습니다."
         }
     }
     if ($envAfterUpgrade -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
@@ -388,6 +506,13 @@ try {
         return ($current.watchdogPid -and [int]$current.watchdogPid -ne $watchdogPidBeforeUpgrade -and
             (Test-OwnedProcess -ProcessId ([int]$current.watchdogPid)) -and
             (Test-ServerHealth -PortNumber $port))
+    }
+    $afterUpgradeState = Read-WatchdogState -StatePath $statePath
+    if ($afterUpgradeState.browserPid) { throw "업그레이드 후 watchdog 재시작이 재생기를 자동 실행했습니다." }
+    Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action launch -DeviceId $deviceId
+    Wait-Until -TimeoutSeconds 25 -Description "업그레이드 후 관리자 재생기 실행" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return [bool]($current.browserPid -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
     }
     $initialState = Read-WatchdogState -StatePath $statePath
     Wait-Until -TimeoutSeconds 30 -Description "업그레이드 후 브라우저 재생 상태" -Condition {
@@ -436,7 +561,57 @@ try {
     }
     $report.checks.autostartCanBeDisabled = $true
 
+    $stoppedServerInstance = Read-JsonFile -Path (Join-Path $dataDir "control\server-instance.json")
+    $commandPath = Join-Path $dataDir "control\player-command.json"
+    $staleCommand = [ordered]@{
+        schemaVersion = 1
+        id = [guid]::NewGuid().ToString()
+        serverInstanceId = [string]$stoppedServerInstance.id
+        action = "launch"
+        deviceId = $deviceId
+        deviceName = "stale"
+        playerUrl = "http://127.0.0.1:$port/player/?code=GUGAK1&reconnect=1"
+        requestedAt = [DateTime]::UtcNow.ToString("o")
+    }
+    [IO.File]::WriteAllText($commandPath, ($staleCommand | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+
     & (Join-Path $installDir "tools\set-autostart.ps1") -Enable | Out-Host
+    Wait-Until -TimeoutSeconds 60 -Description "자동 실행 재활성화 서버" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        return ($current.watchdogPid -and [int]$current.watchdogPid -ne $watchdogPidBeforeDisable -and
+            (Test-OwnedProcess -ProcessId ([int]$current.watchdogPid)) -and
+            (Test-ServerHealth -PortNumber $port))
+    }
+    $reenabledState = Read-WatchdogState -StatePath $statePath
+    if ($reenabledState.browserPid) { throw "자동 실행 재활성화가 재생기를 자동 실행했습니다." }
+    Wait-Until -TimeoutSeconds 15 -Description "이전 서버 인스턴스 명령 제거" -Condition {
+        return -not (Test-Path -LiteralPath $commandPath)
+    }
+    $staleCommandState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($staleCommandState.running -or $staleCommandState.desired -ne "stopped") {
+        throw "이전 서버 인스턴스의 launch 명령이 재생기를 시작했습니다."
+    }
+    $report.checks.staleServerCommandIgnored = $true
+
+    $currentServerInstance = Read-JsonFile -Path (Join-Path $dataDir "control\server-instance.json")
+    $expiredCommand = [ordered]@{
+        schemaVersion = 1
+        id = [guid]::NewGuid().ToString()
+        serverInstanceId = [string]$currentServerInstance.id
+        action = "launch"
+        deviceId = $deviceId
+        deviceName = "expired"
+        playerUrl = "http://127.0.0.1:$port/player/?code=GUGAK1&reconnect=1"
+        requestedAt = [DateTime]::UtcNow.AddSeconds(-31).ToString("o")
+    }
+    [IO.File]::WriteAllText($commandPath, ($expiredCommand | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+    Wait-Until -TimeoutSeconds 15 -Description "TTL 만료 명령 제거" -Condition {
+        return -not (Test-Path -LiteralPath $commandPath)
+    }
+    if ((Read-WatchdogState -StatePath $statePath).browserPid) { throw "TTL 만료 launch 명령이 재생기를 시작했습니다." }
+    $report.checks.expiredServerCommandIgnored = $true
+
+    Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action launch -DeviceId $deviceId
     Wait-Until -TimeoutSeconds 60 -Description "자동 실행 재활성화" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
         return ($current.watchdogPid -and [int]$current.watchdogPid -ne $watchdogPidBeforeDisable -and
@@ -484,6 +659,12 @@ try {
 
     & (Join-Path $installDir "tools\set-autostart.ps1") -Enable | Out-Host
     Wait-Until -TimeoutSeconds 60 -Description "서버 연결 자동 복구" -Condition { Test-ServerHealth -PortNumber $port }
+    Wait-Until -TimeoutSeconds 30 -Description "정상 재생기 PID 소유권 채택" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        $player = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+        return ($current.browserPid -and [int]$current.browserPid -eq [int]$enabledState.browserPid -and $player.running)
+    }
+    $report.checks.verifiedExistingPlayerAdopted = $true
     $recoveryPath = Join-Path $evidenceDir "player-recovered-installed.json"
     $recovered = Invoke-PlayerCheck -Expect "online" -Screenshot "" -Output $recoveryPath
     $report.checks.playerRecoveredAfterServerReturn = $true
@@ -505,6 +686,9 @@ try {
     if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw "제거 후 자동 실행 작업이 남아 있습니다." }
     foreach ($shortcutPath in $shortcuts) {
         if (Test-Path -LiteralPath $shortcutPath) { throw "제거 후 바로가기가 남아 있습니다." }
+    }
+    foreach ($shortcutPath in $adminShortcuts) {
+        if (Test-Path -LiteralPath $shortcutPath) { throw "제거 후 관리자 바로가기가 남아 있습니다." }
     }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir ".env"))) { throw "제거가 데이터 환경 파일을 삭제했습니다." }
     if (-not (Test-Path -LiteralPath (Join-Path $dataDir "signage.sqlite"))) { throw "제거가 데이터베이스를 삭제했습니다." }

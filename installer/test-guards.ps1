@@ -90,6 +90,53 @@ try {
     }
     if ($message -notmatch "찾지 못|중단|missing") { throw "stale install.json 오류가 명확하지 않습니다: $message" }
     $results.staleConfigFailsClosedEvenWithDefaultData = $true
+    $staleResolverOutput = Join-Path $tempRoot "stale-resolver-output.txt"
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "ops\resolve-data-dir.ps1") -InstallDir $legacyApp -DefaultDataDir $defaultData -OutputFile $staleResolverOutput
+    if ($LASTEXITCODE -eq 0) { throw "stale install.json이 resolver에서 허용되었습니다." }
+    if (-not ([IO.File]::ReadAllText($staleResolverOutput).StartsWith("ERR|"))) { throw "stale resolver가 ERR 응답을 남기지 않았습니다." }
+    $results.staleResolverFailsClosed = $true
+
+    $freshDefaultRoot = Join-Path $tempRoot "fresh-default-root"
+    $freshDefaultData = Join-Path $freshDefaultRoot "GugakSignage"
+    New-Item -ItemType Directory -Path (Join-Path $freshDefaultData "uploads") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $freshDefaultData "signage.sqlite"), "existing-default-db")
+    $freshDefaultHash = (Get-FileHash -LiteralPath (Join-Path $freshDefaultData "signage.sqlite") -Algorithm SHA256).Hash
+    $freshDefaultResolution = Resolve-InstallerDataDir -InstallDir (Join-Path $tempRoot "fresh-no-manifest") -DefaultDataDir $freshDefaultData
+    if ($freshDefaultResolution.HasPreviousEvidence -or -not $freshDefaultResolution.HasExistingData) {
+        throw "fresh 기본 데이터 폴더의 evidence/content 구분이 잘못되었습니다."
+    }
+    $freshResolverOutput = Join-Path $tempRoot "fresh-resolver-output.txt"
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "ops\resolve-data-dir.ps1") -InstallDir (Join-Path $tempRoot "fresh-no-manifest") -DefaultDataDir $freshDefaultData -OutputFile $freshResolverOutput
+    if ($LASTEXITCODE -ne 0 -or [IO.File]::ReadAllText($freshResolverOutput) -notmatch '\|0$') {
+        throw "fresh 기본 데이터 폴더를 기존 설치로 잘못 판정했습니다."
+    }
+    $results.freshDefaultDataIsNotPreviousEvidence = $true
+
+    $freshExplicitApp = Join-Path $tempRoot "fresh-explicit-app"
+    $freshExplicitData = Join-Path $tempRoot "fresh-explicit-data"
+    $originalLocalAppData = $env:LOCALAPPDATA
+    $originalProgramData = $env:ProgramData
+    $env:LOCALAPPDATA = $freshDefaultRoot
+    $env:ProgramData = $freshDefaultRoot
+    try {
+        & $installScript -SourceDir $repoRoot -InstallDir $freshExplicitApp -DataDir $freshExplicitData -Port 39123 -TaskName "GugakSignage-Guard-Fresh-$suffix" -DesktopDir (Join-Path $tempRoot "fresh-desktop") -StartMenuDir (Join-Path $tempRoot "fresh-start-menu") -ProfileDir (Join-Path $tempRoot "fresh-profile") -NoStart -NoAutoStart | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "fresh install + explicit DATADIR가 실패했습니다." }
+    } finally {
+        $env:LOCALAPPDATA = $originalLocalAppData
+        $env:ProgramData = $originalProgramData
+    }
+    $freshConfig = Read-JsonFile -Path (Join-Path $freshExplicitApp "install.json")
+    if (-not (Test-PathEqual -Left ([string]$freshConfig.dataDir) -Right $freshExplicitData)) {
+        throw "fresh explicit DATADIR가 install.json에 반영되지 않았습니다."
+    }
+    $freshEnvText = [IO.File]::ReadAllText((Join-Path $freshExplicitData ".env"))
+    if ($freshEnvText -notmatch "(?m)^SEED_SAMPLES=true\s*$") {
+        throw "fresh explicit DATADIR가 새 데이터인데 샘플 시드가 꺼졌습니다."
+    }
+    if ((Get-FileHash -LiteralPath (Join-Path $freshDefaultData "signage.sqlite") -Algorithm SHA256).Hash -ne $freshDefaultHash) {
+        throw "fresh explicit DATADIR 설치가 기본 데이터 폴더를 변경했습니다."
+    }
+    $results.freshExplicitDataDirAllowed = $true
 
     $conflictData = Join-Path $tempRoot "conflict-data"
     New-Item -ItemType Directory -Path (Join-Path $conflictData "uploads") -Force | Out-Null
@@ -117,6 +164,7 @@ try {
         & $installScript -SourceDir $repoRoot -InstallDir $equalDir -DataDir $equalDir -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Equal-$suffix"
     }
     if (Test-Path -LiteralPath $equalDir) { throw "경로 위반인데 설치 폴더가 생성되었습니다." }
+    if ($message -notmatch "데이터 폴더는 설치 폴더와 같거나") { throw "equal 경로 guard가 아닌 오류가 났습니다: $message" }
     $results.equalPathBlocked = $message
 
     $parentDir = Join-Path $tempRoot "parent"
@@ -125,6 +173,7 @@ try {
         & $installScript -SourceDir $repoRoot -InstallDir $parentDir -DataDir $insideData -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Inside-$suffix"
     }
     if (Test-Path -LiteralPath $parentDir) { throw "내부 경로 위반인데 설치 폴더가 생성되었습니다." }
+    if ($message -notmatch "데이터 폴더는 설치 폴더와 같거나") { throw "inside 경로 guard가 아닌 오류가 났습니다: $message" }
     $results.insidePathBlocked = $message
 
     $reverseData = Join-Path $tempRoot "reverse-data"
@@ -132,6 +181,7 @@ try {
     $message = Assert-Throws -Description "설치 폴더가 데이터 폴더 안에 있는 경로" -Action {
         & $installScript -SourceDir $repoRoot -InstallDir $reverseApp -DataDir $reverseData -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Reverse-$suffix"
     }
+    if ($message -notmatch "데이터 폴더는 설치 폴더와 같거나") { throw "reverse 경로 guard가 아닌 오류가 났습니다: $message" }
     $results.reverseNestingBlocked = $message
 
     $dotDotDir = Join-Path $tempRoot "dotdot"
@@ -140,6 +190,7 @@ try {
         & $installScript -SourceDir $repoRoot -InstallDir $dotDotDir -DataDir $dotDotData -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-DotDot-$suffix"
     }
     if (Test-Path -LiteralPath $dotDotDir) { throw ".. 경로 위반인데 설치 폴더가 생성되었습니다." }
+    if ($message -notmatch "데이터 폴더는 설치 폴더와 같거나") { throw "dotdot 경로 guard가 아닌 오류가 났습니다: $message" }
     $results.dotDotPathBlocked = $message
 
     $fakeApp = Join-Path $tempRoot "fake-app"
@@ -190,6 +241,43 @@ try {
         throw "다른 프로그램 바로가기를 GugakSignage 소유로 판정했습니다."
     }
     $results.foreignShortcutDetected = $true
+
+    $adminOwnerApp = Join-Path $tempRoot "admin-owner-app"
+    $adminOwnerOps = Join-Path $adminOwnerApp "ops"
+    New-Item -ItemType Directory -Path $adminOwnerOps -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $adminOwnerOps "admin-launch.vbs") -Value "' fixture" -Encoding ascii
+    $adminShortcutDir = Join-Path $tempRoot "admin-desktop"
+    New-Item -ItemType Directory -Path $adminShortcutDir -Force | Out-Null
+    $adminShortcutPath = Join-Path $adminShortcutDir "GugakSignage 관리자.lnk"
+    $adminShortcut = $shell.CreateShortcut($adminShortcutPath)
+    $adminShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $adminShortcut.Arguments = '//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"'
+    $adminShortcut.WorkingDirectory = $adminOwnerApp
+    $adminShortcut.Save()
+    if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $adminShortcutPath -InstallDir $adminOwnerApp)) {
+        throw "GugakSignage 관리자 바로가기 소유권을 확인하지 못했습니다."
+    }
+    $foreignAdminShortcut = Join-Path $adminShortcutDir "foreign-admin.lnk"
+    $foreignAdmin = $shell.CreateShortcut($foreignAdminShortcut)
+    $foreignAdmin.TargetPath = Join-Path $env:SystemRoot "System32\notepad.exe"
+    $foreignAdmin.Save()
+    if (Test-AdminShortcutOwnedByInstall -ShortcutPath $foreignAdminShortcut -InstallDir $adminOwnerApp) {
+        throw "다른 프로그램 바로가기를 GugakSignage 관리자 소유로 판정했습니다."
+    }
+    $results.adminShortcutTargetVerified = $true
+
+    $adminPortApp = Join-Path $tempRoot "admin-port-app"
+    New-Item -ItemType Directory -Path $adminPortApp -Force | Out-Null
+    $openAdminScript = Join-Path $PSScriptRoot "ops\open-admin.ps1"
+    $defaultAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($defaultAdminUrl -ne "http://127.0.0.1:3000/admin/") { throw "install.json 없는 관리자 URL fallback이 잘못되었습니다: $defaultAdminUrl" }
+    [IO.File]::WriteAllText((Join-Path $adminPortApp "install.json"), '{ "port": 4123 }', [Text.UTF8Encoding]::new($false))
+    $configuredAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($configuredAdminUrl -ne "http://127.0.0.1:4123/admin/") { throw "install.json 포트의 관리자 URL이 잘못되었습니다: $configuredAdminUrl" }
+    [IO.File]::WriteAllText((Join-Path $adminPortApp "install.json"), '{ "port": 70000 }', [Text.UTF8Encoding]::new($false))
+    $invalidAdminUrl = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $adminPortApp -PrintOnly | Out-String).Trim()
+    if ($invalidAdminUrl -ne "http://127.0.0.1:3000/admin/") { throw "잘못된 포트의 관리자 URL fallback이 잘못되었습니다: $invalidAdminUrl" }
+    $results.adminUrlPortFallback = $true
 
     $fakeTask = [pscustomobject]@{
         Description = "Unrelated task"

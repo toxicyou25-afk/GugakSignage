@@ -8,6 +8,31 @@
 - 테스트 브라우저: 격리된 user-data-dir와 headless 모드
 - 기존 운영 위치: %ProgramFiles%\GugakSignage와 %ProgramData%\GugakSignage는 시험 전후 모두 없음
 
+## GUGAK-UX-001 재검증 (2026-11-25)
+
+- 기준: main `966888e6f033f8cf9393b3d6ea725475e4d0199d`, Windows PowerShell 5.1, Node.js v24.22.2
+- npm ci / typecheck / build: PASS
+- npm test: PASS, 51/51
+- npm test --prefix poc: PASS, 61/61
+- verify:ui / verify:first-run / verify:schedule / verify:multimonitor / verify:sw-update: PASS
+- installer/test-guards.ps1: PASS. 관리자 바로가기 대상·port fallback, fresh 기본 데이터 폴더와 이전 설치 증거 분리, fresh explicit DATADIR 허용, stale manifest fail-closed, equal/inside/reverse/dotdot 경로 guard 문구를 확인
+- installer/test-install.ps1: PASS. 관리자·재생기 바로가기 생성, logon 시 재생기 미시작, 관리자 API 실행, 명시적 중지 후 미재시작, 사용자 창 닫기 후 미재시작, 재실행, 이전 서버 인스턴스/만료 명령 무시, 정상 Edge PID 검증 채택, 서버·재생기 복구, 제거 보존을 확인
+- installer/test-inno.ps1: PASS (Inno Setup 6.7.3, ISCC.exe, setup SHA-256 `d65e707edce946260aca347e063aea988e4fda410b49af9c708b29713cbec270`). `/DATADIR` 명시와 임시 LOCALAPPDATA/Profile/Shortcut 경로를 사용했고 생산 `%LOCALAPPDATA%\GugakSignage`와 ProgramData 경로가 변경되지 않음을 확인
+- 기본 브라우저로 관리자 페이지를 실제 여는 동작: NOT_RUN (시험 중 운영자 데스크톱에 창을 남기지 않기 위해 `-PrintOnly` 대상 판정과 바로가기 생성만 검증)
+
+## 1차 마감 설치·실행 검증 (2026-11-25, a939443)
+
+- 기준 main: a9394436c0485a5500789aa2c7c2d3ec3c299cd3 (PR #11 병합 후)
+- 빌드: Inno Setup 6.7.3, EXE 5,049,349 bytes, SHA-256 a654e1925dd50c06798ce304358c7eb03d46a2aa5784e024557ce5eff1f11ff4 (2026-11-25 12:05:09 KST)
+- 설치: 기존 per-user 설치 위에 /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART 실행, setup exit 0
+- 데이터 보존: SQLite 행 수와 contents/playlists/publications/sites/meta 해시 동일, uploads 4/4 SHA-256 동일, .env·데이터 폴더 ACL 동일, .env 값 보존(SEED_SAMPLES true→false, 개행 1바이트 감소)
+- 실행: 예약 작업 수동 시작 뒤 health 200, watchdog/server 기동, 로그온 시 재생기 미실행, 관리자 화면의 실행 버튼으로만 재생기 기동
+- watchdog 복구: server PID 33744 강제 종료 뒤 2초 backoff, PID 27796 재기동, 약 2.6초 내 health 200
+- 관찰: watchdog-state.json의 lastServerHealthyAt는 성공 체크마다 갱신되지 않아 null/이전 값일 수 있음(비차단)
+- 관리자: loopback 200, 같은 PC의 LAN IPv4 관리자 요청 403, defaultPasswordWarning=true
+- NOT_RUN: 실제 재부팅·로그온, 물리 모니터/TV, 24시간 소크, 방화벽 변경, 별도 물리 PC LAN, CI, 제거
+- 상세 증적: [final-install-20261125](evidence/final-install-20261125/README.md)
+
 ## 프로젝트 검증
 
 | 명령 | 결과 |
@@ -105,6 +130,7 @@ PowerShell 이식용 ZIP SHA-256:
 ## 미검증 항목
 
 - 실제 Windows 재부팅 후 자동 로그인과 At log on 실행: NOT_RUN
+- 운영 기본 브라우저로 관리자 페이지를 실제 여는 동작: NOT_RUN
 - 실제 현장 물리 장비와 모니터, 24시간 연속 운영: NOT_RUN
 - 방화벽 규칙 생성·삭제: 시스템 설정 변경을 피해 NOT_RUN
 - 프로세스는 살아 있으나 CDP renderer가 실제로 멈춘 상태의 재현: NOT_RUN

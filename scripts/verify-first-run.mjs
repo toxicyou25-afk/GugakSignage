@@ -228,7 +228,7 @@ try {
 
   await admin.goto(`${base}/admin/#/devices`, { waitUntil: 'networkidle' });
   await admin.waitForSelector('.device-card');
-  const pairedPlayerHref = await admin.locator('.device-card a', { hasText: '재생기 열기' }).first().getAttribute('href');
+  const pairedPlayerHref = await admin.locator('.device-card a', { hasText: '미리보기' }).first().getAttribute('href');
   const pairedPlayerUrl = new URL(pairedPlayerHref, base);
   if (pairedPlayerUrl.searchParams.get('code') !== code) {
     throw new Error(`연결된 기기의 재생기 링크에 선택 코드가 없습니다: ${pairedPlayerHref}`);

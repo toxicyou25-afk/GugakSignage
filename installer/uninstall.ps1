@@ -74,9 +74,16 @@ function Remove-ExactShortcut {
     param([string]$ShortcutPath)
     if (-not $ShortcutPath) { return }
     $fullPath = [IO.Path]::GetFullPath($ShortcutPath)
-    if ([IO.Path]::GetFileName($fullPath) -ne "GugakSignage.lnk") { return }
+    $fileName = [IO.Path]::GetFileName($fullPath)
+    $isAdminShortcut = $fileName -eq "GugakSignage 관리자.lnk"
+    if ($fileName -ne "GugakSignage.lnk" -and -not $isAdminShortcut) { return }
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
-    if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir)) {
+    $owned = if ($isAdminShortcut) {
+        Test-AdminShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir
+    } else {
+        Test-ShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir
+    }
+    if (-not $owned) {
         Write-Warning "다른 프로그램의 바로가기로 보여 남겨 둡니다: $fullPath"
         return
     }
@@ -131,6 +138,9 @@ try {
     }
 
     foreach ($shortcut in @($config.shortcuts)) {
+        Remove-ExactShortcut -ShortcutPath ([string]$shortcut)
+    }
+    foreach ($shortcut in @($config.adminShortcuts)) {
         Remove-ExactShortcut -ShortcutPath ([string]$shortcut)
     }
 

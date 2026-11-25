@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+import { Router } from 'express';
+import type { AppConfig } from '../config.js';
+import { get, type DB } from '../db.js';
+import { readPlayerState, requestPlayerLaunch, requestPlayerStop } from '../player-control.js';
+import type { DeviceRow } from '../types.js';
+
+export function playerControlRoutes(db: DB, config: AppConfig): Router {
+  const router = Router();
+
+  router.get('/state', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ player: readPlayerState(config.dataDir) });
+  });
+
+  router.post('/launch', (req, res) => {
+    const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
+    if (!deviceId) {
+      res.status(400).json({ error: '재생기를 실행할 기기를 선택해 주세요.' });
+      return;
+    }
+    const device = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', deviceId);
+    if (!device) {
+      res.status(404).json({ error: '기기를 찾을 수 없습니다.' });
+      return;
+    }
+    const result = requestPlayerLaunch(config, device);
+    res.status(202).json({
+      ok: true,
+      accepted: true,
+      commandId: result.command.id,
+      playerUrl: result.command.playerUrl,
+      player: result.state,
+    });
+  });
+
+  router.post('/stop', (_req, res) => {
+    const result = requestPlayerStop(config);
+    res.status(202).json({
+      ok: true,
+      accepted: true,
+      commandId: result.command.id,
+      player: result.state,
+    });
+  });
+
+  return router;
+}
