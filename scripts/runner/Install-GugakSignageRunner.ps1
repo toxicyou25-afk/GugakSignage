@@ -255,8 +255,11 @@ function Set-ServiceProcessEnvironment {
         $windowsDirectory = $env:SystemRoot
     }
 
+    # The runner launches the job-started hook as "powershell"; keep the
+    # Windows PowerShell directory on the service PATH after a restart.
     $safePath = @(
         (Join-Path $windowsDirectory 'System32'),
+        (Join-Path $windowsDirectory 'System32\WindowsPowerShell\v1.0'),
         $windowsDirectory,
         (Join-Path $windowsDirectory 'System32\Wbem'),
         $gitDirectory
