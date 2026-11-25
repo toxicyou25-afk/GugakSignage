@@ -13,18 +13,112 @@ concurrency:
 jobs:
   validate:
     name: Validate on Windows
-    runs-on: windows-latest
+    runs-on: ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","Windows","X64","gugaksignage-ci"]') || 'windows-latest' }}
     timeout-minutes: 30
     steps:
+      - name: Verify runner process identity and isolate environment
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+          Write-Output "Runner process identity: $identity"
+          if ($identity -ne 'NT AUTHORITY\LOCAL SERVICE') {
+            throw "The self-hosted job is not running as NT AUTHORITY\LOCAL SERVICE: $identity"
+          }
+
+          $isolatedEnvironment = @(
+            'TEMP=C:\actions-runners\GugakSignage\_temp',
+            'TMP=C:\actions-runners\GugakSignage\_temp',
+            'USERPROFILE=C:\actions-runners\GugakSignage\home',
+            'HOME=C:\actions-runners\GugakSignage\home',
+            'APPDATA=C:\actions-runners\GugakSignage\home\AppData\Roaming',
+            'LOCALAPPDATA=C:\actions-runners\GugakSignage\home\AppData\Local',
+            'RUNNER_TOOL_CACHE=C:\actions-runners\GugakSignage\_toolcache',
+            'NPM_CONFIG_CACHE=C:\actions-runners\GugakSignage\_cache\npm',
+            'PLAYWRIGHT_BROWSERS_PATH=C:\actions-runners\GugakSignage\_cache\ms-playwright'
+          )
+          [IO.File]::AppendAllText($env:GITHUB_ENV, (($isolatedEnvironment -join "`r`n") + "`r`n"), [Text.UTF8Encoding]::new($false))
+
+      - name: Verify isolated runner environment
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $blockedVariables = @(
+            'GH_TOKEN',
+            'GITHUB_TOKEN',
+            'OPENAI_API_KEY',
+            'OPENROUTER_API_KEY',
+            'ORCA_AGENT_SESSION_SPAWN_TOKEN',
+            'ORCA_USER_DATA_PATH',
+            'CODEX_HOME',
+            'TOSSPAPERLAB_DATA_ROOT',
+            'DBRAINPLUS_PROD_ROOT'
+          )
+          $leakedVariables = foreach ($name in $blockedVariables) {
+            if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name, 'Process'))) {
+              $name
+            }
+          }
+          if ($leakedVariables) {
+            throw "Sensitive environment variables are present: $($leakedVariables -join ', ')"
+          }
+
+          $runnerRoot = 'C:\actions-runners\GugakSignage'
+          $isolatedVariables = @(
+            'TEMP',
+            'TMP',
+            'USERPROFILE',
+            'HOME',
+            'APPDATA',
+            'LOCALAPPDATA',
+            'RUNNER_TEMP',
+            'RUNNER_TOOL_CACHE',
+            'NPM_CONFIG_CACHE',
+            'PLAYWRIGHT_BROWSERS_PATH'
+          )
+          foreach ($name in $isolatedVariables) {
+            $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+            if ([string]::IsNullOrWhiteSpace($value) -or -not $value.StartsWith("$runnerRoot\", [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Environment variable is not isolated under the GugakSignage runner root: $name"
+            }
+          }
+
+          $expectedHook = Join-Path $runnerRoot 'admission\Assert-TrustedJob.ps1'
+          if (-not (Test-Path -LiteralPath $expectedHook -PathType Leaf)) {
+            throw 'The repository runner admission hook is missing.'
+          }
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - name: Verify installed admission hook
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $sourceHook = Join-Path $env:GITHUB_WORKSPACE 'scripts\runner\Assert-TrustedJob.ps1'
+          $installedHook = 'C:\actions-runners\GugakSignage\admission\Assert-TrustedJob.ps1'
+          $sourceContent = ([IO.File]::ReadAllText($sourceHook)).Replace("`r`n", "`n")
+          $installedContent = ([IO.File]::ReadAllText($installedHook)).Replace("`r`n", "`n")
+          if (-not [string]::Equals($sourceContent, $installedContent, [StringComparison]::Ordinal)) {
+            throw 'The installed runner admission hook does not match the reviewed repository hook.'
+          }
+      - name: Verify runner service recovery parsing
+        shell: powershell
+        run: .\scripts\runner\Test-RunnerServiceRecoveryParsing.ps1
+      - name: Verify runner control ACLs
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: .\scripts\runner\Assert-RunnerAclPolicy.ps1 -RunnerRoot 'C:\actions-runners\GugakSignage'
+      - name: Verify runner service recovery
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: .\scripts\runner\Assert-RunnerServiceRecovery.ps1 -ServiceName 'actions.runner.toxicyou25-afk-GugakSignage.GugakSignage-CI-Win11'
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
       - name: Install dependencies
         run: npm ci
       - name: Install Microsoft Edge for Playwright
@@ -40,13 +134,13 @@ jobs:
       - name: Verify first-run flow
         run: npm run verify:first-run
       - name: Verify schedule and offline playback
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:schedule
       - name: Verify multimonitor administration and playback
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:multimonitor
       - name: Verify persistent profile service worker update
-        if: ${{ !cancelled() }}
+        if: ${{ success() }}
         run: npm run verify:sw-update
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
