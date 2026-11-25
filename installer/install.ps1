@@ -302,7 +302,7 @@ $defaultDataDir = if ($isAdmin) {
     Join-Path $env:LOCALAPPDATA "GugakSignage"
 }
 $resolvedData = Resolve-InstallerDataDir -InstallDir $InstallDir -DefaultDataDir $defaultDataDir
-$previousDataDir = if ($resolvedData.Source -eq "default-new") { "" } else { [string]$resolvedData.DataDir }
+$previousDataDir = if ($resolvedData.HasPreviousEvidence) { [string]$resolvedData.DataDir } else { "" }
 
 $dataDirWasExplicit = -not [string]::IsNullOrWhiteSpace($DataDir)
 if (-not $dataDirWasExplicit) {
@@ -316,7 +316,7 @@ if ($dataDirChanged -and -not $AllowDataDirChange) {
 
 Assert-DataDirOutsideInstall -InstallDir $InstallDir -DataDir $DataDir
 
-$existingDataDetected = [bool]($resolvedData.HasPreviousEvidence -or $resolvedData.HasExistingData)
+$existingDataDetected = [bool]$resolvedData.HasPreviousEvidence
 if (Test-Path -LiteralPath (Join-Path $DataDir "signage.sqlite")) { $existingDataDetected = $true }
 if (Test-Path -LiteralPath (Join-Path $DataDir ".env")) { $existingDataDetected = $true }
 if ($previousDataDir -and (Test-Path -LiteralPath (Join-Path $previousDataDir "signage.sqlite"))) {
@@ -486,7 +486,7 @@ try {
     }
     $installedOpsDir = Join-Path $InstallDir "ops"
     New-Item -ItemType Directory -Path $installedOpsDir -Force | Out-Null
-    foreach ($opsFile in @("admin-launch.vbs", "open-admin.ps1", "admin-startup.mjs", "player-state.mjs")) {
+    foreach ($opsFile in @("admin-launch.vbs", "open-admin.ps1", "admin-startup.mjs", "player-state.mjs", "player-adoption.mjs")) {
         $destination = Join-Path $installedOpsDir $opsFile
         if (Test-Path -LiteralPath $destination -PathType Leaf) { continue }
         $candidates = @(

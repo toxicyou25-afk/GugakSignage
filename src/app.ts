@@ -7,6 +7,7 @@ import { requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
 import type { DB } from './db.js';
+import { initializePlayerControl } from './player-control.js';
 import { authRoutes } from './routes/auth.js';
 import { contentRoutes } from './routes/contents.js';
 import { dashboardRoutes } from './routes/dashboard.js';
@@ -17,6 +18,7 @@ import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
 
 export function createApp(db: DB, config: AppConfig) {
+  initializePlayerControl(config);
   initializeAdminPassword(db, config);
   const app = express();
   app.disable('x-powered-by');

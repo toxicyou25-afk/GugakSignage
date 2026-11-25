@@ -14,7 +14,7 @@ import {
   type CurrentBroadcast,
 } from '../current-display.js';
 import { buildPlaylist, latestPublication, type Snapshot } from '../publishing.js';
-import { readPlayerState } from '../player-control.js';
+import { readPlayerState, type PlayerControlState } from '../player-control.js';
 import type { ContentRow, DeviceRow } from '../types.js';
 import { safeJsonParse } from '../util.js';
 import { contentDto } from './contents.js';
@@ -64,8 +64,15 @@ function broadcastItemsForDevice(
   return emptyBroadcast();
 }
 
-function withCurrentContent(broadcast: CurrentBroadcast, playerState: string | null): CurrentBroadcast {
-  const currentContentId = parsePlayingContentId(playerState);
+function withCurrentContent(
+  broadcast: CurrentBroadcast,
+  playerState: string | null,
+  playerControl: PlayerControlState,
+  deviceId: string,
+): CurrentBroadcast {
+  const currentContentId = playerControl.running && playerControl.deviceId === deviceId
+    ? parsePlayingContentId(playerState)
+    : null;
   if (!currentContentId) return broadcast;
   const visible = broadcast.items.some((item: BroadcastItem) => item.contentId === currentContentId);
   return {
@@ -87,9 +94,15 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
     const contents = all<ContentRow>(db, 'SELECT * FROM contents ORDER BY created_at DESC LIMIT 6');
     const devices = all<DeviceRow>(db, 'SELECT * FROM devices ORDER BY created_at ASC');
     const now = new Date();
+    const playerControl = readPlayerState(config.dataDir);
     const deviceSummary: DashboardDevice[] = devices.map((device) => {
       const summary = deviceDto(db, config, device);
-      const broadcast = withCurrentContent(broadcastItemsForDevice(db, device, now), device.player_state);
+      const broadcast = withCurrentContent(
+        broadcastItemsForDevice(db, device, now),
+        device.player_state,
+        playerControl,
+        device.id,
+      );
       return { ...summary, broadcast };
     });
     const hasUserContents = Number(get<{ n: number }>(
@@ -126,7 +139,7 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
       devices: deviceSummary,
       contents: contents.map(contentDto),
       recentPublications,
-      playerControl: readPlayerState(config.dataDir),
+      playerControl,
       sampleContent: {
         showBanner: shouldShowSampleBanner({ hasUserContents, hasUserPublication }),
         hasUserContents,

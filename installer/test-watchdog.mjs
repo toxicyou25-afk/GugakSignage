@@ -34,6 +34,10 @@ try {
     path.join(repoRoot, 'installer', 'ops', 'player-state.mjs'),
     path.join(opsDir, 'player-state.mjs'),
   );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'player-adoption.mjs'),
+    path.join(opsDir, 'player-adoption.mjs'),
+  );
   const config = {
     installDir,
     dataDir,

@@ -22,6 +22,7 @@ export interface PlayerControlState {
 export interface PlayerCommand {
   schemaVersion: 1;
   id: string;
+  serverInstanceId: string;
   action: 'launch' | 'stop';
   deviceId: string | null;
   deviceName: string | null;
@@ -51,6 +52,38 @@ export function playerStatePath(dataDir: string): string {
 
 export function playerCommandPath(dataDir: string): string {
   return path.join(playerControlDir(dataDir), 'player-command.json');
+}
+
+export function serverInstancePath(dataDir: string): string {
+  return path.join(playerControlDir(dataDir), 'server-instance.json');
+}
+
+interface ServerInstance {
+  schemaVersion: 1;
+  id: string;
+  pid: number;
+  startedAt: string;
+}
+
+const serverInstances = new Map<string, ServerInstance>();
+
+export function initializePlayerControl(config: AppConfig): ServerInstance {
+  const dataDir = path.resolve(config.dataDir);
+  const existing = serverInstances.get(dataDir);
+  if (existing) return existing;
+  const instance: ServerInstance = {
+    schemaVersion: 1,
+    id: crypto.randomUUID(),
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+  };
+  serverInstances.set(dataDir, instance);
+  atomicWrite(serverInstancePath(dataDir), instance);
+  return instance;
+}
+
+function currentServerInstance(config: AppConfig): ServerInstance {
+  return initializePlayerControl(config);
 }
 
 function atomicWrite(filePath: string, value: unknown): void {
@@ -103,9 +136,11 @@ export function requestPlayerLaunch(
   device: Pick<DeviceRow, 'id' | 'name' | 'pairing_code'>,
 ): { command: PlayerCommand; state: PlayerControlState } {
   const requestedAt = new Date().toISOString();
+  const serverInstance = currentServerInstance(config);
   const command: PlayerCommand = {
     schemaVersion: 1,
     id: crypto.randomUUID(),
+    serverInstanceId: serverInstance.id,
     action: 'launch',
     deviceId: device.id,
     deviceName: device.name,
@@ -118,9 +153,11 @@ export function requestPlayerLaunch(
 
 export function requestPlayerStop(config: AppConfig): { command: PlayerCommand; state: PlayerControlState } {
   const requestedAt = new Date().toISOString();
+  const serverInstance = currentServerInstance(config);
   const command: PlayerCommand = {
     schemaVersion: 1,
     id: crypto.randomUUID(),
+    serverInstanceId: serverInstance.id,
     action: 'stop',
     deviceId: null,
     deviceName: null,

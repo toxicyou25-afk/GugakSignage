@@ -561,6 +561,20 @@ try {
     }
     $report.checks.autostartCanBeDisabled = $true
 
+    $stoppedServerInstance = Read-JsonFile -Path (Join-Path $dataDir "control\server-instance.json")
+    $commandPath = Join-Path $dataDir "control\player-command.json"
+    $staleCommand = [ordered]@{
+        schemaVersion = 1
+        id = [guid]::NewGuid().ToString()
+        serverInstanceId = [string]$stoppedServerInstance.id
+        action = "launch"
+        deviceId = $deviceId
+        deviceName = "stale"
+        playerUrl = "http://127.0.0.1:$port/player/?code=GUGAK1&reconnect=1"
+        requestedAt = [DateTime]::UtcNow.ToString("o")
+    }
+    [IO.File]::WriteAllText($commandPath, ($staleCommand | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+
     & (Join-Path $installDir "tools\set-autostart.ps1") -Enable | Out-Host
     Wait-Until -TimeoutSeconds 60 -Description "자동 실행 재활성화 서버" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
@@ -570,6 +584,33 @@ try {
     }
     $reenabledState = Read-WatchdogState -StatePath $statePath
     if ($reenabledState.browserPid) { throw "자동 실행 재활성화가 재생기를 자동 실행했습니다." }
+    Wait-Until -TimeoutSeconds 15 -Description "이전 서버 인스턴스 명령 제거" -Condition {
+        return -not (Test-Path -LiteralPath $commandPath)
+    }
+    $staleCommandState = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+    if ($staleCommandState.running -or $staleCommandState.desired -ne "stopped") {
+        throw "이전 서버 인스턴스의 launch 명령이 재생기를 시작했습니다."
+    }
+    $report.checks.staleServerCommandIgnored = $true
+
+    $currentServerInstance = Read-JsonFile -Path (Join-Path $dataDir "control\server-instance.json")
+    $expiredCommand = [ordered]@{
+        schemaVersion = 1
+        id = [guid]::NewGuid().ToString()
+        serverInstanceId = [string]$currentServerInstance.id
+        action = "launch"
+        deviceId = $deviceId
+        deviceName = "expired"
+        playerUrl = "http://127.0.0.1:$port/player/?code=GUGAK1&reconnect=1"
+        requestedAt = [DateTime]::UtcNow.AddSeconds(-31).ToString("o")
+    }
+    [IO.File]::WriteAllText($commandPath, ($expiredCommand | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+    Wait-Until -TimeoutSeconds 15 -Description "TTL 만료 명령 제거" -Condition {
+        return -not (Test-Path -LiteralPath $commandPath)
+    }
+    if ((Read-WatchdogState -StatePath $statePath).browserPid) { throw "TTL 만료 launch 명령이 재생기를 시작했습니다." }
+    $report.checks.expiredServerCommandIgnored = $true
+
     Invoke-AdminPlayerControl -Client $adminApiClient -PortNumber $port -Action launch -DeviceId $deviceId
     Wait-Until -TimeoutSeconds 60 -Description "자동 실행 재활성화" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
@@ -618,6 +659,12 @@ try {
 
     & (Join-Path $installDir "tools\set-autostart.ps1") -Enable | Out-Host
     Wait-Until -TimeoutSeconds 60 -Description "서버 연결 자동 복구" -Condition { Test-ServerHealth -PortNumber $port }
+    Wait-Until -TimeoutSeconds 30 -Description "정상 재생기 PID 소유권 채택" -Condition {
+        $current = Read-WatchdogState -StatePath $statePath
+        $player = Read-JsonFile -Path (Join-Path $dataDir "control\player-state.json")
+        return ($current.browserPid -and [int]$current.browserPid -eq [int]$enabledState.browserPid -and $player.running)
+    }
+    $report.checks.verifiedExistingPlayerAdopted = $true
     $recoveryPath = Join-Path $evidenceDir "player-recovered-installed.json"
     $recovered = Invoke-PlayerCheck -Expect "online" -Screenshot "" -Output $recoveryPath
     $report.checks.playerRecoveredAfterServerReturn = $true

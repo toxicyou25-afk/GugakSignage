@@ -46,6 +46,8 @@ ZIP을 풀고 설치합니다.
 
 기존 설치의 데이터 경로는 install.json 또는 레거시 설치 폴더의 .env에서 먼저 읽습니다. 기존 경로와 다른 데이터 폴더를 명시하면 새 빈 데이터베이스가 생길 수 있으므로 기본적으로 중단합니다. 운영자가 기존 데이터를 옮기지 않은 상태에서 새 경로를 의도한 경우에만 다음처럼 명시합니다.
 
+install.json도 InstallDir\.env도 없는 새 설치에서는 기본 데이터 폴더에 기존 파일이 있더라도 이를 이전 설치 증거로 간주하지 않습니다. 이때 `/DATADIR` 또는 `-DataDir`로 새 경로를 명시하면 기존 기본 데이터를 변경하지 않고 새 데이터 폴더에 설치하며, 새 데이터 폴더에는 신규 설치 샘플 시드 규칙을 적용합니다. 반대로 install.json이 있으나 기록된 데이터 경로가 사라진 경우와 InstallDir\.env의 경로가 없는 경우는 계속 fail-closed로 중단합니다.
+
 ~~~powershell
 .\installer\install.ps1 -DataDir "E:\새로운\데이터" -AllowDataDirChange
 ~~~

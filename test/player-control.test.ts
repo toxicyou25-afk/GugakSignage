@@ -8,6 +8,7 @@ import { loadConfig } from '../src/config.js';
 import {
   playerCommandPath,
   playerStatePath,
+  serverInstancePath,
   readPlayerState,
   requestPlayerLaunch,
   requestPlayerStop,
@@ -35,6 +36,9 @@ test('기기 실행 요청은 관리자 제어 파일에 로컬 재생기 URL과
   assert.equal(command.action, 'launch');
   assert.equal(command.deviceId, 'device-1');
   assert.equal(command.deviceName, '로비 화면');
+  const serverInstance = JSON.parse(fs.readFileSync(serverInstancePath(tempDir), 'utf8'));
+  assert.equal(command.serverInstanceId, serverInstance.id);
+  assert.equal(serverInstance.pid, process.pid);
   assert.equal(command.playerUrl, 'http://127.0.0.1:3456/player/?code=GUGAK1&reconnect=1');
   assert.equal(result.command.id, command.id);
   assert.equal(result.state.desired, 'stopped');

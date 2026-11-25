@@ -190,6 +190,13 @@ $conflictLog = Join-Path $testRoot "inno-conflict.log"
 $reupgradeLog = Join-Path $testRoot "inno-same-version-reupgrade.log"
 $uninstallerLog = Join-Path $testRoot "inno-uninstall.log"
 $configBeforeLegacy = ""
+$productionLocalData = Join-Path $env:LOCALAPPDATA "GugakSignage"
+$productionLocalItemBefore = Get-Item -LiteralPath $productionLocalData -ErrorAction SilentlyContinue
+$productionLocalBefore = [ordered]@{
+    exists = [bool]$productionLocalItemBefore
+    lastWriteUtc = if ($productionLocalItemBefore) { $productionLocalItemBefore.LastWriteTimeUtc.ToString("o") } else { $null }
+}
+$originalLocalAppData = $env:LOCALAPPDATA
 $startedAt = [DateTime]::UtcNow
 $report = [ordered]@{
     startedAt = $startedAt.ToString("o")
@@ -201,9 +208,13 @@ $report = [ordered]@{
     result = "running"
     checks = [ordered]@{ evidenceUrlsSanitized = $true }
     productionPathsBefore = Get-ProductionPathSnapshot
+    productionLocalDataBefore = $productionLocalBefore
 }
 
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+$isolatedLocalAppData = Join-Path $testRoot "isolated-localappdata"
+New-Item -ItemType Directory -Path $isolatedLocalAppData -Force | Out-Null
+$env:LOCALAPPDATA = $isolatedLocalAppData
 try {
     $installArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /HEADLESS=1 /DIR="' + $installDir + '" /DATADIR="' + $dataDir + '" /PORT=' + $port + ' /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $installerLog + '"'
     $installer = Start-Process -FilePath $SetupExe -ArgumentList $installArguments -Wait -PassThru -WindowStyle Hidden
@@ -459,10 +470,19 @@ try {
     $report.error = $_.Exception.Message
     throw
 } finally {
+    $env:LOCALAPPDATA = $originalLocalAppData
     $report.finishedAt = [DateTime]::UtcNow.ToString("o")
     $report.productionPathsAfter = Get-ProductionPathSnapshot
     $report.checks.productionPathsUntouched = (($report.productionPathsBefore | ConvertTo-Json -Compress) -eq
         ($report.productionPathsAfter | ConvertTo-Json -Compress))
+    $productionLocalItemAfter = Get-Item -LiteralPath $productionLocalData -ErrorAction SilentlyContinue
+    $productionLocalAfter = [ordered]@{
+        exists = [bool]$productionLocalItemAfter
+        lastWriteUtc = if ($productionLocalItemAfter) { $productionLocalItemAfter.LastWriteTimeUtc.ToString("o") } else { $null }
+    }
+    $report.productionLocalDataAfter = $productionLocalAfter
+    $report.checks.productionLocalDataUntouched = (($productionLocalBefore | ConvertTo-Json -Compress) -eq
+        ($productionLocalAfter | ConvertTo-Json -Compress))
     if ($report.result -ne "passed" -and (Test-Path -LiteralPath (Join-Path $installDir "tools\uninstall.ps1"))) {
         if ($configBeforeLegacy -and -not (Test-Path -LiteralPath (Join-Path $installDir "install.json"))) {
             [IO.File]::WriteAllText((Join-Path $installDir "install.json"), $configBeforeLegacy, [Text.UTF8Encoding]::new($false))

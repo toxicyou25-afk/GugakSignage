@@ -22,7 +22,10 @@ function ConvertTo-TransportHex {
 
 try {
     $resolved = Resolve-InstallerDataDir -InstallDir $InstallDir -DefaultDataDir $DefaultDataDir
-    $isExisting = [int]($resolved.HasPreviousEvidence -or $resolved.HasExistingData)
+    # Only an install manifest or legacy InstallDir\.env proves a previous
+    # installation. A plain default data folder alone must not block a fresh
+    # install with an explicit DATADIR.
+    $isExisting = [int]$resolved.HasPreviousEvidence
     $payload = "OK|$(ConvertTo-TransportHex -Value ([string]$resolved.DataDir))|$isExisting"
     [IO.File]::WriteAllText($OutputFile, $payload, [Text.Encoding]::ASCII)
     exit 0

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const PLAYER_STATE_SCHEMA_VERSION = 1;
+export const PLAYER_COMMAND_TTL_MS = 30000;
 
 export function controlDir(dataDir) {
   return path.join(dataDir, 'control');
@@ -14,6 +15,10 @@ export function playerStatePath(dataDir) {
 
 export function playerCommandPath(dataDir) {
   return path.join(controlDir(dataDir), 'player-command.json');
+}
+
+export function serverInstancePath(dataDir) {
+  return path.join(controlDir(dataDir), 'server-instance.json');
 }
 
 export function defaultPlayerState() {
@@ -74,6 +79,36 @@ export function readPlayerCommand(dataDir) {
   } catch {
     return null;
   }
+}
+
+export function readServerInstance(dataDir) {
+  try {
+    const raw = fs.readFileSync(serverInstancePath(dataDir), 'utf8').replace(/^\uFEFF/, '');
+    const value = JSON.parse(raw);
+    const pid = Number.isInteger(value?.pid) && value.pid > 0 ? value.pid : null;
+    if (typeof value?.id !== 'string' || !value.id || pid === null) return null;
+    return {
+      schemaVersion: 1,
+      id: value.id,
+      pid,
+      startedAt: typeof value.startedAt === 'string' ? value.startedAt : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function isPlayerCommandCurrent(command, {
+  serverInstanceId,
+  now = Date.now(),
+  ttlMs = PLAYER_COMMAND_TTL_MS,
+} = {}) {
+  if (!command || (command.action !== 'launch' && command.action !== 'stop')) return false;
+  if (!serverInstanceId || command.serverInstanceId !== serverInstanceId) return false;
+  const requestedAt = Date.parse(String(command.requestedAt || ''));
+  if (!Number.isFinite(requestedAt)) return false;
+  const age = now - requestedAt;
+  return age >= 0 && age <= ttlMs;
 }
 
 export function clearPlayerCommand(dataDir) {

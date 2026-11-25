@@ -1,12 +1,12 @@
 ﻿**********************
 Windows PowerShell 기록 시작
-시작 시간: 20261125020142
+시작 시간: 20261125091701
 사용자 이름: <user>
 RunAs 사용자: <user>
 구성 이름:
 Machine: <computer> (Microsoft Windows NT 10.0.26300.0)
 호스트 응용 프로그램: C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File <test-root>\app\tools\uninstall.ps1 -InnoUninstall
-프로세스 ID: 23368
+프로세스 ID: 41852
 PSVersion: 5.1.26100.9818
 PSEdition: Desktop
 PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
@@ -17,14 +17,16 @@ PSRemotingProtocolVersion: 2.3
 SerializationVersion: 1.1.0.1
 **********************
 [GugakSignage] 제거 시작 (데이터 보존이 기본)
-[GugakSignage] 자동 실행 작업 제거: GugakSignage-InnoTest-e01b538c
+[GugakSignage] 자동 실행 작업 제거: GugakSignage-InnoTest-0ac28f96
 [GugakSignage] 바로가기 제거: <test-root>\desktop\GugakSignage.lnk
 [GugakSignage] 바로가기 제거: <test-root>\start-menu\GugakSignage.lnk
+[GugakSignage] 바로가기 제거: <test-root>\desktop\GugakSignage 관리자.lnk
+[GugakSignage] 바로가기 제거: <test-root>\start-menu\GugakSignage 관리자.lnk
 [GugakSignage] legacy 설치 폴더 .env 제거(데이터 폴더 .env 보존)
 [GugakSignage] Inno Setup이 설치 파일을 제거하도록 남겨 둡니다.
 [GugakSignage] 사용자 데이터 보존: <test-root>\기관 데이터\Gugak Signage
 [GugakSignage] 제거 완료
 **********************
 Windows PowerShell 기록 끝
-종료 시간: 20261125020148
+종료 시간: 20261125091707
 **********************

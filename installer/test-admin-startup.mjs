@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { adminUrl, openAdminOnStartup, shouldOpenAdminOnStartup } from './ops/admin-startup.mjs';
-import { desiredAfterBrowserExit } from './ops/player-state.mjs';
+import { desiredAfterBrowserExit, isPlayerCommandCurrent } from './ops/player-state.mjs';
 
 test('관리자 페이지는 로그온 watchdog 시작마다 기본 창으로 연다', () => {
   assert.equal(shouldOpenAdminOnStartup(), true);
@@ -63,4 +63,18 @@ test('사용자가 재생기 창을 닫은 정상 종료는 재실행하지 않�
   assert.equal(desiredAfterBrowserExit({ desired: 'running', code: 1 }), 'running');
   assert.equal(desiredAfterBrowserExit({ desired: 'running', code: null, signal: 'SIGTERM' }), 'running');
   assert.equal(desiredAfterBrowserExit({ intentional: true, desired: 'stopped', code: 1 }), 'stopped');
+});
+
+test('재생기 명령은 현재 서버 인스턴스가 보낸 30초 이내 명령만 유효하다', () => {
+  const now = Date.parse('2026-11-25T01:02:30.000Z');
+  const base = {
+    action: 'launch',
+    serverInstanceId: 'instance-a',
+    requestedAt: '2026-11-25T01:02:15.000Z',
+  };
+  assert.equal(isPlayerCommandCurrent(base, { serverInstanceId: 'instance-a', now }), true);
+  assert.equal(isPlayerCommandCurrent(base, { serverInstanceId: 'instance-b', now }), false);
+  assert.equal(isPlayerCommandCurrent({ ...base, requestedAt: '2026-11-25T01:01:59.000Z' }, { serverInstanceId: 'instance-a', now }), false);
+  assert.equal(isPlayerCommandCurrent({ ...base, requestedAt: 'not-a-date' }, { serverInstanceId: 'instance-a', now }), false);
+  assert.equal(isPlayerCommandCurrent({ ...base, action: 'other' }, { serverInstanceId: 'instance-a', now }), false);
 });

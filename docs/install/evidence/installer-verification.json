@@ -1,10 +1,10 @@
 ﻿{
-    "startedAt":  "2026-11-24T23:24:38.4652699Z",
-    "baseSha":  "966888e6f033f8cf9393b3d6ea725475e4d0199d",
+    "startedAt":  "2026-11-25T00:07:51.1076548Z",
+    "baseSha":  "ff51430f90fa43f44940ef064f66e5bd24d52666",
     "nodeVersion":  "v24.22.2",
-    "port":  58568,
-    "debugPort":  58569,
-    "taskName":  "GugakSignage-Test-1b453388",
+    "port":  61793,
+    "debugPort":  61794,
+    "taskName":  "GugakSignage-Test-a404ec91",
     "result":  "passed",
     "checks":  {
                    "guardTests":  {
@@ -14,13 +14,16 @@
                                       "innoSharedResolverTransportPreservesUnicode":  true,
                                       "relativeInstallConfigHasPriority":  true,
                                       "staleConfigFailsClosedEvenWithDefaultData":  true,
+                                      "staleResolverFailsClosed":  true,
+                                      "freshDefaultDataIsNotPreviousEvidence":  true,
+                                      "freshExplicitDataDirAllowed":  true,
                                       "configEnvConflictBlocked":  true,
                                       "legacyDataInsideInstallBlocked":  true,
-                                      "equalPathBlocked":  "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: <home>\\AppData\\Local\\GugakSignage, 요청: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\equal",
-                                      "insidePathBlocked":  "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: <home>\\AppData\\Local\\GugakSignage, 요청: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\parent\\data",
-                                      "reverseNestingBlocked":  "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: <home>\\AppData\\Local\\GugakSignage, 요청: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\reverse-data",
-                                      "dotDotPathBlocked":  "기존 데이터 폴더와 다른 경로가 지정되었습니다. 새 빈 데이터 폴더가 생길 수 있으므로 -AllowDataDirChange로 명시 확인한 경우에만 변경합니다. 기존: <home>\\AppData\\Local\\GugakSignage, 요청: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\dotdot",
-                                      "uninstallEqualPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\fake-app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-b7d304d3\\fake-app",
+                                      "equalPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\equal, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\equal",
+                                      "insidePathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\parent, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\parent\\data",
+                                      "reverseNestingBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\reverse-data\\app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\reverse-data",
+                                      "dotDotPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\dotdot, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\dotdot",
+                                      "uninstallEqualPathBlocked":  "데이터 폴더는 설치 폴더와 같거나 그 안에 있을 수 없습니다. 설치: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\fake-app, 데이터: <home>\\AppData\\Local\\Temp\\GugakSignage-guard-test-bab561c1\\fake-app",
                                       "unsafeRemoveDataPathsBlocked":  4,
                                       "foreignShortcutDetected":  true,
                                       "adminShortcutTargetVerified":  true,
@@ -73,7 +76,7 @@
                                               "currentContentId":  "ct-sample-poster-autumn",
                                               "offline":  false,
                                               "lastError":  null,
-                                              "lastHeartbeatAt":  "2026-11-24T23:25:06.934Z",
+                                              "lastHeartbeatAt":  "2026-11-25T00:08:25.200Z",
                                               "wallGroupId":  null,
                                               "wallDisplayIds":  [
 
@@ -81,7 +84,7 @@
                                               "wallPlans":  {
 
                                                             },
-                                              "serverOffsetMs":  0,
+                                              "serverOffsetMs":  -0.6666666666666666,
                                               "shellVersion":  "v4",
                                               "visibility":  "visible"
                                           },
@@ -97,7 +100,7 @@
                                                "currentContentId":  "ct-sample-poster-autumn",
                                                "offline":  false,
                                                "lastError":  null,
-                                               "lastHeartbeatAt":  "2026-11-24T23:25:21.003Z",
+                                               "lastHeartbeatAt":  "2026-11-25T00:08:40.978Z",
                                                "wallGroupId":  null,
                                                "wallDisplayIds":  [
 
@@ -105,7 +108,7 @@
                                                "wallPlans":  {
 
                                                              },
-                                               "serverOffsetMs":  -0.16666666666666666,
+                                               "serverOffsetMs":  -0.5,
                                                "shellVersion":  "v4",
                                                "visibility":  "visible"
                                            },
@@ -120,18 +123,21 @@
                    "pidIdentityMetadataRecorded":  true,
                    "serverRestartedAfterKill":  true,
                    "serverRestartSeconds":  2.6,
-                   "serverPidBefore":  32424,
-                   "serverPidAfter":  31184,
+                   "serverPidBefore":  4412,
+                   "serverPidAfter":  8684,
                    "browserRestartedAfterKill":  true,
-                   "browserRestartSeconds":  4.6,
-                   "browserPidBefore":  23288,
-                   "browserPidAfter":  53344,
+                   "browserRestartSeconds":  4.7,
+                   "browserPidBefore":  46516,
+                   "browserPidAfter":  5796,
                    "autostartCanBeDisabled":  true,
+                   "staleServerCommandIgnored":  true,
+                   "expiredServerCommandIgnored":  true,
                    "autostartCanBeReenabled":  true,
                    "watchdogKillDoesNotOrphanServer":  true,
                    "playerContinuesCachedPlayback":  true,
                    "offlineContentBefore":  "ct-sample-poster-welcome",
                    "offlineContentAfter":  "ct-sample-video-bbb",
+                   "verifiedExistingPlayerAdopted":  true,
                    "playerRecoveredAfterServerReturn":  true,
                    "playerRecoveredState":  {
                                                 "playerReady":  true,
@@ -143,7 +149,7 @@
                                                 "currentContentId":  "ct-sample-notice",
                                                 "offline":  false,
                                                 "lastError":  null,
-                                                "lastHeartbeatAt":  "2026-11-24T23:27:14.551Z",
+                                                "lastHeartbeatAt":  "2026-11-25T00:10:33.646Z",
                                                 "wallGroupId":  null,
                                                 "wallDisplayIds":  [
 
@@ -170,5 +176,5 @@
                    "방화벽 규칙 생성(권한/시스템 변경을 피하기 위해 선택 옵션 미실행)",
                    "프로세스는 살아 있으나 CDP가 멈춘 실제 renderer hang 재현"
                ],
-    "finishedAt":  "2026-11-24T23:27:25.2117392Z"
+    "finishedAt":  "2026-11-25T00:10:47.0389308Z"
 }

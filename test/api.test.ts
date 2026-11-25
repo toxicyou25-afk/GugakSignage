@@ -226,6 +226,9 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(command.action, 'launch');
     assert.equal(command.deviceId, created.deviceId);
     assert.equal(command.playerUrl, launch.body.playerUrl);
+    const serverInstance = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'server-instance.json'), 'utf8'));
+    assert.equal(command.serverInstanceId, serverInstance.id);
+    assert.equal(serverInstance.pid, process.pid);
 
     const stop = await admin('/api/player/stop', { method: 'POST' });
     assert.equal(stop.status, 202);
@@ -324,7 +327,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     const dashboardDevice = dashboard.body.devices[0];
     assert.equal(dashboardDevice.broadcast.source, 'published');
     assert.equal(dashboardDevice.broadcast.playlistName, '검증 재생목록');
-    assert.equal(dashboardDevice.broadcast.currentContentId, created.imageId);
+    assert.equal(dashboardDevice.broadcast.currentContentId, null);
     assert.deepEqual(
       dashboardDevice.broadcast.items.map((item: any) => ({
         position: item.position,
@@ -342,6 +345,27 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(dashboard.body.sampleContent.showBanner, false);
     assert.equal(dashboard.body.playerControl.desired, 'stopped');
     assert.equal(dashboard.body.playerControl.running, false);
+
+    const controlStatePath = path.join(config.dataDir, 'control', 'player-state.json');
+    const writeControlState = (deviceId: string, running: boolean) => fs.writeFileSync(controlStatePath, JSON.stringify({
+      schemaVersion: 1,
+      desired: running ? 'running' : 'stopped',
+      running,
+      pid: running ? 999999 : null,
+      startedAt: running ? new Date().toISOString() : null,
+      deviceId,
+      playerUrl: 'http://127.0.0.1:3000/player/?code=GUGAK1',
+      lastError: null,
+      updatedAt: new Date().toISOString(),
+    }), 'utf8');
+    writeControlState(created.deviceId, true);
+    const runningDashboard = await admin('/api/dashboard');
+    assert.equal(runningDashboard.body.devices[0].broadcast.currentContentId, created.imageId);
+    assert.equal(runningDashboard.body.playerControl.running, true);
+    writeControlState('another-device', true);
+    const otherDeviceDashboard = await admin('/api/dashboard');
+    assert.equal(otherDeviceDashboard.body.devices[0].broadcast.currentContentId, null);
+    writeControlState(created.deviceId, false);
   });
 
   await t.test('등록 코드로 기존 연결을 인수하고 이전 토큰을 무효화한다', async () => {

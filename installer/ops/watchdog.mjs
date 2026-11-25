@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { classifyPlayerState } from './watchdog-health.mjs';
 import { openAdminOnStartup } from './admin-startup.mjs';
+import { verifyAdoptedPlayerStillOwned, verifyPlayerProcessIdentity } from './player-adoption.mjs';
 import {
   clearPlayerCommand,
   desiredAfterBrowserExit,
+  isPlayerCommandCurrent,
   readPlayerCommand,
   readPlayerState,
+  readServerInstance,
   writePlayerState as persistPlayerState,
 } from './player-state.mjs';
+
+const execFileAsync = promisify(execFile);
 
 const installDir = path.resolve(import.meta.dirname, '..');
 const configPath = path.join(installDir, 'install.json');
@@ -167,15 +173,7 @@ let playerUrl = persistedPlayerState.playerUrl || config.playerUrl;
 let playerLastError = persistedPlayerState.lastError;
 let playerLastExit = null;
 let playerCommandBusy = false;
-
-if (playerDesired === 'running' && processIsAlive(Number(persistedPlayerState.pid))) {
-  browser = { pid: Number(persistedPlayerState.pid), adopted: true };
-  browserStartedAt = Date.parse(persistedPlayerState.startedAt || '') || Date.now();
-} else if (playerDesired === 'running') {
-  playerDesired = 'stopped';
-  playerDeviceId = null;
-  playerLastError = '이전 재생기 프로세스를 찾지 못했습니다. 필요하면 관리자 화면에서 다시 실행하세요.';
-}
+let currentServerInstanceId = null;
 
 function writeState() {
   const state = {
@@ -196,6 +194,7 @@ function writeState() {
     playerDesired,
     playerDeviceId,
     playerUrl,
+    serverInstanceId: currentServerInstanceId,
     serverHealthMisses,
     browserHealthMisses,
     serverFailures,
@@ -258,8 +257,144 @@ function processIsAlive(processId) {
   }
 }
 
+async function readWindowsProcessInfo(processId) {
+  if (process.platform !== 'win32' || !Number.isInteger(processId) || processId <= 0) return null;
+  const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const script = [
+    `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${processId}"`,
+    'if (-not $process) { exit 3 }',
+    '$result = [ordered]@{ executablePath = [string]$process.ExecutablePath; commandLine = [string]$process.CommandLine; creationDate = ([DateTime]$process.CreationDate).ToUniversalTime().ToString("o") }',
+    '$result | ConvertTo-Json -Compress',
+  ].join('; ');
+  try {
+    const { stdout } = await execFileAsync(powershell, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script,
+    ], { windowsHide: true, timeout: 6000, maxBuffer: 1024 * 1024 });
+    const output = String(stdout || '').replace(/^\uFEFF/, '').trim();
+    return output ? JSON.parse(output) : null;
+  } catch (error) {
+    if (error?.code === 3) return null;
+    throw error;
+  }
+}
+
+async function readCdpTargets() {
+  const response = await fetch(`http://127.0.0.1:${config.debugPort}/json/list`, {
+    signal: AbortSignal.timeout(2500),
+  });
+  if (!response.ok) throw new Error(`CDP HTTP ${response.status}`);
+  return response.json();
+}
+
+function resetPlayerAdoption(reason) {
+  playerDesired = 'stopped';
+  playerDeviceId = null;
+  browser = null;
+  browserStartedAt = 0;
+  browserHealthySince = 0;
+  browserHealthMisses = 0;
+  playerLastError = `저장된 재생기 PID를 채택하지 않았습니다: ${reason}`;
+  writeState();
+  writePlayerState();
+}
+
+async function adoptPersistedPlayerOnStartup() {
+  if (playerDesired !== 'running') return;
+  const pid = Number(persistedPlayerState.pid);
+  const startedAt = persistedPlayerState.startedAt;
+  const expectedPlayerUrl = persistedPlayerState.playerUrl || config.playerUrl;
+  if (!processIsAlive(pid)) {
+    resetPlayerAdoption('프로세스가 존재하지 않음');
+    writeLog('WARN', 'persisted player PID is not alive; not starting it automatically', { pid });
+    return;
+  }
+
+  let processInfo = null;
+  let cdpTargets = null;
+  let lookupError = null;
+  try {
+    processInfo = await readWindowsProcessInfo(pid);
+  } catch (error) {
+    lookupError = `process-query-failed:${error.message}`;
+  }
+  try {
+    cdpTargets = await readCdpTargets();
+  } catch (error) {
+    lookupError = lookupError || `cdp-query-failed:${error.message}`;
+  }
+  const verification = verifyPlayerProcessIdentity({
+    processInfo,
+    cdpTargets,
+    browserPath: config.browserPath,
+    profileDir: config.profileDir,
+    debugPort: config.debugPort,
+    playerUrl: expectedPlayerUrl,
+    startedAt,
+  });
+  if (lookupError) verification.reasons.push(lookupError);
+  if (!verification.ok) {
+    writeLog('WARN', 'persisted player PID failed ownership verification; refusing to adopt or stop it', {
+      pid,
+      reasons: verification.reasons,
+    });
+    resetPlayerAdoption(verification.reasons.join(', '));
+    return;
+  }
+
+  browser = {
+    pid,
+    adopted: true,
+    __identityExpectation: {
+      browserPath: config.browserPath,
+      profileDir: config.profileDir,
+      debugPort: config.debugPort,
+      playerUrl: expectedPlayerUrl,
+      startedAt,
+    },
+  };
+  browserStartedAt = Date.parse(startedAt || '') || Date.now();
+  browserHealthySince = Date.now();
+  browserHealthMisses = 0;
+  playerUrl = expectedPlayerUrl;
+  playerLastError = null;
+  writeState();
+  writePlayerState();
+  writeLog('INFO', 'existing player adopted after ownership verification', { pid, deviceId: playerDeviceId });
+}
+
+function refreshCurrentServerInstance() {
+  if (!server?.pid) return null;
+  const instance = readServerInstance(config.dataDir);
+  if (!instance || instance.pid !== server.pid) return null;
+  const startedAt = Date.parse(instance.startedAt || '');
+  if (Number.isFinite(startedAt) && serverStartedAt && startedAt < serverStartedAt - 30000) {
+    return null;
+  }
+  currentServerInstanceId = instance.id;
+  return currentServerInstanceId;
+}
+
 async function killProcessTree(child) {
   if (!child?.pid) return;
+  if (child.adopted && child.__identityExpectation) {
+    let processInfo = null;
+    try {
+      processInfo = await readWindowsProcessInfo(Number(child.pid));
+    } catch (error) {
+      const ownershipError = new Error(`adopted player identity re-check failed: ${error.message}`);
+      ownershipError.code = 'PLAYER_IDENTITY_MISMATCH';
+      throw ownershipError;
+    }
+    const verification = verifyAdoptedPlayerStillOwned({
+      processInfo,
+      ...child.__identityExpectation,
+    });
+    if (!verification.ok) {
+      const ownershipError = new Error(`adopted player identity mismatch: ${verification.reasons.join(', ')}`);
+      ownershipError.code = 'PLAYER_IDENTITY_MISMATCH';
+      throw ownershipError;
+    }
+  }
   await new Promise((resolve, reject) => {
     const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
       windowsHide: true,
@@ -377,6 +512,7 @@ async function adoptPreviousServer() {
 async function startServer(reason) {
   if (shuttingDown || server || serverActionBusy || halted) return;
   serverActionBusy = true;
+  currentServerInstanceId = null;
   clearTimer(serverRestartTimer);
   serverRestartTimer = null;
   try {
@@ -410,6 +546,7 @@ async function startServer(reason) {
     child.once('exit', (code, signal) => {
       writeLog('WARN', 'server exited', { pid: child.pid, code, signal });
       if (server === child) server = null;
+      currentServerInstanceId = null;
       serverStartedAt = 0;
       serverHealthySince = 0;
       writeState();
@@ -432,6 +569,7 @@ async function replaceServer(reason) {
   const child = server;
   child.__watchdogIntentionalStop = true;
   server = null;
+  currentServerInstanceId = null;
   writeLog('WARN', 'server health check failed; replacing process', { pid: child.pid, reason });
   try {
     await killProcessTree(child);
@@ -584,6 +722,18 @@ async function handlePlayerCommand() {
   if (playerCommandBusy || browserActionBusy || shuttingDown) return;
   const command = readPlayerCommand(config.dataDir);
   if (!command) return;
+  const serverInstanceId = refreshCurrentServerInstance();
+  if (!serverInstanceId) return;
+  if (!isPlayerCommandCurrent(command, { serverInstanceId })) {
+    clearPlayerCommand(config.dataDir);
+    writeLog('WARN', 'stale player command ignored and removed', {
+      commandId: command.id,
+      commandInstanceId: command.serverInstanceId || null,
+      currentServerInstanceId: serverInstanceId,
+      requestedAt: command.requestedAt || null,
+    });
+    return;
+  }
   playerCommandBusy = true;
   clearPlayerCommand(config.dataDir);
   try {
@@ -640,6 +790,16 @@ async function replaceBrowser(reason) {
     await killProcessTree(child);
   } catch (error) {
     writeLog('ERROR', 'browser replacement kill failed', { message: error.message });
+    if (error.code === 'PLAYER_IDENTITY_MISMATCH') {
+      playerDesired = 'stopped';
+      playerLastError = '채택한 재생기 프로세스의 소유권이 바뀌어 종료하지 않았습니다.';
+      browser = null;
+      browserStartedAt = 0;
+      browserHealthySince = 0;
+      writeState();
+      writePlayerState();
+      return;
+    }
     await haltWatchdog('browser', '프로세스 종료 실패');
     return;
   } finally {
@@ -729,6 +889,11 @@ async function superviseServer() {
     lastServerHealthyAt = new Date().toISOString();
     serverHealthMisses = 0;
     if (!serverHealthySince) serverHealthySince = Date.now();
+    const instanceBefore = currentServerInstanceId;
+    const instanceId = refreshCurrentServerInstance();
+    if (instanceId && instanceId !== instanceBefore) {
+      writeLog('INFO', 'current server instance recorded', { serverPid: server?.pid, serverInstanceId: instanceId });
+    }
     if (!adminStartupState.attempted) {
       void openAdminOnStartup({
         config,
@@ -829,6 +994,7 @@ async function shutdown(reason) {
 }
 
 void startServer('startup');
+await adoptPersistedPlayerOnStartup();
 
 const serverTimer = setInterval(() => {
   if (!server && !serverRestartTimer && !shuttingDown) scheduleServerRestart('missing-process');
