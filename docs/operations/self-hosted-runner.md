@@ -109,15 +109,15 @@ Use the returned run ID with `gh run watch <run-id> --repo toxicyou25-afk/GugakS
 | --- | --- |
 | Runner | ID 2, `GugakSignage-CI-Win11`, labels `self-hosted,Windows,X64,gugaksignage-ci`, online |
 | Windows service | `actions.runner.toxicyou25-afk-GugakSignage.GugakSignage-CI-Win11`, Running, Auto, `NT AUTHORITY\\LOCAL SERVICE` |
-| Review-hardening SHA | `c143ec20c87b8554429959628643ca5377ea16e2` |
-| Actions run and job | Run `45513841103`, job `138868073638` |
-| Conclusion and steps | Success; 21/21 steps succeeded, including identity, isolation, checkout, hook and ACL checks, Node setup, install, typecheck, build, tests, four UI verifications, artifact upload, and cleanup |
-| Identity evidence | Job log: `Runner process identity: NT AUTHORITY\\LOCAL SERVICE` |
+| Current code SHA | `b5c852742cf6c63efc0962f0390b3c2712b40008` |
+| Post-restart acceptance run | **PENDING**. Run the controlled restart, elevated installer, and empty-commit verification below on this code. No pre-restart run is acceptance evidence. |
+| Static validation | All runner scripts parse; actionlint passes; admission fixtures pass; token-transport probe passes; service recovery assertion passes. Live ACL validation remains blocked until the elevated installer repairs the broad `runner\_work` write. |
+| Identity acceptance | **PENDING** post-restart job log must report `Runner process identity: NT AUTHORITY\\LOCAL SERVICE`. |
 | Precreated-root ACL repair | `D:PAI` reproduced on the old hook and cached archive; dedicated-root reset preserved both; archive SHA-256 and admission tests passed |
-| Control ACLs | Self-hosted job confirmed read-only LocalService access to controls/credentials and Modify access only on runtime data paths |
+| Control ACLs | Installer restricts controls, `.credentials`, and `.credentials_rsaparams` to read-only service access and rejects broad write ACLs on runtime paths; post-restart job evidence is pending |
+| Service recovery | `sc.exe qfailure` assertion confirms three 60-second restart actions and an 86400-second reset period |
 | Token transport | Launcher probe confirmed the registration token reaches hidden console stdin and is absent from child process argv |
-| setup-node cache | The automatic npm-cache input was removed; npm still uses the isolated `_cache\npm`, and the final run has no gzip/cache save warning |
-| Verification artifact | `windows-verification-1`, ID `14976882400`, 10,413,838 bytes |
+| setup-node cache | The automatic npm-cache input is removed; npm still uses the isolated `_cache\npm`. Cache-warning-free evidence is pending the post-restart run. |
 | Required-check names | `CI / Validate on Windows` (workflow and job names unchanged) |
 | Fork selection | Workflow routes fork PRs to `windows-latest`; runner admission hook denies them before steps; no fork PR was created or run |
-| Service elevation | LocalService automatic service is installed; rerun the elevated bootstrap after pulling review-hardening changes to reload the service environment and auto-update setting |
+| Service elevation | LocalService automatic service is installed, but the listener PID predates `disableUpdate:true`; the controlled restart below is required before acceptance |
