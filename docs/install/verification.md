@@ -27,6 +27,8 @@
 - 설치: 기존 per-user 설치 위에 /CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART 실행, setup exit 0
 - 데이터 보존: SQLite 행 수와 contents/playlists/publications/sites/meta 해시 동일, uploads 4/4 SHA-256 동일, .env·데이터 폴더 ACL 동일, .env 값 보존(SEED_SAMPLES true→false, 개행 1바이트 감소)
 - 실행: 예약 작업 수동 시작 뒤 health 200, watchdog/server 기동, 로그온 시 재생기 미실행, 관리자 화면의 실행 버튼으로만 재생기 기동
+- watchdog 복구: server PID 33744 강제 종료 뒤 2초 backoff, PID 27796 재기동, 약 2.6초 내 health 200
+- 관찰: watchdog-state.json의 lastServerHealthyAt는 성공 체크마다 갱신되지 않아 null/이전 값일 수 있음(비차단)
 - 관리자: loopback 200, 같은 PC의 LAN IPv4 관리자 요청 403, defaultPasswordWarning=true
 - NOT_RUN: 실제 재부팅·로그온, 물리 모니터/TV, 24시간 소크, 방화벽 변경, 별도 물리 PC LAN, CI, 제거
 - 상세 증적: [final-install-20261125](evidence/final-install-20261125/README.md)

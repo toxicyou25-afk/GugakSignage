@@ -13,3 +13,8 @@
 2026-11-25T03:12:04.200Z [INFO] watchdog started {"pid":46464,"installDir":"%USERPROFILE%\\AppData\\Local\\Programs\\GugakSignage","dataDir":"%USERPROFILE%\\AppData\\Local\\GugakSignage","port":3000,"manualRestartAfterHalt":false}
 2026-11-25T03:12:09.240Z [INFO] current server instance recorded {"serverPid":33744,"serverInstanceId":"fb4d5875-b4af-4608-a123-166826659d6d"}
 2026-11-25T03:12:09.254Z [INFO] admin startup decision {"opened":true,"reason":"startup","url":"http://127.0.0.1:3000/admin/"}
+2026-11-25T03:21:53.005Z [WARN] server exited {"pid":33744,"code":4294967295,"signal":null}
+2026-11-25T03:21:53.007Z [WARN] server restart scheduled {"reason":"process-exit","failures":1,"delayMs":2000}
+2026-11-25T03:21:55.016Z [INFO] server started {"pid":27796,"reason":"backoff","detached":false}
+2026-11-25T03:21:55.042Z [WARN] server health check failed {"message":"fetch failed","misses":1,"threshold":5}
+2026-11-25T03:22:00.057Z [INFO] current server instance recorded {"serverPid":27796,"serverInstanceId":"68b12db4-0a22-4fed-90a0-513979075648"}

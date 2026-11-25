@@ -20,8 +20,9 @@
   },
   "finalServiceState": {
     "watchdogPid": 46464,
-    "serverPid": 33744,
+    "serverPid": 27796,
     "health": 200,
     "player": "stopped"
-  }
+  },
+  "serverRecoveryVerified": true
 }

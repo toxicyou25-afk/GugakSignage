@@ -19,6 +19,7 @@
 | LAN 관리자 차단 | 403 (같은 PC의 LAN IPv4로 요청) | http-checks.json |
 | 기본 비밀번호 0000 경고 | defaultPasswordWarning=true, UI 배너 표시 | runtime.json, 01-admin-login.png, 02-admin-dashboard.png |
 | 로그온 기본 화면 | watchdog admin startup decision opened=true | watchdog-log.txt, runtime.json |
+| watchdog 서버 장애 복구 | PASS, 서버 강제 종료 뒤 약 2.6초 내 health 200, 새 PID 27796 | runtime.json, watchdog-log.txt |
 | 재생기 온디맨드 실행 | PASS. 로그온 직후 미실행, 관리자 실행 버튼 뒤 기동 | 03-devices-player-running.png, 04-player-installed.png, player-cdp.json |
 | 실제 재부팅·로그온 | NOT_RUN | - |
 | 물리 모니터·TV, 24시간 소크 | NOT_RUN | - |
@@ -61,6 +62,7 @@
 
 - 예약 작업 GugakSignage-Watchdog: At log on, 15초 지연, wscript.exe로 설치 폴더의 ops\watchdog-launch.vbs 실행. 상태 Ready.
 - Setup이 작업을 시작한 뒤 GET /api/health 200. 이후 작업을 정상 중지하고 Start-ScheduledTask로 다시 시작해 watchdog PID 34904→46464, server PID 33744, health 200(약 1.4초)을 확인했다.
+- watchdog 복구도 확인했다. server PID 33744를 강제 종료하자 2초 backoff 뒤 PID 27796으로 재기동했고, 약 2.6초 만에 health 200이 돌아왔다.
 - 로그온에 해당하는 작업 시작 뒤 player-state.json은 desired=stopped, running=false, 재생기 Edge 프로세스 0개였다. watchdog 로그는 admin startup decision {"opened":true,...}를 두 번 기록했다.
 - 관리자 headless Edge에서 기기 화면의 재생기 실행 버튼을 눌렀을 때만 재생기가 기동했다. CDP 페이지 제목은 국악원 사이니지 재생기, 상태는 playing, queueLength=5, offline=false였다. 중지 뒤 재생기 프로세스는 0개로 돌아갔다.
 - loopback /admin/ 200, /api/auth/me 200. 같은 PC의 LAN IPv4로 /admin/과 /api/auth/me를 요청하면 403, /api/health는 200이었다. 별도 물리 PC에서는 시험하지 않았다.
@@ -71,7 +73,8 @@
 
 1. .env의 마지막 개행 1바이트가 SEED_SAMPLES 치환 때 사라진다. 값 보존에는 문제가 없고 설치·실행을 막지 않아 수정하지 않았다.
 2. 업그레이드 전 per-user uninstall registry key가 이미 없었다. 이번 실행이 만든 결함은 아니며, Setup이 새 key를 만들었다. 기존 install.json 기반 업그레이드와 데이터 보존은 정상이다.
-3. 설치·실행을 막는 결함은 발견하지 못해 코드 수정은 하지 않았다.
+3. watchdog 상태 파일은 성공한 health check마다 writeState를 호출하지 않아 lastServerHealthyAt가 null/이전 값으로 남을 수 있다. health 200과 자동 복구는 실제로 동작했으므로 설치·실행을 막는 결함은 아니며, 진단 시 /api/health와 watchdog.log를 함께 봐야 한다.
+4. 설치·실행을 막는 결함은 발견하지 못해 코드 수정은 하지 않았다.
 
 ## 정리
 

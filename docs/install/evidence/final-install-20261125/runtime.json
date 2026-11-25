@@ -83,5 +83,49 @@
       "serverOffsetMs": -1,
       "shellVersion": "v4"
     }
+  },
+  "serverRecovery": {
+    "testedAtUtc": "2026-11-25T03:21:52.9916918Z",
+    "serverPidBefore": 33744,
+    "serverPidAfter": 27796,
+    "healthAfter": 200,
+    "recovered": true,
+    "restartDelayMs": 2000,
+    "recoverySeconds": 2.607,
+    "logEvidence": [
+      "2026-11-25T03:21:53.005Z [WARN] server exited {\"pid\":33744,\"code\":4294967295,\"signal\":null}",
+      "2026-11-25T03:21:53.007Z [WARN] server restart scheduled {\"reason\":\"process-exit\",\"failures\":1,\"delayMs\":2000}",
+      "2026-11-25T03:21:55.016Z [INFO] server started {\"pid\":27796,\"reason\":\"backoff\",\"detached\":false}"
+    ],
+    "stateFileObservation": "watchdog-state.json does not persist lastServerHealthyAt on successful health checks; use /api/health and watchdog.log together for diagnostics."
+  },
+  "postRecoveryWatchdogState": {
+    "schemaVersion": 2,
+    "watchdogPid": 46464,
+    "watchdogStartedAt": "2026-11-25T03:12:04.142Z",
+    "serverPid": 27796,
+    "browserPid": null,
+    "serverState": "running",
+    "browserState": "stopped",
+    "serverStartedAt": "2026-11-25T03:21:55.016Z",
+    "browserStartedAt": null,
+    "lastServerHealthyAt": "2026-11-25T03:21:50.040Z",
+    "lastBrowserCheckAt": null,
+    "lastBrowserState": null,
+    "lastBrowserStateKind": null,
+    "lastBrowserResponsive": null,
+    "playerDesired": "stopped",
+    "playerDeviceId": "dev-sample-lobby",
+    "playerUrl": "http://127.0.0.1:3000/player/?code=GUGAK1&reconnect=1",
+    "serverInstanceId": null,
+    "serverHealthMisses": 0,
+    "browserHealthMisses": 0,
+    "serverFailures": 1,
+    "browserFailures": 0,
+    "halted": false,
+    "haltedReason": null,
+    "haltedComponent": null,
+    "stoppedReason": null,
+    "updatedAt": "2026-11-25T03:21:55.016Z"
   }
 }
