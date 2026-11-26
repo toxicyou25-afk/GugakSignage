@@ -322,17 +322,20 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       return;
     }
     const code = uniquePairingCode(db);
-    run(
-      db,
-      `UPDATE devices SET pairing_code = ?, hardware_id = NULL, player_token = NULL, last_seen = NULL,
+    transaction(db, () => {
+      run(
+        db,
+        `UPDATE devices SET pairing_code = ?, hardware_id = NULL, player_token = NULL, last_seen = NULL,
              last_ip = NULL, player_state = NULL, last_error = NULL, player_version = NULL,
              manifest_version = NULL, last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL,
-             last_reconnect_at = NULL, updated_at = ?
-        WHERE id = ?`,
-      code,
-      nowIso(),
-      device.id,
-    );
+             last_reconnect_at = NULL, last_host_local = 0, updated_at = ?
+          WHERE id = ?`,
+        code,
+        nowIso(),
+        device.id,
+      );
+      run(db, 'UPDATE displays SET native_monitor_id = NULL WHERE device_id = ?', device.id);
+    });
     const updated = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', device.id);
     res.json({ device: updated ? deviceDto(db, config, updated) : null });
   });
@@ -343,16 +346,19 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       res.status(404).json({ error: '기기를 찾을 수 없습니다.' });
       return;
     }
-    run(
-      db,
-      `UPDATE devices SET hardware_id = NULL, player_token = NULL, last_seen = NULL, last_ip = NULL,
+    transaction(db, () => {
+      run(
+        db,
+        `UPDATE devices SET hardware_id = NULL, player_token = NULL, last_seen = NULL, last_ip = NULL,
              player_state = NULL, last_error = NULL, player_version = NULL, manifest_version = NULL,
              last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL, last_reconnect_at = NULL,
-             updated_at = ?
-        WHERE id = ?`,
-      nowIso(),
-      device.id,
-    );
+             last_host_local = 0, updated_at = ?
+          WHERE id = ?`,
+        nowIso(),
+        device.id,
+      );
+      run(db, 'UPDATE displays SET native_monitor_id = NULL WHERE device_id = ?', device.id);
+    });
     const updated = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', device.id);
     res.json({ device: updated ? deviceDto(db, config, updated) : null });
   });

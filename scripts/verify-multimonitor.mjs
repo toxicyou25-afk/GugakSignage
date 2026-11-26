@@ -217,6 +217,8 @@ try {
   const screenDeviceSelects = admin.locator('.screen-assignment [data-screen-device]');
   if (await screenDeviceSelects.count() !== 4) throw new Error('화면별 PC 선택 UI가 4개 표시되지 않았습니다.');
   await fourth.locator('[data-screen-device]').selectOption(secondDeviceId);
+  const remoteMonitorPickerDisabled = await fourth.locator('[data-screen-native-monitor]').isDisabled();
+  if (!remoteMonitorPickerDisabled) throw new Error('모니터 정보가 보고되지 않은 원격 Player에서 관리자 PC 모니터가 선택지로 노출되었습니다.');
   await fourth.locator('[data-topology-action=save-screen]').click();
   await admin.waitForFunction((secondId) =>
     document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-device]')?.value === secondId,
@@ -224,9 +226,9 @@ try {
   const explicitMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
-    return detail.groups[0].displays.map((display) => display.device_id);
+    return detail.groups[0].displays.map((display) => ({ deviceId: display.device_id, nativeMonitorId: display.nativeMonitorId }));
   });
-  if (explicitMapping[3] !== secondDeviceId || explicitMapping.slice(0, 3).some((value) => value !== deviceValue)) {
+  if (explicitMapping[3].deviceId !== secondDeviceId || explicitMapping[3].nativeMonitorId !== null || explicitMapping.slice(0, 3).some((value) => value.deviceId !== deviceValue)) {
     throw new Error(`화면별 명시적 PC 재배정이 반영되지 않았습니다: ${JSON.stringify(explicitMapping)}`);
   }
   await admin.click('.topology-config button[type=submit]');
@@ -234,16 +236,21 @@ try {
   const savedMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
-    return detail.groups[0].displays.map((display) => display.device_id);
+    return detail.groups[0].displays.map((display) => ({ deviceId: display.device_id, nativeMonitorId: display.nativeMonitorId }));
   });
   if (JSON.stringify(savedMapping) !== JSON.stringify(explicitMapping)) {
     throw new Error(`그룹 저장이 화면별 PC 배정을 덮어썼습니다: ${JSON.stringify(savedMapping)}`);
   }
-  report.deviceMapping = { initialMapping, explicitMapping, savedMapping };
+  report.deviceMapping = { initialMapping, explicitMapping, savedMapping, remoteMonitorPickerDisabled };
   step('화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존', report.deviceMapping);
 
   const refreshedFourth = admin.locator('.screen-assignment').nth(3);
   await refreshedFourth.locator('[data-screen-device]').selectOption(deviceValue);
+  const localMonitor = await refreshedFourth.locator('[data-screen-native-monitor] option').evaluateAll((options) =>
+    options.map((option) => option.value).find(Boolean) || '',
+  );
+  const physicalBindingStatus = localMonitor ? 'VERIFIED_IN_UI' : 'NOT_AVAILABLE_STABLE_MONITOR_ID';
+  if (localMonitor) await refreshedFourth.locator('[data-screen-native-monitor]').selectOption(localMonitor);
   await refreshedFourth.locator('[data-screen-fit]').selectOption('cover');
   await refreshedFourth.locator('[data-screen-playlist]').selectOption(playlist.urlPlaylistId);
   await refreshedFourth.locator('[data-topology-action=save-screen]').click();
@@ -378,6 +385,7 @@ try {
     ...window.__signagePlayer.getState(),
     screenCount: document.querySelectorAll('.wall-screen').length,
   }));
+  report.physicalBindingStatus = physicalBindingStatus;
   step('모니터별 분리 창 모드 확인', report.perMonitorWindow);
 
   if (report.adminPreview.displays !== 4 || report.player.screenCount !== 4 || report.perMonitorWindow.screenCount !== 1) {

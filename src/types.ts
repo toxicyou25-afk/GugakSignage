@@ -63,6 +63,7 @@ export interface DeviceRow {
   published_at: string | null;
   last_seen: string | null;
   last_ip: string | null;
+  last_host_local: number;
   player_state: string | null;
   last_error: string | null;
   player_version: string | null;
@@ -132,6 +133,7 @@ export interface DisplayRow {
   start_index: number;
   step: number;
   enabled: number;
+  native_monitor_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -339,6 +339,7 @@ try {
     Set-LegacyEnvDataDir -EnvFile $dataEnvPath -DataDir $dataDir
     Move-Item -LiteralPath $dataEnvPath -Destination $legacyEnvPath
     $legacyEnvAclSddl = (Get-Acl -LiteralPath $legacyEnvPath).Sddl
+    $legacyEnvBytesBefore = [IO.File]::ReadAllBytes($legacyEnvPath)
     $legacyEnvBefore = [IO.File]::ReadAllText($legacyEnvPath)
     $legacyEnvHashBefore = Get-StableFileHash -Path $legacyEnvPath
     $appSentinel = Join-Path $installDir "package.json"
@@ -362,7 +363,10 @@ try {
     if (-not (Test-PathEqual -Left (Get-EnvValue -EnvFile $legacyEnvPath -Name "DATA_DIR") -Right $dataDir)) { throw "escaped .env DATA_DIR를 복원하지 못했습니다." }
     $upgradedEnv = [IO.File]::ReadAllText($dataEnvPath)
     if ($upgradedEnv -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
-    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=false\s*$") { throw "legacy 업그레이드가 샘플 시드를 비활성화하지 않았습니다." }
+    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=true\s*$") { throw "legacy 업그레이드가 .env의 SEED_SAMPLES 값을 변경했습니다." }
+    if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($dataEnvPath))) {
+        throw "legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
+    }
     if ((Get-Acl -LiteralPath $dataEnvPath).Sddl -ne $legacyEnvAclSddl) { throw "legacy .env ACL을 보존하지 않았습니다." }
     if ((Get-StableFileHash -Path $legacyEnvPath) -ne $legacyEnvHashBefore) { throw "legacy 설치 폴더의 원본 .env를 변경했습니다." }
     if ((Get-DatabaseRowCounts -Path $databasePath) -ne $databaseRowsBeforeUpgrade) { throw "legacy 업그레이드가 기존 SQLite 행 수를 변경했습니다." }
@@ -372,7 +376,7 @@ try {
     $report.checks.innoLegacyEscapedUnicodePath = $true
     $report.checks.innoLegacyCopiesEnvAndPreservesAcl = $true
     $report.checks.innoLegacyPreservesAdminPassword0000 = $true
-    $report.checks.innoLegacyDisablesSampleSeed = $true
+    $report.checks.innoLegacyPreservesEnvBytesAndAcl = $true
     $report.checks.innoLegacyPreservesDatabaseHashAndRows = $true
     $report.checks.innoLegacyPreservesUploads = $true
     $report.checks.innoLegacySourceEnvUnchanged = $true
@@ -416,6 +420,8 @@ try {
         return (-not $currentState.serverPid -and -not $currentState.browserPid)
     }
     $uploadsHashBeforeReupgrade = Get-DirectoryContentHash -Path $uploadsDir
+    $envHashBeforeReupgrade = Get-StableFileHash -Path $dataEnvPath
+    $envAclBeforeReupgrade = (Get-Acl -LiteralPath $dataEnvPath).Sddl
     $reupgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $reupgradeLog + '"'
     $reupgrader = Start-Process -FilePath $SetupExe -ArgumentList $reupgradeArguments -Wait -PassThru -WindowStyle Hidden
     if ($reupgrader.ExitCode -ne 0) { throw "same-version Inno 재업그레이드 실패: exit=$($reupgrader.ExitCode), log=$reupgradeLog" }
@@ -423,6 +429,10 @@ try {
     if (-not (Test-PathEqual -Left ([string]$reupgradedConfig.dataDir) -Right $dataDir)) { throw "same-version 재업그레이드가 데이터 경로를 변경했습니다." }
     if ((Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeReupgrade) {
         throw "same-version 재업그레이드가 기존 데이터를 변경했습니다."
+    }
+    if ((Get-StableFileHash -Path $dataEnvPath) -ne $envHashBeforeReupgrade -or
+        (Get-Acl -LiteralPath $dataEnvPath).Sddl -ne $envAclBeforeReupgrade) {
+        throw "same-version 재업그레이드가 기존 .env 바이트 또는 ACL을 변경했습니다."
     }
     $report.checks.sameVersionReupgradePreservesLegacyData = $true
 

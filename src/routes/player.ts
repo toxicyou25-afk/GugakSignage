@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { Router, type Request } from 'express';
 import type { AppConfig } from '../config.js';
-import { get, run, type DB } from '../db.js';
+import { get, run, transaction, type DB } from '../db.js';
+import { isDirectLoopbackRequest } from '../admin-access.js';
 import { manifestForDevice } from '../publishing.js';
 import { usesTestDefaultAdminPassword } from '../admin-password.js';
 import type { DeviceRow } from '../types.js';
@@ -32,10 +33,11 @@ function touch(db: DB, req: Request, device: DeviceRow): void {
   const now = nowIso();
   run(
     db,
-    `UPDATE devices SET last_seen = ?, last_ip = ?, last_manifest_at = ?
+    `UPDATE devices SET last_seen = ?, last_ip = ?, last_host_local = ?, last_manifest_at = ?
       WHERE id = ?`,
     now,
     clientIp(req),
+    Number(isDirectLoopbackRequest(req)),
     now,
     device.id,
   );
@@ -90,22 +92,29 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const reportedWidth = parseIntRange((screen as Record<string, unknown>).width, 0, 0, 16384) || null;
     const reportedHeight = parseIntRange((screen as Record<string, unknown>).height, 0, 0, 16384) || null;
     const now = nowIso();
-    run(
-      db,
-      `UPDATE devices SET hardware_id = ?, player_token = ?, last_seen = ?, last_ip = ?, player_state = 'connected',
+    const directLocalHost = isDirectLoopbackRequest(req);
+    transaction(db, () => {
+      run(
+        db,
+        `UPDATE devices SET hardware_id = ?, player_token = ?, last_seen = ?, last_ip = ?, last_host_local = ?, player_state = 'connected',
              last_heartbeat_at = NULL, manifest_version = NULL, last_manifest_at = NULL, cache_ready = NULL,
              player_version = NULL, last_reconnect_at = NULL,
              last_error = NULL, reported_width = ?, reported_height = ?, updated_at = ?
-        WHERE id = ?`,
-      hardwareId,
-      token,
-      now,
-      clientIp(req),
-      reportedWidth,
-      reportedHeight,
-      now,
-      device.id,
-    );
+          WHERE id = ?`,
+        hardwareId,
+        token,
+        now,
+        clientIp(req),
+        Number(directLocalHost),
+        reportedWidth,
+        reportedHeight,
+        now,
+        device.id,
+      );
+      if (!directLocalHost) {
+        run(db, 'UPDATE displays SET native_monitor_id = NULL WHERE device_id = ?', device.id);
+      }
+    });
     const updated = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', device.id);
     res.json({ token, device: updated ? playerView(updated) : playerView(device) });
   });
@@ -146,7 +155,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const reconnectCount = device.reconnect_count + (reconnected ? 1 : 0);
     run(
       db,
-      `UPDATE devices SET last_seen = ?, last_ip = ?, player_state = ?, last_error = ?,
+      `UPDATE devices SET last_seen = ?, last_ip = ?, last_host_local = ?, player_state = ?, last_error = ?,
              player_version = COALESCE(?, player_version),
              manifest_version = COALESCE(?, manifest_version),
              cache_ready = COALESCE(?, cache_ready),
@@ -156,6 +165,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
         WHERE id = ?`,
       now,
       clientIp(req),
+      Number(isDirectLoopbackRequest(req)),
       stateWithContent,
       error,
       playerVersion,

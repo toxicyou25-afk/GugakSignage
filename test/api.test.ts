@@ -99,6 +99,8 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const blocked = await request('/api/devices');
     assert.equal(blocked.status, 401);
+    const blockedTopology = await request('/api/sites');
+    assert.equal(blockedTopology.status, 401);
 
     const playerConfig = await request('/api/player/config');
     assert.equal(playerConfig.status, 200);
@@ -200,6 +202,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.ok(register.body.token.length > 30);
     created.playerToken = register.body.token;
     assert.equal(register.body.device.id, created.deviceId);
+    assert.equal(db.prepare('SELECT last_host_local FROM devices WHERE id = ?').get(created.deviceId)?.last_host_local, 1);
 
     const secondHardware = await request('/api/player/register', {
       method: 'POST',
@@ -425,12 +428,21 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
   await t.test('등록 코드로 기존 연결을 인수하고 이전 토큰을 무효화한다', async () => {
     const oldToken = created.playerToken;
+    const localDisplay = db.prepare('SELECT id FROM displays WHERE device_id = ? ORDER BY start_index LIMIT 1').get(created.deviceId) as { id: string } | undefined;
+    assert.ok(localDisplay);
+    db.prepare('UPDATE displays SET native_monitor_id = ? WHERE id = ?').run('MONITOR\\LOCAL-OLD', localDisplay.id);
     const takeover = await request('/api/player/register', {
       method: 'POST',
       body: { code: created.pairingCode, hardwareId: 'hardware-0003', takeover: true, screen: { width: 1920, height: 1080 } },
+      headers: { 'X-Forwarded-For': '127.0.0.1' },
     });
     assert.equal(takeover.status, 200, JSON.stringify(takeover.body));
     assert.notEqual(takeover.body.token, oldToken);
+    assert.equal(db.prepare('SELECT last_host_local FROM devices WHERE id = ?').get(created.deviceId)?.last_host_local, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM displays WHERE device_id = ? AND native_monitor_id IS NOT NULL').get(created.deviceId)?.n, 0);
+    const remoteMonitorList = await admin(`/api/native-monitors?deviceId=${created.deviceId}`);
+    assert.deepEqual(remoteMonitorList.body.monitors, []);
+    assert.match(remoteMonitorList.body.error, /Player PC.*모니터 정보/);
 
     const stale = await request('/api/player/manifest', {
       headers: { Authorization: `Bearer ${oldToken}` },
@@ -438,9 +450,15 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(stale.status, 401);
 
     created.playerToken = takeover.body.token;
-    const fresh = await player('/api/player/manifest');
+    const fresh = await request('/api/player/manifest', {
+      headers: { Authorization: `Bearer ${created.playerToken}`, 'X-Forwarded-For': '127.0.0.1' },
+    });
     assert.equal(fresh.status, 200);
     assert.equal(fresh.body.manifest.version, 2);
+    const launch = await admin('/api/player/launch', { method: 'POST', body: { deviceId: created.deviceId } });
+    assert.equal(launch.status, 202);
+    assert.equal(launch.body.screenTargetCount, 0);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
   });
 
   await t.test('사용 중 콘텐츠 삭제와 잘못된 연결 해제를 막는다', async () => {
@@ -453,12 +471,15 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const unpair = await admin(`/api/devices/${created.deviceId}/unpair`, { method: 'POST' });
     assert.equal(unpair.status, 200);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM displays WHERE device_id = ? AND native_monitor_id IS NOT NULL').get(created.deviceId)?.n, 0);
     const staleManifest = await player('/api/player/manifest');
     assert.equal(staleManifest.status, 401);
 
+    db.prepare('UPDATE displays SET native_monitor_id = ? WHERE device_id = ?').run('MONITOR\\STALE-CODE', created.deviceId);
     const regenerate = await admin(`/api/devices/${created.deviceId}/regenerate-code`, { method: 'POST' });
     assert.equal(regenerate.status, 200);
     assert.notEqual(regenerate.body.device.pairingCode, created.pairingCode);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM displays WHERE device_id = ? AND native_monitor_id IS NOT NULL').get(created.deviceId)?.n, 0);
   });
 
   await t.test('현재 게시 스냅샷이 참조하는 미디어 삭제를 막는다', async () => {

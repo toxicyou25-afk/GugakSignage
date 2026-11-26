@@ -99,6 +99,7 @@ function migrate(db: DB): void {
       published_at TEXT,
       last_seen TEXT,
       last_ip TEXT,
+      last_host_local INTEGER NOT NULL DEFAULT 0 CHECK (last_host_local IN (0, 1)),
       player_state TEXT,
       last_error TEXT,
       player_version TEXT,
@@ -147,7 +148,8 @@ function migrate(db: DB): void {
       step INTEGER NOT NULL DEFAULT 1,
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      native_monitor_id TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_display_groups_site ON display_groups(site_id);
@@ -185,6 +187,7 @@ function migrate(db: DB): void {
     db.exec('ALTER TABLE devices ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE SET NULL;');
   }
   const healthColumns: Array<{ name: string; ddl: string }> = [
+    { name: 'last_host_local', ddl: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'player_version', ddl: 'TEXT' },
     { name: 'manifest_version', ddl: 'INTEGER' },
     { name: 'last_manifest_at', ddl: 'TEXT' },
@@ -208,6 +211,22 @@ function migrate(db: DB): void {
       db.exec('UPDATE playlist_items SET fit_mode_override = fit_mode WHERE fit_mode_override IS NULL;');
     });
   }
+  const displayColumns = db.prepare('PRAGMA table_info(displays)').all() as Array<{ name: string }>;
+  if (!displayColumns.some((column) => column.name === 'native_monitor_id')) {
+    db.exec('ALTER TABLE displays ADD COLUMN native_monitor_id TEXT;');
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_displays_device_native_monitor
+      ON displays(device_id, native_monitor_id)
+      WHERE device_id IS NOT NULL AND native_monitor_id IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_displays_clear_native_monitor_on_device_change
+      AFTER UPDATE OF device_id ON displays
+      FOR EACH ROW
+      WHEN OLD.device_id IS NOT NEW.device_id AND NEW.native_monitor_id IS NOT NULL
+      BEGIN
+        UPDATE displays SET native_monitor_id = NULL WHERE id = NEW.id;
+      END;
+  `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);');
 }
 

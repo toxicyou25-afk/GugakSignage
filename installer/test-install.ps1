@@ -219,24 +219,47 @@ try {
     [void]$legacyPsEnvBuilder.Append('DATA_DIR="').Append($escapedLegacyPsData).AppendLine('"')
     [void]$legacyPsEnvBuilder.AppendLine("SEED_SAMPLES=true")
     [IO.File]::WriteAllText($legacyPsEnv, $legacyPsEnvBuilder.ToString(), [Text.UTF8Encoding]::new($false))
+    $legacyPsEnvBytesBefore = [IO.File]::ReadAllBytes($legacyPsEnv)
     $legacyPsEnvAclSddl = (Get-Acl -LiteralPath $legacyPsEnv).Sddl
     $legacyPsEnvHashBefore = (Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash
     $legacyPsDbHashBefore = (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash
     $legacyPsUploadHashBefore = (Get-FileHash -LiteralPath $legacyPsUpload -Algorithm SHA256).Hash
+    $legacyPsDataEnv = Join-Path $legacyPsData ".env"
+    [IO.File]::WriteAllText($legacyPsDataEnv, $legacyPsEnvBuilder.ToString(), [Text.UTF8Encoding]::new($false))
+    $legacyPsDataEnvBytesBefore = [IO.File]::ReadAllBytes($legacyPsDataEnv)
+    $legacyPsDataEnvHashBefore = (Get-FileHash -LiteralPath $legacyPsDataEnv -Algorithm SHA256).Hash
+    $legacyPsDataEnvAclBefore = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
+    & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -DataDir $legacyPsData -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "기존 데이터 .env 업그레이드가 실패했습니다." }
+    if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsDataEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
+        throw "업그레이드가 기존 .env 바이트를 변경했습니다."
+    }
+    if ((Get-Acl -LiteralPath $legacyPsDataEnv).Sddl -ne $legacyPsDataEnvAclBefore) {
+        throw "업그레이드가 기존 .env ACL을 변경했습니다."
+    }
+    if ((Get-FileHash -LiteralPath $legacyPsDataEnv -Algorithm SHA256).Hash -ne $legacyPsDataEnvHashBefore) {
+        throw "업그레이드가 기존 .env SHA-256을 변경했습니다."
+    }
+    $report.checks.existingEnvBytesAndAclPreserved = $true
+    Remove-Item -LiteralPath (Join-Path $legacyPsApp "install.json") -Force
+    Remove-Item -LiteralPath $legacyPsDataEnv -Force
+
     $legacyPsPort = Get-FreePort
     $legacyPsTask = "GugakSignage-LegacyPowerShell-$suffix"
     $legacyPsOutput = & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -Port $legacyPsPort -TaskName $legacyPsTask -DesktopDir (Join-Path $legacyPsRoot "desktop") -StartMenuDir (Join-Path $legacyPsRoot "start-menu") -ProfileDir (Join-Path $legacyPsRoot "profile") -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Tee-Object -Variable legacyPsLines
     $legacyPsLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "PowerShell legacy 업그레이드가 실패했습니다." }
     $legacyPsConfig = Read-JsonFile -Path (Join-Path $legacyPsApp "install.json")
-    $legacyPsDataEnv = Join-Path $legacyPsData ".env"
     $legacyPsDataEnvText = [IO.File]::ReadAllText($legacyPsDataEnv)
     if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.dataDir) -Right $legacyPsData)) { throw "PowerShell legacy 업그레이드가 .env DATA_DIR를 기본 경로로 대체했습니다." }
     if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.envFile) -Right $legacyPsDataEnv)) { throw "PowerShell legacy .env를 데이터 폴더로 복사하지 않았습니다." }
     if ($legacyPsDataEnvText -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$" -or
         $legacyPsDataEnvText -notmatch "(?m)^SESSION_SECRET=legacy-session-secret-preserve-this-value\s*$" -or
-        $legacyPsDataEnvText -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
-        throw "PowerShell legacy 업그레이드가 .env 값을 보존하거나 SEED_SAMPLES를 끄지 않았습니다."
+        $legacyPsDataEnvText -notmatch "(?m)^SEED_SAMPLES=true\s*$") {
+        throw "PowerShell legacy 업그레이드가 .env 값을 보존하지 않았습니다."
+    }
+    if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
+        throw "PowerShell legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
     }
     if ((Get-Acl -LiteralPath $legacyPsDataEnv).Sddl -ne $legacyPsEnvAclSddl) { throw "PowerShell legacy .env ACL을 보존하지 않았습니다." }
     if ((Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash -ne $legacyPsEnvHashBefore -or
@@ -247,7 +270,7 @@ try {
     if (-not $legacyPsDefaultExisted -and (Test-Path -LiteralPath $legacyPsDefault)) { throw "PowerShell legacy 업그레이드가 새 기본 데이터 경로를 만들었습니다." }
     $report.checks.powerShellLegacyNoManifestUsesEnvDataDir = $true
     $report.checks.powerShellLegacyPreservesEnvAclAndValues = $true
-    $report.checks.powerShellLegacyDisablesSampleSeed = $true
+    $report.checks.powerShellLegacyPreservesEnvBytes = $true
     $report.checks.powerShellLegacyPreservesDbAndUploads = $true
 
     Write-Host "[install-test] 임시 설치 시작: <test-root>"
@@ -440,6 +463,8 @@ try {
     & (Join-Path $installDir "ops\stop.ps1") -Quiet
     Wait-Until -TimeoutSeconds 20 -Description "업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
     $databaseHashBefore = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
+    $envBytesBeforeUpgrade = [IO.File]::ReadAllBytes($envFile)
+    $envAclBeforeUpgrade = (Get-Acl -LiteralPath $envFile).Sddl
     & $installScript -SourceDir $repoRoot -InstallDir $installDir -NoStart 2>&1 | Tee-Object -Variable upgradeLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "기존 설치 업그레이드가 실패했습니다." }
     $configAfterUpgrade = Read-JsonFile -Path (Join-Path $installDir "install.json")
@@ -467,8 +492,11 @@ try {
             throw "업그레이드가 관리자 바로가기 경로를 기본값으로 덮어썼습니다."
         }
     }
-    if ($envAfterUpgrade -notmatch "(?m)^SEED_SAMPLES=false\s*$") {
-        throw "기존 데이터 업그레이드에서 샘플 시드를 비활성화하지 않았습니다."
+    if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$envBytesBeforeUpgrade, [byte[]][IO.File]::ReadAllBytes($envFile))) {
+        throw "업그레이드가 기존 .env의 바이트를 변경했습니다."
+    }
+    if ((Get-Acl -LiteralPath $envFile).Sddl -ne $envAclBeforeUpgrade) {
+        throw "업그레이드가 기존 .env의 ACL을 변경했습니다."
     }
     if ($envAfterUpgrade -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") {
         throw "업그레이드가 기존 .env의 관리자 비밀번호를 변경했습니다."
@@ -483,7 +511,7 @@ try {
     $report.checks.upgradePreservesDataDir = $true
     $report.checks.upgradePreservesDatabase = $true
     $report.checks.upgradePreservesShortcutsAndTask = $true
-    $report.checks.upgradeDisablesSeedSamples = $true
+    $report.checks.upgradePreservesEnvBytesAndAcl = $true
     $report.checks.existingEnvPreserved = $true
     $report.checks.headlessSettingPreservedOnUpgrade = $true
 

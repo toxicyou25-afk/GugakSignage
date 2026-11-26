@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import type { Request, Response } from 'express';
-import { isLoopbackAddress, isLoopbackBindHost, restrictAdminToLoopback } from '../src/admin-access.js';
+import { isDirectLoopbackRequest, isLoopbackAddress, isLoopbackBindHost, restrictAdminToLoopback } from '../src/admin-access.js';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { getMeta, openDatabase, type DB } from '../src/db.js';
@@ -523,6 +523,16 @@ test('loopback address classification covers IPv4, IPv6, and mapped forms', () =
   assert.equal(isLoopbackBindHost('::1'), true);
   assert.equal(isLoopbackBindHost('0.0.0.0'), false);
   assert.equal(isLoopbackBindHost('192.168.1.2'), false);
+});
+
+test('local Player identification requires a direct loopback peer without proxy headers', () => {
+  assert.equal(isDirectLoopbackRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: {} } as unknown as Request), true);
+  assert.equal(isDirectLoopbackRequest({
+    socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-forwarded-for': '127.0.0.1' },
+  } as unknown as Request), false);
+  assert.equal(isDirectLoopbackRequest({
+    socket: { remoteAddress: '192.168.1.20' }, headers: { 'x-forwarded-for': '127.0.0.1' },
+  } as unknown as Request), false);
 });
 
 test('the administrator network guard uses the socket peer and ignores forwarding headers', () => {

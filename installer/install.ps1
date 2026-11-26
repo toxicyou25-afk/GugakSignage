@@ -549,12 +549,6 @@ try {
         } else {
             Write-Step "기존 환경 설정 보존"
         }
-        $databasePath = Join-Path $DataDir "signage.sqlite"
-        if ((Test-Path -LiteralPath $databasePath) -and $existingEnv -match "(?m)^SEED_SAMPLES=true\s*$") {
-            $updatedEnv = [regex]::Replace($existingEnv, "(?m)^SEED_SAMPLES=true\s*$", "SEED_SAMPLES=false")
-            [IO.File]::WriteAllText($envFile, $updatedEnv, [Text.UTF8Encoding]::new($false))
-            Write-Step "기존 데이터 감지로 샘플 시드 비활성화"
-        }
     }
 
     if (-not $PlayerUrl) {

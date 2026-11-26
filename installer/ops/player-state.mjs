@@ -30,9 +30,36 @@ export function defaultPlayerState() {
     startedAt: null,
     deviceId: null,
     playerUrl: null,
+    screenTargets: [],
     lastError: null,
     updatedAt: null,
   };
+}
+
+function normalizeScreenTargets(value) {
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const targets = [];
+  const displayIds = new Set();
+  const monitorIds = new Set();
+  for (const rawTarget of value) {
+    if (!rawTarget || typeof rawTarget !== 'object') return [];
+    const displayId = typeof rawTarget.displayId === 'string' ? rawTarget.displayId.trim() : '';
+    const nativeMonitorId = typeof rawTarget.nativeMonitorId === 'string' ? rawTarget.nativeMonitorId.trim() : '';
+    if (!displayId || displayId.length > 100 || !nativeMonitorId || nativeMonitorId.length > 512 || !/^MONITOR\\/iu.test(nativeMonitorId) ||
+        displayIds.has(displayId) || monitorIds.has(nativeMonitorId)) return [];
+    let bounds;
+    if (rawTarget.bounds !== undefined) {
+      if (!rawTarget.bounds || typeof rawTarget.bounds !== 'object') return [];
+      const { x, y, width, height } = rawTarget.bounds;
+      if (![x, y, width, height].every(Number.isSafeInteger) ||
+          width < 320 || height < 320 || width > 16384 || height > 16384) return [];
+      bounds = { x, y, width, height };
+    }
+    displayIds.add(displayId);
+    monitorIds.add(nativeMonitorId);
+    targets.push({ displayId, nativeMonitorId, ...(bounds ? { bounds } : {}) });
+  }
+  return targets;
 }
 
 export function readPlayerState(dataDir) {
@@ -49,6 +76,7 @@ export function readPlayerState(dataDir) {
       startedAt: typeof value?.startedAt === 'string' ? value.startedAt : null,
       deviceId: typeof value?.deviceId === 'string' ? value.deviceId : null,
       playerUrl: typeof value?.playerUrl === 'string' ? value.playerUrl : null,
+      screenTargets: normalizeScreenTargets(value?.screenTargets),
       lastError: typeof value?.lastError === 'string' ? value.lastError : null,
       updatedAt: typeof value?.updatedAt === 'string' ? value.updatedAt : null,
     };
@@ -75,7 +103,7 @@ export function readPlayerCommand(dataDir) {
     const raw = fs.readFileSync(playerCommandPath(dataDir), 'utf8').replace(/^\uFEFF/, '');
     const value = JSON.parse(raw);
     if (value?.action !== 'launch' && value?.action !== 'stop') return null;
-    return value;
+    return { ...value, screenTargets: normalizeScreenTargets(value.screenTargets) };
   } catch {
     return null;
   }

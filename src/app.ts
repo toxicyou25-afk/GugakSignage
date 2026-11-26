@@ -8,7 +8,7 @@ import { restrictAdminToLoopback } from './admin-access.js';
 import { requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
-import { getMeta, setMeta, type DB } from './db.js';
+import { get, getMeta, setMeta, type DB } from './db.js';
 import { initializePlayerControl } from './player-control.js';
 import { discoverNativeMonitors, NativeMonitorSnapshotTracker } from './native-monitors.js';
 import { authRoutes } from './routes/auth.js';
@@ -68,8 +68,26 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
-  app.get('/api/native-monitors', admin, async (_req: Request, res: Response) => {
+  app.get('/api/native-monitors', admin, async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
+    const deviceId = typeof req.query.deviceId === 'string' ? req.query.deviceId.trim() : '';
+    if (deviceId) {
+      const device = get<{ id: string; last_host_local: number; last_seen: string | null }>(db, 'SELECT id, last_host_local, last_seen FROM devices WHERE id = ?', deviceId);
+      if (!device) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
+      const lastSeen = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
+      const heartbeatAge = Date.now() - lastSeen;
+      const localPlayerOnline = device.last_host_local === 1 &&
+        Number.isFinite(lastSeen) && heartbeatAge >= 0 && heartbeatAge <= config.heartbeatOnlineMs;
+      if (!localPlayerOnline) {
+        res.json({
+          supported: true,
+          detectedAt: new Date().toISOString(),
+          monitors: [],
+          error: '해당 Player PC의 실제 모니터 정보가 보고되지 않았습니다.',
+        });
+        return;
+      }
+    }
     res.json(nativeMonitorTracker.update(await discoverNativeMonitors(process.platform, config.rootDir)));
   });
   const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024, files: 1 } });

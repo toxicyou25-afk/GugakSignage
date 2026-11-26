@@ -84,3 +84,45 @@ test('first-run sample seeding preserves existing user rows and colliding upload
   assert.equal(seedDatabase(db, config).seeded, false);
   assert.deepEqual(seedSummary(db), summary);
 });
+
+test('sample seeding skips a database that existed before server startup even when SEED_SAMPLES=true', (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-existing-db-'));
+  const dbPath = path.join(tempDir, 'signage.sqlite');
+  const uploadDir = path.join(tempDir, 'uploads');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const userBytes = Buffer.from('existing production upload bytes');
+  fs.writeFileSync(path.join(uploadDir, 'user-upload.png'), userBytes);
+
+  const existingDb = openDatabase(dbPath);
+  const createdAt = '2026-11-26T00:00:00.000Z';
+  run(
+    existingDb,
+    'INSERT INTO contents(id, name, kind, mime, stored_name, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    'user-content-existing', '기존 운영 자료', 'image', 'image/png', 'user-upload.png', createdAt,
+  );
+  existingDb.close();
+
+  const config = loadConfig({
+    rootDir,
+    dataDir: tempDir,
+    dbPath,
+    uploadDir,
+    seedSamples: true,
+  });
+  assert.equal(config.databaseWasPresentAtStartup, true);
+  const db = openDatabase(dbPath);
+  t.after(() => {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const beforeSummary = seedSummary(db);
+  const seeded = seedDatabase(db, config);
+  assert.equal(seeded.seeded, false);
+  assert.equal(seeded.deviceId, undefined);
+  assert.deepEqual(seedSummary(db), beforeSummary);
+  assert.deepEqual(fs.readFileSync(path.join(uploadDir, 'user-upload.png')), userBytes);
+  assert.equal(fs.existsSync(path.join(uploadDir, 'seed-poster-autumn.png')), false);
+  const savedUserContent = get<{ id: string }>(db, 'SELECT id FROM contents WHERE id = ?', 'user-content-existing');
+  assert.equal(savedUserContent?.id, 'user-content-existing');
+});

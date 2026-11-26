@@ -27,13 +27,17 @@ $results = @()
 foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
     $friendly = $screen.DeviceName
     $stableId = $screen.DeviceName
+    $bindingId = $null
     for ($i = 0; $i -lt 32; $i++) {
         $candidate = New-Object GugakSignage.DisplayDevices+Device
         $candidate.cb = [Runtime.InteropServices.Marshal]::SizeOf($candidate)
         if (-not [GugakSignage.DisplayDevices]::EnumDisplayDevices($screen.DeviceName, [uint32]$i, [ref]$candidate, 0)) { break }
         if ($candidate.StateFlags -band 1) {
             if ($candidate.DeviceString) { $friendly = $candidate.DeviceString }
-            if ($candidate.DeviceID) { $stableId = $candidate.DeviceID }
+            if ($candidate.DeviceID -match '^MONITOR\\') {
+                $stableId = $candidate.DeviceID
+                $bindingId = [string]$candidate.DeviceID
+            }
             break
         }
     }
@@ -41,7 +45,7 @@ foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
     $width = [int]$bounds.Width
     $height = [int]$bounds.Height
     $results += [pscustomobject]@{
-        stableId = [string]$stableId; deviceName = [string]$screen.DeviceName; friendlyName = [string]$friendly
+        stableId = [string]$stableId; bindingId = $bindingId; deviceName = [string]$screen.DeviceName; friendlyName = [string]$friendly
         x = [int]$bounds.X; y = [int]$bounds.Y; width = $width; height = $height
         orientation = $(if ($height -gt $width) { 'portrait' } else { 'landscape' })
         primary = [bool]$screen.Primary; attached = $true

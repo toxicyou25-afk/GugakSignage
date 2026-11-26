@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { createFullscreenPlayerWindows, selectPlayerHealthTargets } from './player-windows.mjs';
 import { classifyPlayerState } from './watchdog-health.mjs';
 import { openAdminOnStartup } from './admin-startup.mjs';
 import { verifyAdoptedPlayerStillOwned, verifyPlayerProcessIdentity } from './player-adoption.mjs';
@@ -170,6 +172,9 @@ const adminStartupState = { attempted: false };
 let playerDesired = persistedPlayerState.desired === 'running' ? 'running' : 'stopped';
 let playerDeviceId = persistedPlayerState.deviceId;
 let playerUrl = persistedPlayerState.playerUrl || config.playerUrl;
+let playerScreenTargets = persistedPlayerState.screenTargets || [];
+let playerWindowSetupPending = playerScreenTargets.length > 0;
+let lastScreenWindowCheckAt = 0;
 let playerLastError = persistedPlayerState.lastError;
 let playerLastExit = null;
 let playerCommandBusy = false;
@@ -194,6 +199,7 @@ function writeState() {
     playerDesired,
     playerDeviceId,
     playerUrl,
+    screenTargetCount: playerScreenTargets.length,
     serverInstanceId: currentServerInstanceId,
     serverHealthMisses,
     browserHealthMisses,
@@ -230,6 +236,7 @@ function writePlayerState() {
       startedAt: browserStartedAt ? new Date(browserStartedAt).toISOString() : null,
       deviceId: playerDeviceId,
       playerUrl,
+      screenTargets: playerScreenTargets,
       lastError: playerLastError,
       updatedAt: new Date().toISOString(),
       ...(playerLastExit ? { lastExit: playerLastExit } : {}),
@@ -284,6 +291,170 @@ async function readCdpTargets() {
   });
   if (!response.ok) throw new Error(`CDP HTTP ${response.status}`);
   return response.json();
+}
+
+let nativeMonitorModulePromise = null;
+
+async function discoverPlayerMonitors() {
+  nativeMonitorModulePromise ||= import(pathToFileURL(path.join(installDir, 'dist', 'native-monitors.js')).href);
+  const module = await nativeMonitorModulePromise;
+  return module.discoverNativeMonitors(process.platform, installDir);
+}
+
+function isPlayerPageTarget(target) {
+  const playerBase = String(playerUrl || config.playerUrl).split('?')[0];
+  return target?.type === 'page' && typeof target.url === 'string' && target.url.startsWith(playerBase);
+}
+
+function isFallbackPlayerTarget(target) {
+  if (!isPlayerPageTarget(target)) return false;
+  try { return !new URL(target.url).searchParams.has('display'); } catch { return false; }
+}
+
+async function readBrowserDebuggerUrl() {
+  const response = await fetch(`http://127.0.0.1:${config.debugPort}/json/version`, {
+    signal: AbortSignal.timeout(2500),
+  });
+  if (!response.ok) throw new Error('CDP version endpoint failed.');
+  const value = await response.json();
+  if (typeof value.webSocketDebuggerUrl !== 'string') throw new Error('CDP browser endpoint is missing.');
+  return value.webSocketDebuggerUrl;
+}
+
+async function retainFallbackCanvas(existingTargets) {
+  try {
+    const pages = (existingTargets || await readCdpTargets()).filter(isPlayerPageTarget);
+    const fallback = pages.find(isFallbackPlayerTarget);
+    return await createFullscreenPlayerWindows({
+      webSocketDebuggerUrl: await readBrowserDebuggerUrl(),
+      basePlayerUrl: playerUrl || config.playerUrl,
+      fallbackTargetId: fallback?.id || '',
+      closeFallback: false,
+      screenTargets: [],
+      existingTargets: pages.map((target) => ({ id: target.id, url: target.url })),
+    });
+  } catch (error) {
+    writeLog('WARN', 'fallback player canvas could not be reconciled', { message: error.message });
+    return { success: false, error: 'fallback-canvas-reconcile-failed' };
+  }
+}
+
+async function configurePlayerWindows(existingTargets) {
+  if (!playerScreenTargets.length) {
+    playerWindowSetupPending = false;
+    return true;
+  }
+  lastScreenWindowCheckAt = Date.now();
+  let discovered;
+  try {
+    discovered = await discoverPlayerMonitors();
+  } catch (error) {
+    await retainFallbackCanvas(existingTargets);
+    playerWindowSetupPending = true;
+    playerLastError = '실제 모니터 정보를 확인하지 못해 기본 화면으로 재생합니다.';
+    writeLog('WARN', 'physical monitor lookup failed; retaining fallback player canvas', { message: error.message });
+    writeState();
+    writePlayerState();
+    return false;
+  }
+  if (!discovered.supported || discovered.error) {
+    await retainFallbackCanvas(existingTargets);
+    playerWindowSetupPending = true;
+    playerLastError = '실제 모니터 정보를 확인하지 못해 기본 화면으로 재생합니다.';
+    writeLog('WARN', 'physical monitor lookup unavailable; retaining fallback player canvas');
+    writeState();
+    writePlayerState();
+    return false;
+  }
+  const byId = new Map(discovered.monitors.filter((monitor) => monitor.bindingId).map((monitor) => [monitor.bindingId, monitor]));
+  const targets = [];
+  const missing = [];
+  for (const assignment of playerScreenTargets) {
+    const monitor = byId.get(assignment.nativeMonitorId);
+    if (!monitor) {
+      missing.push(assignment.displayId);
+      continue;
+    }
+    targets.push({ ...assignment, bounds: monitor.bounds });
+  }
+  const complete = missing.length === 0 && targets.length === playerScreenTargets.length;
+  const pages = (existingTargets || await readCdpTargets()).filter(isPlayerPageTarget);
+  if (!complete || !targets.length) {
+    const fallback = await retainFallbackCanvas(pages);
+    playerWindowSetupPending = true;
+    playerLastError = targets.length
+      ? '일부 배정 모니터가 연결되지 않아 기본 화면으로 재생합니다.'
+      : '배정된 모니터가 연결되지 않아 기본 화면으로 재생합니다.';
+    writeLog(fallback.success ? 'WARN' : 'ERROR', 'physical monitor assignments are incomplete; using the fallback player canvas', {
+      assignedDisplays: playerScreenTargets.length,
+      connectedDisplays: targets.length,
+    });
+    writeState();
+    writePlayerState();
+    return false;
+  }
+  try {
+    const fallback = pages.find(isFallbackPlayerTarget);
+    const result = await createFullscreenPlayerWindows({
+      webSocketDebuggerUrl: await readBrowserDebuggerUrl(),
+      basePlayerUrl: playerUrl || config.playerUrl,
+      fallbackTargetId: fallback?.id || '',
+      closeFallback: false,
+      screenTargets: targets,
+      existingTargets: pages.map((target) => ({ id: target.id, url: target.url })),
+    });
+    if (!result.success) throw new Error(result.error || 'CDP window setup failed.');
+    let ready = false;
+    if (complete) {
+      ready = await waitForPlayerDisplayTargets(targets, watchdogConfig.browserTargetMissingGraceMs);
+      if (ready) {
+        const refreshedPages = (await readCdpTargets()).filter(isPlayerPageTarget);
+        const refreshedFallback = refreshedPages.find(isFallbackPlayerTarget);
+        const finalized = await createFullscreenPlayerWindows({
+          webSocketDebuggerUrl: await readBrowserDebuggerUrl(),
+          basePlayerUrl: playerUrl || config.playerUrl,
+          fallbackTargetId: refreshedFallback?.id || '',
+          closeFallback: true,
+          screenTargets: targets,
+          existingTargets: refreshedPages.map((target) => ({ id: target.id, url: target.url })),
+        });
+        if (!finalized.success) throw new Error(finalized.error || 'CDP fallback close failed.');
+      }
+    }
+    playerWindowSetupPending = !complete || !ready;
+    playerLastError = complete && ready ? null : '모니터별 재생 창이 준비되지 않아 기본 화면을 유지합니다.';
+    writeLog(complete ? 'INFO' : 'WARN', 'per-display player windows reconciled', {
+      assignedDisplays: playerScreenTargets.length,
+      connectedDisplays: targets.length,
+      openedWindows: result.createdTargetIds.length,
+      displaysReady: ready,
+      fallbackCanvasRetained: !complete || !ready,
+    });
+    writeState();
+    writePlayerState();
+    return complete && ready;
+  } catch (error) {
+    await retainFallbackCanvas(existingTargets);
+    playerWindowSetupPending = true;
+    playerLastError = '모니터별 전체 화면을 만들지 못해 기본 화면으로 재생합니다.';
+    writeLog('WARN', 'per-display player window setup failed; retaining fallback canvas', { message: error.message });
+    writeState();
+    writePlayerState();
+    return false;
+  }
+}
+
+let playerWindowReconcilePromise = null;
+async function ensurePlayerWindows(existingTargets) {
+  if (!playerScreenTargets.length) return;
+  if (playerWindowReconcilePromise) return playerWindowReconcilePromise;
+  const intervalMs = Number.isFinite(watchdogConfig.monitorCheckIntervalMs) ? watchdogConfig.monitorCheckIntervalMs : 30000;
+  if (!playerWindowSetupPending && Date.now() - lastScreenWindowCheckAt < intervalMs) return;
+  lastScreenWindowCheckAt = Date.now();
+  playerWindowReconcilePromise = configurePlayerWindows(existingTargets).finally(() => {
+    playerWindowReconcilePromise = null;
+  });
+  return playerWindowReconcilePromise;
 }
 
 function resetPlayerAdoption(reason) {
@@ -681,6 +852,7 @@ async function startBrowser(reason) {
     });
     writeState();
     writePlayerState();
+    if (playerScreenTargets.length) await ensurePlayerWindows();
   } catch (error) {
     writeLog('ERROR', 'browser start failed', { message: error.message });
     browser = null;
@@ -738,6 +910,8 @@ async function handlePlayerCommand() {
   clearPlayerCommand(config.dataDir);
   try {
     if (command.action === 'stop') {
+      playerScreenTargets = [];
+      playerWindowSetupPending = false;
       await stopBrowser('admin-request');
       return;
     }
@@ -751,12 +925,15 @@ async function handlePlayerCommand() {
         !requestedUrl.pathname.startsWith('/player')) {
       playerLastError = '재생기 실행 요청의 주소가 올바르지 않습니다.';
       playerDesired = 'stopped';
+      playerScreenTargets = [];
+      playerWindowSetupPending = false;
       writeState();
       writePlayerState();
       return;
     }
     const samePlayer = Boolean(
-      browser && playerDeviceId === String(command.deviceId || '') && playerUrl === requestedUrl.toString(),
+      browser && playerDeviceId === String(command.deviceId || '') && playerUrl === requestedUrl.toString() &&
+        JSON.stringify(playerScreenTargets) === JSON.stringify(command.screenTargets || []),
     );
     if (samePlayer) {
       playerDesired = 'running';
@@ -768,6 +945,9 @@ async function handlePlayerCommand() {
     playerDesired = 'running';
     playerDeviceId = typeof command.deviceId === 'string' ? command.deviceId : null;
     playerUrl = requestedUrl.toString();
+    playerScreenTargets = Array.isArray(command.screenTargets) ? command.screenTargets : [];
+    playerWindowSetupPending = playerScreenTargets.length > 0;
+    lastScreenWindowCheckAt = 0;
     playerLastError = null;
     playerLastExit = null;
     browserFailures = 0;
@@ -862,21 +1042,55 @@ async function evaluatePage(webSocketDebuggerUrl) {
   });
 }
 
+async function waitForPlayerDisplayTargets(screenTargets, timeoutMs = 15000) {
+  if (!screenTargets.length) return true;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const pages = (await readCdpTargets()).filter(isPlayerPageTarget);
+      const targetByDisplay = new Map();
+      for (const page of pages) {
+        try {
+          const displayId = new URL(page.url).searchParams.get('display');
+          if (displayId && page.webSocketDebuggerUrl) targetByDisplay.set(displayId, page);
+        } catch { /* ignore malformed browser target URLs */ }
+      }
+      if (screenTargets.every((target) => targetByDisplay.has(target.displayId))) {
+        const states = await Promise.all(screenTargets.map((target) =>
+          evaluatePage(targetByDisplay.get(target.displayId).webSocketDebuggerUrl).catch(() => null),
+        ));
+        const allReady = states.every((result, index) =>
+          result?.playerReady === true && Array.isArray(result.state?.wallDisplayIds) &&
+          result.state.wallDisplayIds.includes(screenTargets[index].displayId),
+        );
+        if (allReady) return true;
+      }
+    } catch { /* browser may still be starting; retry until the bounded deadline */ }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
 async function checkBrowserHealth() {
-  const response = await fetch('http://127.0.0.1:' + config.debugPort + '/json/list', {
-    signal: AbortSignal.timeout(2500),
-  });
-  if (!response.ok) throw new Error('CDP HTTP ' + response.status);
-  const targets = await response.json();
-  const playerBase = String(playerUrl || config.playerUrl).split('?')[0];
-  const page = targets.find((target) =>
-    target.type === 'page' && typeof target.url === 'string' && target.url.startsWith(playerBase),
+  let targets = await readCdpTargets();
+  await ensurePlayerWindows(targets);
+  targets = await readCdpTargets();
+  const playerPages = targets.filter(isPlayerPageTarget);
+  if (!playerPages.length) throw new Error('player target not found');
+  const healthTargets = selectPlayerHealthTargets(
+    playerPages,
+    playerScreenTargets.map((target) => target.displayId),
   );
-  if (!page?.webSocketDebuggerUrl) throw new Error('player target not found');
-  const result = await evaluatePage(page.webSocketDebuggerUrl);
-  const classification = classifyPlayerState(result, watchdogConfig.serverHeartbeatMaxAgeMs);
+  if (playerScreenTargets.length > 0 && !healthTargets.allAssigned) playerWindowSetupPending = true;
+  if (!healthTargets.pages.length) throw new Error('no responsive player targets found');
+  const pagesToCheck = healthTargets.pages;
+  const results = await Promise.all(pagesToCheck.map((page) => evaluatePage(page.webSocketDebuggerUrl)));
+  const classifications = results.map((result) => classifyPlayerState(result, watchdogConfig.serverHeartbeatMaxAgeMs));
+  const classification = classifications.find((item) => item.actionable) ||
+    classifications.find((item) => !item.healthy) || classifications[0];
+  const result = results[classifications.indexOf(classification)];
   lastBrowserCheckAt = new Date().toISOString();
-  lastBrowserState = result.state;
+  lastBrowserState = result?.state || null;
   lastBrowserStateKind = classification.kind;
   lastBrowserResponsive = classification.responsive;
   return classification;

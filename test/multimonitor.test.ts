@@ -12,7 +12,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { all, get, openDatabase, run, type DB } from '../src/db.js';
 import { seedDatabase } from '../src/seed.js';
-import { buildWallPlans, buildWallSnapshot, engineSnapshotForWall } from '../src/topology.js';
+import { buildWallPlans, buildWallSnapshot, createSite, engineSnapshotForWall } from '../src/topology.js';
 import { ensureDeviceTopology } from '../src/topology-migration.js';
 
 const require = createRequire(import.meta.url);
@@ -316,6 +316,47 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test('기존 디스플레이 행을 보존하며 native_monitor_id를 반복 안전하게 추가한다', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-native-monitor-migration-'));
+  const dbPath = path.join(tempDir, 'topology.sqlite');
+  let db = openDatabase(dbPath);
+  const site = createSite(db, { name: '기존 장소', timezone: 'Asia/Seoul', notes: '기존 메모' });
+  const before = get<{ id: string; name: string; group_id: string; width: number; height: number }>(
+    db,
+    'SELECT id, name, group_id, width, height FROM displays WHERE site_id = ?',
+    site.site.id,
+  )!;
+  db.close();
+
+  const legacy = new DatabaseSync(dbPath);
+  const columns = legacy.prepare('PRAGMA table_info(displays)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'native_monitor_id')) {
+    legacy.exec('DROP TRIGGER IF EXISTS trg_displays_clear_native_monitor_on_device_change;');
+    legacy.exec('DROP INDEX IF EXISTS idx_displays_device_native_monitor;');
+    legacy.exec('ALTER TABLE displays DROP COLUMN native_monitor_id');
+  }
+  legacy.close();
+
+  db = openDatabase(dbPath);
+  const migratedColumns = db.prepare('PRAGMA table_info(displays)').all() as Array<{ name: string }>;
+  assert.equal(migratedColumns.some((column) => column.name === 'native_monitor_id'), true);
+  assert.deepEqual(
+    get(db, 'SELECT id, name, group_id, width, height FROM displays WHERE id = ?', before.id),
+    before,
+  );
+  assert.equal(get<{ native_monitor_id: string | null }>(db, 'SELECT native_monitor_id FROM displays WHERE id = ?', before.id)?.native_monitor_id, null);
+  db.close();
+
+  db = openDatabase(dbPath);
+  assert.deepEqual(
+    get(db, 'SELECT id, name, group_id, width, height FROM displays WHERE id = ?', before.id),
+    before,
+  );
+  assert.equal(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays')?.n, 1);
+  db.close();
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
 test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-topology-api-'));
   const config: AppConfig = loadConfig({
@@ -326,6 +367,7 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     seedSamples: false,
     adminPassword: 'topology-password',
     sessionSecret: 'topology-test-session-secret',
+    heartbeatOnlineMs: 60_000,
   });
   const db = openDatabase(config.dbPath);
   const now = new Date().toISOString();
@@ -369,11 +411,20 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       body: { name: '4면 PC', orientation: 'landscape', width: 1920, height: 1080, playlistId: 'playlist-1' },
     });
     assert.equal(device.status, 201, JSON.stringify(device.body));
+    run(db, 'UPDATE devices SET last_ip = ?, last_host_local = 1, last_seen = ? WHERE id = ?', '192.168.1.44', new Date(Date.now() - 50_000).toISOString(), device.body.device.id);
     const secondDevice = await request('/api/devices', {
       method: 'POST',
       body: { name: '단일면 PC', orientation: 'landscape', width: 1920, height: 1080, playlistId: 'playlist-1' },
     });
     assert.equal(secondDevice.status, 201, JSON.stringify(secondDevice.body));
+    run(db, 'UPDATE devices SET last_ip = ?, last_host_local = 0, last_seen = ? WHERE id = ?', '192.168.1.44', new Date().toISOString(), secondDevice.body.device.id);
+    const managerLocalMonitors = await request(`/api/native-monitors?deviceId=${encodeURIComponent(device.body.device.id)}`);
+    assert.equal(managerLocalMonitors.status, 200, JSON.stringify(managerLocalMonitors.body));
+    const remoteMonitors = await request(`/api/native-monitors?deviceId=${encodeURIComponent(secondDevice.body.device.id)}`);
+    assert.equal(remoteMonitors.status, 200, JSON.stringify(remoteMonitors.body));
+    assert.equal(remoteMonitors.body.supported, true);
+    assert.deepEqual(remoteMonitors.body.monitors, []);
+    assert.match(remoteMonitors.body.error, /Player PC.*모니터 정보/);
     const site = await request('/api/sites', { method: 'POST', body: { name: '1층 로비', timezone: 'Asia/Seoul' } });
     assert.equal(site.status, 201, JSON.stringify(site.body));
     const detail = await request(`/api/sites/${site.body.site.id}`);
@@ -401,6 +452,112 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     assert.equal(configured.status, 200, JSON.stringify(configured.body));
     const displays = configured.body.preview.wall.displays;
     assert.equal(displays.length, 4);
+
+    const connectorOnlyMonitorId = await request(`/api/displays/${displays[0].id}`, {
+      method: 'PUT', body: { nativeMonitorId: '\\\\.\\DISPLAY1' },
+    });
+    assert.equal(connectorOnlyMonitorId.status, 400);
+
+    for (const [index, nativeMonitorId] of [[0, 'MONITOR\\PRIMARY'], [1, 'MONITOR\\LEFT'], [2, 'MONITOR\\RIGHT']] as Array<[number, string]>) {
+      const assigned = await request(`/api/displays/${displays[index].id}`, {
+        method: 'PUT', body: { nativeMonitorId },
+      });
+      assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+    }
+
+    const bindMonitor = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\DISCONNECTED-SAVED' },
+    });
+    assert.equal(bindMonitor.status, 200, JSON.stringify(bindMonitor.body));
+    assert.equal(bindMonitor.body.nativeMonitorId, 'MONITOR\\DISCONNECTED-SAVED');
+    const boundDetail = await request(`/api/sites/${site.body.site.id}`);
+    assert.equal(boundDetail.body.groups[0].displays[3].nativeMonitorId, 'MONITOR\\DISCONNECTED-SAVED');
+    assert.equal(boundDetail.body.groups[0].devices.find((row: any) => row.id === device.body.device.id).localHost, true);
+
+    run(db, 'UPDATE devices SET last_host_local = 0, last_seen = ? WHERE id = ?', new Date(Date.now() - config.heartbeatOnlineMs * 2).toISOString(), device.body.device.id);
+    const offlineEdit = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { rotation: 90 },
+    });
+    assert.equal(offlineEdit.status, 200, JSON.stringify(offlineEdit.body));
+    assert.equal(offlineEdit.body.nativeMonitorId, 'MONITOR\\DISCONNECTED-SAVED');
+    const offlineNewBinding = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\UNREPORTED' },
+    });
+    assert.equal(offlineNewBinding.status, 400);
+    run(db, 'UPDATE devices SET last_host_local = 1, last_seen = ? WHERE id = ?', new Date().toISOString(), device.body.device.id);
+
+    const launchWithMonitorTargets = await request('/api/player/launch', {
+      method: 'POST', body: { deviceId: device.body.device.id },
+    });
+    assert.equal(launchWithMonitorTargets.status, 202, JSON.stringify(launchWithMonitorTargets.body));
+    assert.equal(launchWithMonitorTargets.body.screenTargetCount, 4);
+    const launchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
+    assert.deepEqual(launchCommand.screenTargets.map((target: any) => target.displayId), displays.map((display: any) => display.id));
+    assert.deepEqual(launchCommand.screenTargets.map((target: any) => target.nativeMonitorId), [
+      'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\RIGHT', 'MONITOR\\DISCONNECTED-SAVED',
+    ]);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+
+    const hostMonitors = await request('/api/native-monitors');
+    assert.equal(hostMonitors.status, 200, JSON.stringify(hostMonitors.body));
+    assert.equal(hostMonitors.body.monitors.some((monitor: any) => monitor.bindingId === 'MONITOR\\DISCONNECTED-SAVED'), false);
+    const disconnectedDetail = await request(`/api/sites/${site.body.site.id}`);
+    assert.equal(disconnectedDetail.body.groups[0].displays[3].nativeMonitorId, 'MONITOR\\DISCONNECTED-SAVED');
+
+    const duplicateMonitor = await request(`/api/displays/${displays[2].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\DISCONNECTED-SAVED' },
+    });
+    assert.equal(duplicateMonitor.status, 400);
+    const monitorWithoutDevice = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { deviceId: null, nativeMonitorId: 'MONITOR\\DISCONNECTED-SAVED' },
+    });
+    assert.equal(monitorWithoutDevice.status, 400);
+
+    const unreportedRemoteBinding = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-UNREPORTED' },
+    });
+    assert.equal(unreportedRemoteBinding.status, 400);
+    const remoteReassignment = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { deviceId: secondDevice.body.device.id, nativeMonitorId: null },
+    });
+    assert.equal(remoteReassignment.status, 200, JSON.stringify(remoteReassignment.body));
+    assert.equal(remoteReassignment.body.nativeMonitorId, null);
+    const remoteLaunch = await request('/api/player/launch', {
+      method: 'POST', body: { deviceId: secondDevice.body.device.id },
+    });
+    assert.equal(remoteLaunch.status, 202, JSON.stringify(remoteLaunch.body));
+    assert.equal(remoteLaunch.body.screenTargetCount, 0);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+
+    run(db, 'UPDATE devices SET last_host_local = 1, last_seen = ? WHERE id = ?', new Date().toISOString(), secondDevice.body.device.id);
+    const reassigned = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\SECOND' },
+    });
+    assert.equal(reassigned.status, 200, JSON.stringify(reassigned.body));
+    assert.equal(reassigned.body.nativeMonitorId, 'MONITOR\\SECOND');
+    const reassignedDetail = await request(`/api/sites/${site.body.site.id}`);
+    assert.equal(reassignedDetail.body.groups[0].displays[3].nativeMonitorId, 'MONITOR\\SECOND');
+    const localLaunchAfterBinding = await request('/api/player/launch', {
+      method: 'POST', body: { deviceId: secondDevice.body.device.id },
+    });
+    assert.equal(localLaunchAfterBinding.status, 202, JSON.stringify(localLaunchAfterBinding.body));
+    assert.equal(localLaunchAfterBinding.body.screenTargetCount, 1);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+
+    const sameIdOnOtherDevice = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\PRIMARY' },
+    });
+    assert.equal(sameIdOnOtherDevice.status, 200, JSON.stringify(sameIdOnOtherDevice.body));
+    const sameIdOnFirstDevice = await request(`/api/displays/${displays[2].id}`, {
+      method: 'PUT', body: { nativeMonitorId: 'MONITOR\\DISCONNECTED-SAVED' },
+    });
+    assert.equal(sameIdOnFirstDevice.status, 200, JSON.stringify(sameIdOnFirstDevice.body));
+    const clearMonitor = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { nativeMonitorId: null },
+    });
+    assert.equal(clearMonitor.status, 200, JSON.stringify(clearMonitor.body));
+    assert.equal(clearMonitor.body.nativeMonitorId, null);
+
     const displayUpdate = await request(`/api/displays/${displays[3].id}`, {
       method: 'PUT',
       body: { playlistId: 'playlist-2', rotation: 0, fitMode: 'cover', deviceId: secondDevice.body.device.id },
@@ -454,11 +611,15 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const frozen = get<{ snapshot: string }>(db, 'SELECT snapshot FROM publications WHERE device_id = ? AND version = 1', device.body.device.id)!.snapshot;
     assert(frozen.includes('"schemaVersion":2'));
     assert(frozen.includes('"playlistId":"playlist-2"'));
+    assert.equal(frozen.includes('MONITOR\\DISCONNECTED-SAVED'), false);
+    assert.equal(frozen.includes('nativeMonitorId'), false);
+    assert.equal(frozen.includes('native_monitor_id'), false);
     const frozenWall = JSON.parse(frozen).wall;
     const frozenDisplay = frozenWall.displays.find((display: any) => display.id === displays[3].id);
     const frozenScreen = frozenWall.screens.find((screen: any) => screen.displayId === displays[3].id);
     assert.equal(frozenDisplay.fit, 'cover');
     assert.equal(Object.hasOwn(frozenScreen.playlist.items[0], 'fitMode'), false);
+    assert.equal(get<{ hardware_id: string | null }>(db, 'SELECT hardware_id FROM devices WHERE id = ?', device.body.device.id)?.hardware_id, null);
 
     const registration = await request('/api/player/register', {
       method: 'POST',
