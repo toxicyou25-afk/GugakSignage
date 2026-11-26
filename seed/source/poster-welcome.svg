@@ -16,16 +16,16 @@
   <circle cx="540" cy="320" r="114" fill="none" stroke="#1f3d5c" stroke-width="3"/>
   <circle cx="540" cy="320" r="83" fill="none" stroke="#8b6b45" stroke-width="2"/>
   <path d="M487 320 C510 280 570 280 593 320 C570 360 510 360 487 320Z" fill="#1f3d5c" opacity="0.12"/>
-  <text x="540" y="338" text-anchor="middle" fill="#1f3d5c" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="64" font-weight="700">국</text>
-  <text x="540" y="532" text-anchor="middle" fill="#1f3d5c" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="62" font-weight="700" letter-spacing="3">인포메이션센터</text>
-  <text x="540" y="594" text-anchor="middle" fill="#6d6a61" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="27" letter-spacing="2">INFORMATION CENTER</text>
+  <text x="540" y="338" text-anchor="middle" fill="#1f3d5c" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="64" font-weight="700">안</text>
+  <text x="540" y="532" text-anchor="middle" fill="#1f3d5c" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="62" font-weight="700" letter-spacing="3">안내센터</text>
+  <text x="540" y="594" text-anchor="middle" fill="#6d6a61" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="27" letter-spacing="2">VISITOR GUIDE</text>
   <line x1="270" y1="656" x2="810" y2="656" stroke="#c8b896"/>
   <text x="540" y="740" text-anchor="middle" fill="#1f3d5c" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38" font-weight="700">오늘의 안내</text>
   <g font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" fill="#2f3a3f">
     <text x="190" y="844" font-size="28" fill="#8b6b45">운영 시간</text>
     <text x="190" y="900" font-size="38" font-weight="700">오전 9시 — 오후 6시</text>
     <text x="190" y="1010" font-size="28" fill="#8b6b45">위치</text>
-    <text x="190" y="1066" font-size="38" font-weight="700">예시 기관 1층</text>
+    <text x="190" y="1066" font-size="38" font-weight="700">예시 문화시설 1층</text>
     <text x="190" y="1176" font-size="28" fill="#8b6b45">휴관일</text>
     <text x="190" y="1232" font-size="38" font-weight="700">매주 월요일</text>
   </g>
@@ -43,6 +43,6 @@
   </g>
   <text x="190" y="1604" fill="#6d6a61" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="24">상세 안내는 안내 데스크에서</text>
   <text x="190" y="1644" fill="#6d6a61" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="24">확인하실 수 있습니다.</text>
-  <text x="540" y="1790" text-anchor="middle" fill="#8b6b45" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="19" letter-spacing="4">SAMPLE INFORMATION CENTER</text>
+  <text x="540" y="1790" text-anchor="middle" fill="#8b6b45" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="19" letter-spacing="4">SAMPLE VENUE GUIDE</text>
 <text x="40" y="45" fill="#ffffff" stroke="#17334d" stroke-width="0.5" font-family="sans-serif" font-size="24">SAMPLE · 예시</text>
 </svg>

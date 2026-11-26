@@ -28,7 +28,7 @@ const SEED_CONTENTS: SeedContent[] = [
   },
   {
     key: 'poster-welcome',
-    name: '인포메이션센터 안내',
+    name: '안내센터 안내',
     file: 'poster-welcome.png',
     kind: 'image',
     mime: 'image/png',
@@ -167,7 +167,7 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
        VALUES (?, ?, ?, 'landscape', 1920, 1080, ?, NULL, ?, ?, 0, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
       deviceId,
       '로비 안내 화면',
-      '1층 인포메이션센터',
+      '1층 안내센터',
       pairingCode,
       newPlayerToken(),
       playlistId,
