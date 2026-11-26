@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
+import { imageSize } from 'image-size';
 import { restrictAdminToLoopback } from './admin-access.js';
 import { requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
@@ -16,6 +18,19 @@ import { playerRoutes } from './routes/player.js';
 import { playerControlRoutes } from './routes/player-control.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
+
+type DecodedImage = { width: number; height: number; data: Uint8Array };
+const require = createRequire(import.meta.url);
+const pngDecoder = require('pngjs') as {
+  PNG: { sync: { read: (buffer: Buffer, options?: { checkCRC?: boolean }) => DecodedImage } };
+};
+const jpegDecoder = require('jpeg-js') as {
+  decode: (buffer: Buffer, options: {
+    tolerantDecoding: boolean;
+    maxResolutionInMP: number;
+    maxMemoryUsageInMB: number;
+  }) => DecodedImage;
+};
 
 export function createApp(db: DB, config: AppConfig) {
   initializePlayerControl(config);
@@ -51,6 +66,41 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
+  const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024, files: 1 } });
+  app.get('/api/settings/logo', admin, (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ dataUrl: getMeta(db, 'institution_logo') || null });
+  });
+  app.put('/api/settings/logo', admin, logoUpload.single('logo'), (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: '로고 파일을 선택하세요.' }); return; }
+    try {
+      const info = imageSize(file.buffer);
+      const mime = info.type === 'png' ? 'image/png' : info.type === 'jpg' ? 'image/jpeg' : null;
+      if (!mime || !info.width || !info.height || info.width > 2048 || info.height > 2048) {
+        res.status(400).json({ error: '2048×2048 이하의 PNG 또는 JPEG 파일만 사용할 수 있습니다.' }); return;
+      }
+      const decoded = info.type === 'png'
+        ? pngDecoder.PNG.sync.read(file.buffer, { checkCRC: true })
+        : jpegDecoder.decode(file.buffer, {
+            tolerantDecoding: false,
+            maxResolutionInMP: 4.2,
+            maxMemoryUsageInMB: 64,
+          });
+      if (decoded.width !== info.width || decoded.height !== info.height || decoded.data.byteLength !== info.width * info.height * 4) {
+        res.status(400).json({ error: '올바른 이미지 파일이 아닙니다.' }); return;
+      }
+      const dataUrl = 'data:' + mime + ';base64,' + file.buffer.toString('base64');
+      setMeta(db, 'institution_logo', dataUrl);
+      res.json({ dataUrl });
+    } catch {
+      res.status(400).json({ error: '올바른 이미지 파일이 아닙니다.' });
+    }
+  });
+  app.delete('/api/settings/logo', admin, (_req: Request, res: Response) => {
+    setMeta(db, 'institution_logo', '');
+    res.json({ dataUrl: null });
+  });
   app.get('/api/settings/institution', admin, (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ name: getMeta(db, 'institution_name') ?? '' });

@@ -514,3 +514,6 @@ tr:last-child td { border-bottom: 0; }
   .broadcast-foot { align-items: flex-start; flex-direction: column; }
 }
 .app-footer { padding: 18px clamp(22px, 4vw, 56px) 28px; color: #939b9d; font-size: 11px; letter-spacing: 0.06em; }
+
+.institution-logo { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+.institution-logo[hidden], #institution-logo-fallback[hidden] { display: none; }

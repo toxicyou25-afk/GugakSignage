@@ -15,7 +15,7 @@
     "admin:change-password": "node dist/change-admin-password.js",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/api.test.ts test/auth.test.ts test/env.test.ts test/multimonitor.test.ts test/current-display.test.ts test/player-control.test.ts test/player-runtime.test.js test/settings.test.ts installer/test-admin-startup.mjs installer/test-player-adoption.mjs installer/test-player-adoption-process.mjs installer/test-watchdog-health.mjs",
+    "test": "node --import tsx --test test/api.test.ts test/auth.test.ts test/env.test.ts test/multimonitor.test.ts test/current-display.test.ts test/player-control.test.ts test/player-runtime.test.js test/settings.test.ts test/logo.test.ts installer/test-admin-startup.mjs installer/test-player-adoption.mjs installer/test-player-adoption-process.mjs installer/test-watchdog-health.mjs",
     "verify:ui": "node scripts/verify-ui.mjs",
     "verify:api": "node scripts/verify-api.mjs",
     "verify:first-run": "node scripts/verify-first-run.mjs",
@@ -26,7 +26,9 @@
   "dependencies": {
     "express": "^4.21.2",
     "image-size": "^2.0.2",
-    "multer": "^2.0.2"
+    "jpeg-js": "0.4.4",
+    "multer": "^2.0.2",
+    "pngjs": "7.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

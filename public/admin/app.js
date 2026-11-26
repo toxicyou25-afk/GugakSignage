@@ -7,6 +7,7 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 const state = {
   dashboard: null,
   institutionName: '',
+  institutionLogo: null,
   contents: [],
   devices: [],
   playlists: [],
@@ -195,13 +196,14 @@ function showError(error) {
 }
 
 async function loadAll() {
-  const [dashboard, contents, devices, playlists, sites, institution] = await Promise.all([
+  const [dashboard, contents, devices, playlists, sites, institution, logo] = await Promise.all([
     api('/api/dashboard'),
     api('/api/contents'),
     api('/api/devices'),
     api('/api/playlists'),
     api('/api/sites'),
     api('/api/settings/institution'),
+    api('/api/settings/logo'),
   ]);
   state.dashboard = dashboard;
   state.contents = contents.contents;
@@ -209,6 +211,7 @@ async function loadAll() {
   state.playlists = playlists.playlists;
   state.sites = sites.sites;
   state.institutionName = institution.name;
+  applyInstitutionLogo(logo.dataUrl);
   $('#institution-name-display').textContent = state.institutionName || '관리 센터';
 }
 
@@ -312,6 +315,15 @@ async function route() {
   el.view.focus({ preventScroll: true });
 }
 
+function applyInstitutionLogo(dataUrl) {
+  state.institutionLogo = typeof dataUrl === 'string' && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl) ? dataUrl : null;
+  const logo = $('#institution-logo-display');
+  logo.hidden = !state.institutionLogo;
+  if (state.institutionLogo) logo.src = state.institutionLogo;
+  else logo.removeAttribute('src');
+  $('#institution-logo-fallback').hidden = Boolean(state.institutionLogo);
+}
+
 function renderSettings() {
   el.view.innerHTML = `
     <section class="settings-page" aria-labelledby="institution-settings-title">
@@ -320,6 +332,14 @@ function renderSettings() {
         <label class="field"><span>기관명</span><input name="name" maxlength="100" value="${esc(state.institutionName)}" /><span class="help">비워 두면 기본 관리 센터 명칭을 사용합니다.</span></label>
         <p id="institution-name-error" class="form-error" role="alert" hidden></p>
         <div class="form-actions"><button class="btn btn-primary" type="submit">기관명 저장</button></div>
+      </form>
+    </section>
+    <section class="settings-page" aria-labelledby="logo-settings-title">
+      <h2 id="logo-settings-title">기관 로고</h2>
+      <form id="institution-logo-form" class="card card-pad form-grid">
+        <label class="field"><span>로고 파일</span><input type="file" name="logo" accept="image/png,image/jpeg" /><span class="help">PNG 또는 JPEG, 512KB 이하, 최대 2048×2048. 사용 권한이 있는 로고만 등록하세요.</span></label>
+        <p id="institution-logo-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit" value="save">로고 저장</button><button class="btn btn-ghost" type="submit" value="delete" ${state.institutionLogo ? '' : 'disabled'}>로고 삭제</button></div>
       </form>
     </section>
     <section class="settings-page" aria-labelledby="password-settings-title">
@@ -1339,6 +1359,22 @@ document.addEventListener('submit', async (event) => {
       const error = $('#device-settings-error');
       try {
         await saveDeviceSettings(form, after);
+      } catch (errorValue) {
+        error.textContent = errorValue.message;
+        error.hidden = false;
+      }
+    } else if (form.id === 'institution-logo-form') {
+      const error = $('#institution-logo-error', form);
+      error.hidden = true;
+      try {
+        const deleting = submitter?.value === 'delete';
+        const data = new FormData(form);
+        const file = data.get('logo');
+        if (!deleting && (!file?.size || file.size > 512 * 1024)) throw new Error('512KB 이하의 로고 파일을 선택하세요.');
+        const result = await api('/api/settings/logo', deleting ? { method: 'DELETE' } : { method: 'PUT', body: data });
+        applyInstitutionLogo(result.dataUrl);
+        renderSettings();
+        toast(deleting ? '로고를 삭제했습니다.' : '로고를 저장했습니다.');
       } catch (errorValue) {
         error.textContent = errorValue.message;
         error.hidden = false;
