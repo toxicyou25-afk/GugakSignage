@@ -6,6 +6,7 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 
 const state = {
   dashboard: null,
+  institutionName: '',
   contents: [],
   devices: [],
   playlists: [],
@@ -194,18 +195,21 @@ function showError(error) {
 }
 
 async function loadAll() {
-  const [dashboard, contents, devices, playlists, sites] = await Promise.all([
+  const [dashboard, contents, devices, playlists, sites, institution] = await Promise.all([
     api('/api/dashboard'),
     api('/api/contents'),
     api('/api/devices'),
     api('/api/playlists'),
     api('/api/sites'),
+    api('/api/settings/institution'),
   ]);
   state.dashboard = dashboard;
   state.contents = contents.contents;
   state.devices = devices.devices;
   state.playlists = playlists.playlists;
   state.sites = sites.sites;
+  state.institutionName = institution.name;
+  $('#institution-name-display').textContent = state.institutionName || '관리 센터';
 }
 
 async function refreshOnly() {
@@ -310,6 +314,14 @@ async function route() {
 
 function renderSettings() {
   el.view.innerHTML = `
+    <section class="settings-page" aria-labelledby="institution-settings-title">
+      <h2 id="institution-settings-title">기관 정보</h2>
+      <form id="institution-name-form" class="card card-pad form-grid">
+        <label class="field"><span>기관명</span><input name="name" maxlength="100" value="${esc(state.institutionName)}" /><span class="help">비워 두면 기본 관리 센터 명칭을 사용합니다.</span></label>
+        <p id="institution-name-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">기관명 저장</button></div>
+      </form>
+    </section>
     <section class="settings-page" aria-labelledby="password-settings-title">
       <p class="eyebrow">SECURITY</p>
       <h2 id="password-settings-title">관리자 비밀번호</h2>
@@ -1327,6 +1339,19 @@ document.addEventListener('submit', async (event) => {
       const error = $('#device-settings-error');
       try {
         await saveDeviceSettings(form, after);
+      } catch (errorValue) {
+        error.textContent = errorValue.message;
+        error.hidden = false;
+      }
+    } else if (form.id === 'institution-name-form') {
+      const error = $('#institution-name-error', form);
+      error.hidden = true;
+      try {
+        const result = await api('/api/settings/institution', { method: 'PUT', body: { name: new FormData(form).get('name') } });
+        state.institutionName = result.name;
+        $('#institution-name-display').textContent = result.name || '관리 센터';
+        form.elements.namedItem('name').value = result.name;
+        toast('기관명을 저장했습니다.');
       } catch (errorValue) {
         error.textContent = errorValue.message;
         error.hidden = false;

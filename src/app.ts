@@ -6,7 +6,7 @@ import { restrictAdminToLoopback } from './admin-access.js';
 import { requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
-import type { DB } from './db.js';
+import { getMeta, setMeta, type DB } from './db.js';
 import { initializePlayerControl } from './player-control.js';
 import { authRoutes } from './routes/auth.js';
 import { contentRoutes } from './routes/contents.js';
@@ -51,6 +51,20 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
+  app.get('/api/settings/institution', admin, (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ name: getMeta(db, 'institution_name') ?? '' });
+  });
+  app.put('/api/settings/institution', admin, (req: Request, res: Response) => {
+    const raw: unknown = req.body?.name;
+    if (typeof raw !== 'string' || raw.length > 100 || /[\u0000-\u001f\u007f-\u009f]/u.test(raw)) {
+      res.status(400).json({ error: '기관명은 제어문자 없이 100자 이내로 입력하세요.' });
+      return;
+    }
+    const name = raw.trim();
+    setMeta(db, 'institution_name', name);
+    res.json({ name });
+  });
   app.use('/api/dashboard', admin, dashboardRoutes(db, config));
   app.use('/api/contents', admin, contentRoutes(db, config));
   app.use('/api/playlists', admin, playlistRoutes(db));
