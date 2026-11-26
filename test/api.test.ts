@@ -353,10 +353,14 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     const recoveredDevice = (await admin('/api/devices')).body.devices[0];
     assert.equal(recoveredDevice.heartbeatAgeMs < 1_000, true);
     assert.equal(recoveredDevice.health, 'online');
+    assert.equal(recoveredDevice.status, 'online');
     db.prepare("UPDATE devices SET player_state = ?, cache_ready = 1 WHERE id = ?").run(`offline:${created.imageId}`, created.deviceId);
     const unhealthyDevice = (await admin('/api/devices')).body.devices[0];
     assert.equal(unhealthyDevice.health, 'degraded');
     assert.equal(unhealthyDevice.attention, true);
+    const unhealthyDashboard = await admin('/api/dashboard');
+    assert.equal(unhealthyDashboard.body.counts.onlineDevices, 1);
+    assert.equal(unhealthyDashboard.body.counts.healthyDevices, 0);
     db.prepare("UPDATE devices SET player_state = 'playing', cache_ready = 1 WHERE id = ?").run(created.deviceId);
 
     const dashboard = await admin('/api/dashboard');
