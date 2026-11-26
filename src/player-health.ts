@@ -20,9 +20,7 @@ export function playerHealth(device: DeviceRow, onlineMs: number, now = Date.now
   const status = deviceStatus(device, onlineMs, now);
   const manifestBehind = Boolean(
     device.hardware_id &&
-    device.manifest_version !== null &&
-    device.manifest_version !== undefined &&
-    device.published_version > device.manifest_version,
+    device.published_version > (device.manifest_version ?? 0),
   );
   let state: PlayerHealthState = status;
   if (status === 'online' && device.hardware_id && (device.player_state === 'offline' || device.player_state?.startsWith('offline:'))) state = 'degraded';

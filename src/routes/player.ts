@@ -32,12 +32,11 @@ function touch(db: DB, req: Request, device: DeviceRow): void {
   const now = nowIso();
   run(
     db,
-    `UPDATE devices SET last_seen = ?, last_ip = ?, last_manifest_at = ?, manifest_version = ?
+    `UPDATE devices SET last_seen = ?, last_ip = ?, last_manifest_at = ?
       WHERE id = ?`,
     now,
     clientIp(req),
     now,
-    device.published_version,
     device.id,
   );
 }
