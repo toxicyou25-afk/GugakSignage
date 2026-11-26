@@ -101,6 +101,13 @@ function migrate(db: DB): void {
       last_ip TEXT,
       player_state TEXT,
       last_error TEXT,
+      player_version TEXT,
+      manifest_version INTEGER,
+      last_manifest_at TEXT,
+      cache_ready INTEGER,
+      last_heartbeat_at TEXT,
+      reconnect_count INTEGER NOT NULL DEFAULT 0,
+      last_reconnect_at TEXT,
       notes TEXT,
       reported_width INTEGER,
       reported_height INTEGER,
@@ -176,6 +183,21 @@ function migrate(db: DB): void {
   const columns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'site_id')) {
     db.exec('ALTER TABLE devices ADD COLUMN site_id TEXT REFERENCES sites(id) ON DELETE SET NULL;');
+  }
+  const healthColumns: Array<{ name: string; ddl: string }> = [
+    { name: 'player_version', ddl: 'TEXT' },
+    { name: 'manifest_version', ddl: 'INTEGER' },
+    { name: 'last_manifest_at', ddl: 'TEXT' },
+    { name: 'cache_ready', ddl: 'INTEGER' },
+    { name: 'last_heartbeat_at', ddl: 'TEXT' },
+    { name: 'reconnect_count', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'last_reconnect_at', ddl: 'TEXT' },
+  ];
+  const refreshedDeviceColumns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
+  for (const healthColumn of healthColumns) {
+    if (!refreshedDeviceColumns.some((column) => column.name === healthColumn.name)) {
+      db.exec(`ALTER TABLE devices ADD COLUMN ${healthColumn.name} ${healthColumn.ddl};`);
+    }
   }
   const playlistItemColumns = db.prepare('PRAGMA table_info(playlist_items)').all() as Array<{ name: string }>;
   if (!playlistItemColumns.some((column) => column.name === 'fit_mode_override')) {

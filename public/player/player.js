@@ -960,6 +960,9 @@ async function sendHeartbeat() {
         state: runtime.offline ? 'offline' : runtime.currentNode ? 'playing' : 'waiting',
         currentContentId: runtime.currentContentId,
         error: runtime.lastError,
+        playerVersion: '1.0.0',
+        manifestVersion: runtime.manifest?.version ?? null,
+        cacheReady: !runtime.offline && Boolean(runtime.manifest),
       }),
     });
     if (response.status === 401) {

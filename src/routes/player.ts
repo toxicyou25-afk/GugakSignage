@@ -5,7 +5,17 @@ import { get, run, type DB } from '../db.js';
 import { manifestForDevice } from '../publishing.js';
 import { usesTestDefaultAdminPassword } from '../admin-password.js';
 import type { DeviceRow } from '../types.js';
-import { asTrimmed, clientIp, newPlayerToken, normalizePairingCode, nowIso, parseIntRange } from '../util.js';
+import {
+  asTrimmed,
+  clientIp,
+  deviceStatus,
+  newPlayerToken,
+  normalizePairingCode,
+  nowIso,
+  optionalBool,
+  optionalInt,
+  parseIntRange,
+} from '../util.js';
 
 function bearerToken(req: Request): string {
   const header = req.headers.authorization;
@@ -20,11 +30,15 @@ function playerDevice(db: DB, req: Request): DeviceRow | undefined {
 }
 
 function touch(db: DB, req: Request, device: DeviceRow): void {
+  const now = nowIso();
   run(
     db,
-    'UPDATE devices SET last_seen = ?, last_ip = ? WHERE id = ?',
-    nowIso(),
+    `UPDATE devices SET last_seen = ?, last_ip = ?, last_manifest_at = ?, manifest_version = ?
+      WHERE id = ?`,
+    now,
     clientIp(req),
+    now,
+    device.published_version,
     device.id,
   );
 }
@@ -115,17 +129,45 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const state = asTrimmed(req.body?.state, 60) || 'playing';
     const currentContentId = asTrimmed(req.body?.currentContentId, 100) || null;
     const error = asTrimmed(req.body?.error, 1000) || null;
+    const playerVersion = asTrimmed(req.body?.playerVersion, 60) || null;
+    const manifestVersion = optionalInt(req.body?.manifestVersion, 0, 1_000_000);
+    const cacheReady = optionalBool(req.body?.cacheReady);
     const stateWithContent = currentContentId ? `${state}:${currentContentId}`.slice(0, 160) : state;
+    const now = nowIso();
+    // A heartbeat after the online threshold means this player recovered from a
+    // network/restart outage. Count the transition once per outage, not per beat.
+    const previousStatus = deviceStatus(device, config.heartbeatOnlineMs);
+    const reconnected = Boolean(device.hardware_id) && previousStatus === 'offline';
+    const reconnectCount = device.reconnect_count + (reconnected ? 1 : 0);
     run(
       db,
-      'UPDATE devices SET last_seen = ?, last_ip = ?, player_state = ?, last_error = ? WHERE id = ?',
-      nowIso(),
+      `UPDATE devices SET last_seen = ?, last_ip = ?, player_state = ?, last_error = ?,
+             player_version = COALESCE(?, player_version),
+             manifest_version = COALESCE(?, manifest_version),
+             cache_ready = COALESCE(?, cache_ready),
+             last_heartbeat_at = ?,
+             reconnect_count = ?,
+             last_reconnect_at = COALESCE(?, last_reconnect_at)
+        WHERE id = ?`,
+      now,
       clientIp(req),
       stateWithContent,
       error,
+      playerVersion,
+      manifestVersion,
+      cacheReady,
+      now,
+      reconnectCount,
+      reconnected ? now : device.last_reconnect_at,
       device.id,
     );
-    res.json({ ok: true, publishedVersion: device.published_version, serverTime: nowIso() });
+    res.json({
+      ok: true,
+      publishedVersion: device.published_version,
+      serverTime: now,
+      reconnected,
+      reconnectCount,
+    });
   });
 
   router.get('/config', (_req, res) => {

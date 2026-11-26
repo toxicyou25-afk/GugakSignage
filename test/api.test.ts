@@ -312,15 +312,36 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const heartbeat = await player('/api/player/heartbeat', {
       method: 'POST',
-      body: { state: 'playing', currentContentId: created.imageId },
+      body: { state: 'playing', currentContentId: created.imageId, playerVersion: 'test-1', manifestVersion: 1, cacheReady: true },
     });
     assert.equal(heartbeat.status, 200);
     assert.equal(heartbeat.body.ok, true);
+    assert.equal(heartbeat.body.reconnected, false);
 
     const devices = await admin('/api/devices');
     assert.equal(devices.body.devices[0].status, 'online');
     assert.equal(devices.body.devices[0].playerState, `playing:${created.imageId}`);
     assert.equal(devices.body.devices[0].publishedVersion, 2);
+    assert.equal(devices.body.devices[0].playerVersion, 'test-1');
+    assert.equal(devices.body.devices[0].manifestVersion, 1);
+    assert.equal(devices.body.devices[0].manifestBehind, true);
+    assert.equal(devices.body.devices[0].cacheReady, true);
+    assert.equal(devices.body.devices[0].health, 'online');
+    assert.equal(devices.body.devices[0].attention, true);
+    assert.equal(devices.body.devices[0].reconnectCount, 0);
+
+    // Simulate a player returning after the configured online window; the
+    // disconnect is counted once, and ordinary subsequent heartbeats do not
+    // inflate the recovery counter.
+    db.prepare("UPDATE devices SET last_seen = ?, last_heartbeat_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - config.heartbeatOnlineMs - 1_000).toISOString(),
+        new Date(Date.now() - config.heartbeatOnlineMs - 1_000).toISOString(), created.deviceId);
+    const recovered = await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing' } });
+    assert.equal(recovered.body.reconnected, true);
+    assert.equal(recovered.body.reconnectCount, 1);
+    const steady = await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing' } });
+    assert.equal(steady.body.reconnected, false);
+    assert.equal(steady.body.reconnectCount, 1);
 
     const dashboard = await admin('/api/dashboard');
     assert.equal(dashboard.status, 200);
@@ -345,6 +366,10 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(dashboard.body.sampleContent.showBanner, false);
     assert.equal(dashboard.body.playerControl.desired, 'stopped');
     assert.equal(dashboard.body.playerControl.running, false);
+
+    // The local playback-control state is independent of remote player
+    // heartbeat recovery telemetry; restore the known playing state for this test.
+    await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing', currentContentId: created.imageId } });
 
     const controlStatePath = path.join(config.dataDir, 'control', 'player-state.json');
     const writeControlState = (deviceId: string, running: boolean) => fs.writeFileSync(controlStatePath, JSON.stringify({
