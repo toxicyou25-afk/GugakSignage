@@ -317,10 +317,12 @@ async function fetchManifest(options = {}) {
     safeSet(STORAGE.manifestCachedAt, String(Date.now()));
     el.error.hidden = true;
     acceptManifest(manifest, Boolean(options.initial));
-    runtime.cacheReady = await runtime.cacheReadiness.prepare(
+    const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
       (isCurrent) => prefetchAssets(manifest, requestToken, isCurrent),
     );
+    if (requestToken !== runtime.token || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
+    runtime.cacheReady = prepared;
   } catch (error) {
     if (requestToken !== runtime.token) return;
     if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;

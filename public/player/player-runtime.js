@@ -13,6 +13,10 @@ export function createCacheReadiness() {
     begin() {
       generation += 1;
       ready = false;
+      for (const [token, operation] of flights) {
+        if (token < generation) flights.delete(token);
+        void operation.catch(() => {});
+      }
       return generation;
     },
     isCurrent(token) {
@@ -34,6 +38,10 @@ export function createCacheReadiness() {
     invalidate() {
       generation += 1;
       ready = false;
+      for (const [token, operation] of flights) {
+        if (token < generation) flights.delete(token);
+        void operation.catch(() => {});
+      }
     },
   };
 }
