@@ -19,7 +19,7 @@ interface SeedContent {
 const SEED_CONTENTS: SeedContent[] = [
   {
     key: 'poster-autumn',
-    name: '가을 국악 한마당 포스터',
+    name: '가을 문화 행사 포스터',
     file: 'poster-autumn.png',
     kind: 'image',
     mime: 'image/png',
@@ -28,7 +28,7 @@ const SEED_CONTENTS: SeedContent[] = [
   },
   {
     key: 'poster-welcome',
-    name: '인포메이션센터 안내',
+    name: '안내센터 안내',
     file: 'poster-welcome.png',
     kind: 'image',
     mime: 'image/png',
@@ -37,7 +37,7 @@ const SEED_CONTENTS: SeedContent[] = [
   },
   {
     key: 'poster-class',
-    name: '국악 체험 교실 포스터',
+    name: '시민 체험 교실 포스터',
     file: 'poster-class.png',
     kind: 'image',
     mime: 'image/png',
@@ -128,7 +128,7 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
        VALUES (?, ?, ?, ?, ?)`,
       playlistId,
       '로비 기본 순환',
-      '국악원 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.',
+      '기관 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.',
       createdAt,
       createdAt,
     );
@@ -167,7 +167,7 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
        VALUES (?, ?, ?, 'landscape', 1920, 1080, ?, NULL, ?, ?, 0, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
       deviceId,
       '로비 안내 화면',
-      '1층 인포메이션센터',
+      '1층 안내센터',
       pairingCode,
       newPlayerToken(),
       playlistId,
