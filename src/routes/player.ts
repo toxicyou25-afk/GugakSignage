@@ -93,6 +93,8 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     run(
       db,
       `UPDATE devices SET hardware_id = ?, player_token = ?, last_seen = ?, last_ip = ?, player_state = 'connected',
+             last_heartbeat_at = NULL, manifest_version = NULL, last_manifest_at = NULL, cache_ready = NULL,
+             player_version = NULL, last_reconnect_at = NULL,
              last_error = NULL, reported_width = ?, reported_height = ?, updated_at = ?
         WHERE id = ?`,
       hardwareId,

@@ -23,14 +23,16 @@ export function playerHealth(device: DeviceRow, onlineMs: number, now = Date.now
     device.published_version > (device.manifest_version ?? 0),
   );
   let state: PlayerHealthState = status;
-  if (status === 'online' && device.hardware_id && (device.player_state === 'offline' || device.player_state?.startsWith('offline:'))) state = 'degraded';
-  else if (status === 'online' && device.hardware_id && device.cache_ready === 0) state = 'degraded';
-  else if (status === 'online' && device.last_error) state = 'degraded';
+  const degraded = status === 'online' && Boolean(device.hardware_id) && (
+    device.player_state === 'offline' || device.player_state?.startsWith('offline:') ||
+    device.cache_ready === 0 || Boolean(device.last_error)
+  );
+  if (degraded) state = 'degraded';
   // last_seen is also updated by manifest polling. Only the heartbeat timestamp
   // is evidence that the player loop is alive; do not use last_seen here.
-  if (status === 'online' && device.hardware_id) {
-    if (!Number.isFinite(heartbeatMs) || now - heartbeatMs > onlineMs) state = 'stale';
-  }
+  const stale = status === 'online' && Boolean(device.hardware_id) &&
+    (!Number.isFinite(heartbeatMs) || now - heartbeatMs > onlineMs);
+  if (stale && !degraded) state = 'stale';
   const offlineSince = status === 'offline' && Number.isFinite(lastSeenMs)
     ? new Date(lastSeenMs + onlineMs).toISOString()
     : null;

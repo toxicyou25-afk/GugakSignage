@@ -94,7 +94,8 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
   router.get('/', (_req, res) => {
     const contents = all<ContentRow>(db, 'SELECT * FROM contents ORDER BY created_at DESC LIMIT 6');
     const devices = all<DeviceRow>(db, 'SELECT * FROM devices ORDER BY created_at ASC');
-    const health = summarizePlayerHealth(devices.map((device) => playerHealth(device, config.heartbeatOnlineMs)));
+    const healthNow = Date.now();
+    const health = summarizePlayerHealth(devices.map((device) => playerHealth(device, config.heartbeatOnlineMs, healthNow)));
     const now = new Date();
     const playerControl = readPlayerState(config.dataDir);
     const deviceSummary: DashboardDevice[] = devices.map((device) => {
@@ -119,9 +120,9 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
       urls: Number(get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM contents WHERE kind = 'url'")?.n ?? 0),
       playlists: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM playlists')?.n ?? 0),
       devices: devices.length,
-      onlineDevices: deviceSummary.filter((device) => device.status === 'online').length,
+      onlineDevices: health.online,
       offlineDevices: health.offline,
-      pendingDevices: deviceSummary.filter((device) => device.status === 'pending').length,
+      pendingDevices: health.pending,
       degradedDevices: health.degraded,
       staleDevices: health.stale,
       behindDevices: health.behind,
