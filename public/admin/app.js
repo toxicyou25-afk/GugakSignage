@@ -161,7 +161,7 @@ function setBusy(button, busy, label) {
 function showLogin(message = '') {
   el.appView.hidden = true;
   el.loginView.hidden = false;
-  document.title = '로그인 · 국악원 사이니지 관리';
+  document.title = '로그인 · 열린안내판 관리';
   if (message) {
     el.loginError.textContent = message;
     el.loginError.hidden = false;
@@ -271,7 +271,7 @@ function setPageMeta(page) {
   const meta = PAGE_META[page] || PAGE_META.dashboard;
   el.pageTitle.textContent = meta.title;
   el.pageEyebrow.textContent = meta.eyebrow;
-  document.title = `${meta.title} · 국악원 사이니지 관리`;
+  document.title = `${meta.title} · 열린안내판 관리`;
   $$('.nav a').forEach((link) => {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
