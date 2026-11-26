@@ -174,10 +174,16 @@ $transcriptStarted = $true
 
 try {
     Write-Host "[install-test] 경로·소유권 안전 가드 회귀 시험"
-    $guardOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $guardScript 2>&1 | Tee-Object -Variable guardLines
-    $guardLines | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "경로·소유권 안전 가드 시험이 실패했습니다." }
-    $guardJson = @($guardOutput | Where-Object { ([string]$_).TrimStart().StartsWith("{") }) | Select-Object -Last 1
+    $guardStdoutPath = Join-Path $testRoot "guard-output.txt"
+    $guardStderrPath = Join-Path $testRoot "guard-error.txt"
+    $guardArguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $guardScript
+    $guardProcess = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -ArgumentList $guardArguments -Wait -PassThru -NoNewWindow -RedirectStandardOutput $guardStdoutPath -RedirectStandardError $guardStderrPath
+    $guardOutput = @()
+    if (Test-Path -LiteralPath $guardStdoutPath) { $guardOutput += Get-Content -LiteralPath $guardStdoutPath }
+    if (Test-Path -LiteralPath $guardStderrPath) { $guardOutput += Get-Content -LiteralPath $guardStderrPath }
+    $guardOutput | Out-Host
+    if ($guardProcess.ExitCode -ne 0) { throw "경로·소유권 안전 가드 시험이 실패했습니다 (exit $($guardProcess.ExitCode)): $($guardOutput -join [Environment]::NewLine)" }
+    $guardJson = @(Get-Content -LiteralPath $guardStdoutPath | Where-Object { ([string]$_).TrimStart().StartsWith("{") }) | Select-Object -Last 1
     if (-not $guardJson) { throw "안전 가드 시험 결과 JSON이 없습니다." }
     $report.checks.guardTests = $guardJson | ConvertFrom-Json
 
