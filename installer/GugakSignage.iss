@@ -1,7 +1,7 @@
-; SPDX-License-Identifier: Apache-2.0
+﻿; SPDX-License-Identifier: Apache-2.0
 ; Build installer\build\payload with build-installer.ps1 before compiling.
 
-#define MyAppName "GugakSignage"
+#define MyAppName "열린안내판"
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "GugakSignage contributors"
 
@@ -11,7 +11,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\GugakSignage
-DefaultGroupName=GugakSignage
+DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=build\inno
 OutputBaseFilename=GugakSignage-Setup-{#MyAppVersion}
@@ -74,7 +74,7 @@ begin
   DataDirPage := CreateInputDirPage(
     wpSelectDir,
     'Data folder',
-    'Where should GugakSignage keep its database, uploads, logs, and environment file?',
+    'Where should {#MyAppName} keep its database, uploads, logs, and environment file?',
     'The data folder is preserved by default during uninstall.',
     False,
     ''
@@ -91,7 +91,7 @@ begin
   PortPage := CreateInputQueryPage(
     DataDirPage.ID,
     'Server port',
-    'Which TCP port should the GugakSignage server listen on?',
+    'Which TCP port should the {#MyAppName} server listen on?',
     'The player and browser watchdog use this port on the local computer.'
   );
   PortPage.Add('Port:', False);

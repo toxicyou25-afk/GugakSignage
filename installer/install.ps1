@@ -349,24 +349,24 @@ if ($previousConfig -and $previousConfig.adminShortcuts -and -not $dataDirChange
 if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
     if (-not $DesktopDir) { $DesktopDir = [Environment]::GetFolderPath("Desktop") }
     if (-not $StartMenuDir) {
-        $StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\GugakSignage"
+        $StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\열린안내판"
     }
     $shortcutPaths = @(
-        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "GugakSignage.lnk"),
-        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "GugakSignage.lnk")
+        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "열린안내판.lnk"),
+        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "열린안내판.lnk")
     )
     $adminShortcutPaths = @(
-        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "GugakSignage 관리자.lnk"),
-        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "GugakSignage 관리자.lnk")
+        (Join-Path (Get-NormalizedPath -Path $DesktopDir) "열린안내판 관리자.lnk"),
+        (Join-Path (Get-NormalizedPath -Path $StartMenuDir) "열린안내판 관리자.lnk")
     )
 } else {
-    $shortcutPaths = $previousShortcuts
+    $shortcutPaths = @($previousShortcuts | ForEach-Object { Join-Path (Split-Path -Parent $_) "열린안내판.lnk" })
     $adminShortcutPaths = if ($previousAdminShortcuts.Count -eq 2) {
-        $previousAdminShortcuts
+        @($previousAdminShortcuts | ForEach-Object { Join-Path (Split-Path -Parent $_) "열린안내판 관리자.lnk" })
     } else {
         @(
-            (Join-Path (Split-Path -Parent $previousShortcuts[0]) "GugakSignage 관리자.lnk"),
-            (Join-Path (Split-Path -Parent $previousShortcuts[1]) "GugakSignage 관리자.lnk")
+            (Join-Path (Split-Path -Parent $previousShortcuts[0]) "열린안내판 관리자.lnk"),
+            (Join-Path (Split-Path -Parent $previousShortcuts[1]) "열린안내판 관리자.lnk")
         )
     }
 }
@@ -583,13 +583,13 @@ try {
         if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $InstallDir)) {
             throw "기존 바로가기가 이 설치의 것이 아닙니다. 덮어쓰지 않았습니다: $shortcutPath"
         }
-        $null = New-Shortcut -ShortcutPath $shortcutPath -Description "GugakSignage 서버와 관리자 페이지를 시작합니다."
+        $null = New-Shortcut -ShortcutPath $shortcutPath -Description "열린안내판 서버와 관리자 페이지를 시작합니다."
     }
     if (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\admin-launch.vbs") -PathType Leaf)) {
         throw "관리자 실행 파일이 없습니다. 설치 패키지를 다시 준비하세요: ops\admin-launch.vbs"
     }
     foreach ($adminShortcutPath in $adminShortcutPaths) {
-        $null = New-AdminShortcut -ShortcutPath $adminShortcutPath -Description "GugakSignage 관리자 페이지를 기본 브라우저로 엽니다."
+        $null = New-AdminShortcut -ShortcutPath $adminShortcutPath -Description "열린안내판 관리자 페이지를 기본 브라우저로 엽니다."
     }
     Write-Step "바탕화면·시작 메뉴 바로가기 생성"
 
@@ -620,6 +620,25 @@ try {
     }
 
     Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -AdminShortcuts $adminShortcutPaths -AdminAutoOpenEnabled $adminAutoOpenEnabled -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered
+
+    # Remove only recorded legacy links owned by this installation, after new links and config exist.
+    if ($previousConfig) {
+        foreach ($legacyPath in @($previousConfig.shortcuts)) {
+            if ($legacyPath -and [IO.Path]::GetFileName([string]$legacyPath) -eq "GugakSignage.lnk" -and
+                (Test-Path -LiteralPath $legacyPath -PathType Leaf) -and
+                (Test-ShortcutOwnedByInstall -ShortcutPath $legacyPath -InstallDir $InstallDir)) {
+                Remove-Item -LiteralPath $legacyPath -Force
+            }
+        }
+        foreach ($legacyPath in @($previousConfig.adminShortcuts)) {
+            if ($legacyPath -and [IO.Path]::GetFileName([string]$legacyPath) -eq "GugakSignage 관리자.lnk" -and
+                (Test-Path -LiteralPath $legacyPath -PathType Leaf) -and
+                (Test-AdminShortcutOwnedByInstall -ShortcutPath $legacyPath -InstallDir $InstallDir)) {
+                Remove-Item -LiteralPath $legacyPath -Force
+            }
+        }
+    }
+
 
     if (-not $NoStart) {
         if (-not $NoAutoStart) {

@@ -75,8 +75,8 @@ function Remove-ExactShortcut {
     if (-not $ShortcutPath) { return }
     $fullPath = [IO.Path]::GetFullPath($ShortcutPath)
     $fileName = [IO.Path]::GetFileName($fullPath)
-    $isAdminShortcut = $fileName -eq "GugakSignage 관리자.lnk"
-    if ($fileName -ne "GugakSignage.lnk" -and -not $isAdminShortcut) { return }
+    $isAdminShortcut = $fileName -in @("GugakSignage 관리자.lnk", "열린안내판 관리자.lnk")
+    if ($fileName -notin @("GugakSignage.lnk", "열린안내판.lnk") -and -not $isAdminShortcut) { return }
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
     $owned = if ($isAdminShortcut) {
         Test-AdminShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir
