@@ -136,7 +136,7 @@ jobs:
       - name: Validate Windows package build script syntax
         shell: powershell
         run: |
-          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\\build-installer.ps1'
+          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\build-installer.ps1'
           $tokens = $null
           $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseFile($installerBuildScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
@@ -147,7 +147,7 @@ jobs:
       - name: Validate Windows package build script syntax
         shell: powershell
         run: |
-          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\\build-installer.ps1'
+          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\build-installer.ps1'
           $tokens = $null
           $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseFile($installerBuildScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
@@ -157,7 +157,7 @@ jobs:
           }
       - name: Build Windows package and verify payload licenses
         shell: powershell
-        run: .\\installer\\build-installer.ps1 -OutputDir .\\installer\\build\\ci -SkipInstall -SkipCompile
+        run: .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -SkipCompile
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow
