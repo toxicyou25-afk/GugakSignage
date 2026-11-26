@@ -21,14 +21,14 @@
     <path d="M40 300 C130 182 250 104 400 68"/>
     <path d="M60 330 C160 214 280 136 435 102"/>
   </g>
-  <text x="132" y="180" fill="#f5dfbe" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="28" letter-spacing="10">국립부산국악원 시민 프로그램</text>
-  <text x="126" y="402" fill="#fff8eb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="142" font-weight="700" letter-spacing="-4">국악 체험 교실</text>
-  <text x="132" y="485" fill="#f9e3c4" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38">장구와 가야금, 손끝에서 피어나는 우리 가락</text>
+  <text x="132" y="180" fill="#f5dfbe" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="28" letter-spacing="10">예시 기관 시민 프로그램</text>
+  <text x="126" y="402" fill="#fff8eb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="142" font-weight="700" letter-spacing="-4">시민 체험 교실</text>
+  <text x="132" y="485" fill="#f9e3c4" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38">누구나 참여할 수 있는 체험 프로그램</text>
   <g transform="translate(132 590)" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif">
     <rect width="560" height="290" rx="22" fill="#f8ead3" opacity="0.96"/>
     <text x="42" y="72" fill="#8e3828" font-size="26" font-weight="700">초급 · 8주 과정</text>
     <text x="42" y="138" fill="#3c2c27" font-size="31">매주 토요일 오후 2시</text>
-    <text x="42" y="190" fill="#3c2c27" font-size="31">국립부산국악원 연습실</text>
+    <text x="42" y="190" fill="#3c2c27" font-size="31">예시 기관 교육실</text>
     <line x1="42" y1="218" x2="518" y2="218" stroke="#d9bf9d"/>
     <text x="42" y="258" fill="#8e3828" font-size="24">수강료 4만원 · 선착순 접수</text>
   </g>
@@ -37,4 +37,5 @@
     <text x="155" y="42" text-anchor="middle" fill="#7a2f21" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="26" font-weight="700">홈페이지에서 신청</text>
   </g>
   <text x="1780" y="1000" text-anchor="end" fill="#f0caa2" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="22" letter-spacing="3">2026 가을 시민 문화학교</text>
+<text x="40" y="45" fill="#ffffff" stroke="#17334d" stroke-width="0.5" font-family="sans-serif" font-size="24">SAMPLE · 예시</text>
 </svg>
