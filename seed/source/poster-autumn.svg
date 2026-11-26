@@ -33,15 +33,16 @@
     <rect x="168" y="154" width="8" height="94"/>
     <rect x="190" y="154" width="8" height="94"/>
   </g>
-  <text x="146" y="316" fill="#d9c39d" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="31" letter-spacing="9">국립부산국악원</text>
-  <text x="140" y="516" fill="#f7f0df" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="128" font-weight="700" letter-spacing="-3">가을, 국악의 숨결</text>
-  <text x="146" y="598" fill="#c7d1d5" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38" letter-spacing="2">판소리와 기악이 만나는 특별한 저녁</text>
+  <text x="146" y="316" fill="#d9c39d" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="31" letter-spacing="9">예시 기관</text>
+  <text x="140" y="516" fill="#f7f0df" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="128" font-weight="700" letter-spacing="-3">가을 문화 행사</text>
+  <text x="146" y="598" fill="#c7d1d5" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="38" letter-spacing="2">지역 주민과 함께하는 문화 행사</text>
   <line x1="146" y1="662" x2="720" y2="662" stroke="#b98a55" stroke-width="3"/>
   <text x="146" y="741" fill="#eadfcb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="32">2026. 10. 17. (토) 오후 7시 30분</text>
-  <text x="146" y="796" fill="#eadfcb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="32">국립부산국악원 예지당</text>
+  <text x="146" y="796" fill="#eadfcb" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="32">예시 기관 다목적실</text>
   <g transform="translate(146 880)">
     <rect width="272" height="58" rx="29" fill="#b98a55"/>
-    <text x="136" y="39" text-anchor="middle" fill="#102338" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="25" font-weight="700">공연 예약하기</text>
+    <text x="136" y="39" text-anchor="middle" fill="#102338" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="25" font-weight="700">행사 안내 보기</text>
   </g>
-  <text x="1774" y="1000" text-anchor="end" fill="#8ea3ad" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="20" letter-spacing="4">INFORMATION CENTER · BUSAN</text>
+  <text x="1774" y="1000" text-anchor="end" fill="#8ea3ad" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif" font-size="20" letter-spacing="4">SAMPLE INFORMATION CENTER</text>
+<text x="40" y="45" fill="#ffffff" stroke="#17334d" stroke-width="0.5" font-family="sans-serif" font-size="24">SAMPLE · 예시</text>
 </svg>
