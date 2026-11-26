@@ -320,8 +320,8 @@ try {
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcuts = @(
-        (Join-Path $desktopDir "GugakSignage.lnk"),
-        (Join-Path $startMenuDir "GugakSignage.lnk")
+        (Join-Path $desktopDir "열린안내판.lnk"),
+        (Join-Path $startMenuDir "열린안내판.lnk")
     )
     foreach ($shortcutPath in $shortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "바로가기가 없습니다: $shortcutPath" }
@@ -332,8 +332,8 @@ try {
     $report.checks.desktopShortcut = $true
     $report.checks.startMenuShortcut = $true
     $adminShortcuts = @(
-        (Join-Path $desktopDir "GugakSignage 관리자.lnk"),
-        (Join-Path $startMenuDir "GugakSignage 관리자.lnk")
+        (Join-Path $desktopDir "열린안내판 관리자.lnk"),
+        (Join-Path $startMenuDir "열린안내판 관리자.lnk")
     )
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }

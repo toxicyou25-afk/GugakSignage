@@ -233,16 +233,16 @@ try {
     $report.checks.headlessDisablesAdminAutoOpen = $true
 
     $shortcuts = @(
-        (Join-Path $desktopDir "GugakSignage.lnk"),
-        (Join-Path $startMenuDir "GugakSignage.lnk")
+        (Join-Path $desktopDir "열린안내판.lnk"),
+        (Join-Path $startMenuDir "열린안내판.lnk")
     )
     foreach ($shortcutPath in $shortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "바로가기가 없습니다: $shortcutPath" }
         if (-not (Test-ShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) { throw "바로가기 소유권 확인 실패: $shortcutPath" }
     }
     $adminShortcuts = @(
-        (Join-Path $desktopDir "GugakSignage 관리자.lnk"),
-        (Join-Path $startMenuDir "GugakSignage 관리자.lnk")
+        (Join-Path $desktopDir "열린안내판 관리자.lnk"),
+        (Join-Path $startMenuDir "열린안내판 관리자.lnk")
     )
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
