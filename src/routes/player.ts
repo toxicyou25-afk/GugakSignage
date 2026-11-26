@@ -140,7 +140,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
       return !Number.isFinite(seen) || Date.parse(now) - seen > config.heartbeatOnlineMs;
     })();
     const previousHeartbeat = device.last_heartbeat_at ? Date.parse(device.last_heartbeat_at) : Number.NaN;
-    const heartbeatWasStale = !Number.isFinite(previousHeartbeat) || Date.parse(now) - previousHeartbeat > config.heartbeatOnlineMs;
+    const heartbeatWasStale = Number.isFinite(previousHeartbeat) && Date.parse(now) - previousHeartbeat > config.heartbeatOnlineMs;
     const reconnected = Boolean(device.hardware_id) && (previouslyOffline || heartbeatWasStale);
     const reconnectCount = device.reconnect_count + (reconnected ? 1 : 0);
     run(

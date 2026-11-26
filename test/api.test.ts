@@ -316,7 +316,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     });
     assert.equal(heartbeat.status, 200);
     assert.equal(heartbeat.body.ok, true);
-    assert.equal(heartbeat.body.reconnected, true);
+    assert.equal(heartbeat.body.reconnected, false);
 
     const devices = await admin('/api/devices');
     assert.equal(devices.body.devices[0].status, 'online');
@@ -328,7 +328,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(devices.body.devices[0].cacheReady, true);
     assert.equal(devices.body.devices[0].health, 'online');
     assert.equal(devices.body.devices[0].attention, true);
-    assert.equal(devices.body.devices[0].reconnectCount, 1);
+    assert.equal(devices.body.devices[0].reconnectCount, 0);
 
     // Simulate a player returning after the configured online window; the
     // disconnect is counted once, and ordinary subsequent heartbeats do not
@@ -338,10 +338,10 @@ test('관리 서버 API 핵심 흐름', async (t) => {
         new Date(Date.now() - config.heartbeatOnlineMs - 1_000).toISOString(), created.deviceId);
     const recovered = await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing' } });
     assert.equal(recovered.body.reconnected, true);
-    assert.equal(recovered.body.reconnectCount, 2);
+    assert.equal(recovered.body.reconnectCount, 1);
     const steady = await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing' } });
     assert.equal(steady.body.reconnected, false);
-    assert.equal(steady.body.reconnectCount, 2);
+    assert.equal(steady.body.reconnectCount, 1);
 
     // Manifest polling may keep last_seen fresh while the heartbeat loop is
     // stalled; recovery must still be detected from last_heartbeat_at.
@@ -349,11 +349,11 @@ test('관리 서버 API 핵심 흐름', async (t) => {
       .run(new Date().toISOString(), new Date(Date.now() - config.heartbeatOnlineMs - 1_000).toISOString(), created.deviceId);
     const staleRecovery = await player('/api/player/heartbeat', { method: 'POST', body: { state: 'playing' } });
     assert.equal(staleRecovery.body.reconnected, true);
-    assert.equal(staleRecovery.body.reconnectCount, 3);
+    assert.equal(staleRecovery.body.reconnectCount, 2);
     const recoveredDevice = (await admin('/api/devices')).body.devices[0];
     assert.equal(recoveredDevice.heartbeatAgeMs < 1_000, true);
     assert.equal(recoveredDevice.health, 'online');
-    db.prepare("UPDATE devices SET player_state = 'offline', cache_ready = 0 WHERE id = ?").run(created.deviceId);
+    db.prepare("UPDATE devices SET player_state = ?, cache_ready = 1 WHERE id = ?").run(`offline:${created.imageId}`, created.deviceId);
     const unhealthyDevice = (await admin('/api/devices')).body.devices[0];
     assert.equal(unhealthyDevice.health, 'degraded');
     assert.equal(unhealthyDevice.attention, true);

@@ -25,7 +25,7 @@ export function playerHealth(device: DeviceRow, onlineMs: number, now = Date.now
     device.published_version > device.manifest_version,
   );
   let state: PlayerHealthState = status;
-  if (status === 'online' && device.hardware_id && device.player_state === 'offline') state = 'degraded';
+  if (status === 'online' && device.hardware_id && (device.player_state === 'offline' || device.player_state?.startsWith('offline:'))) state = 'degraded';
   else if (status === 'online' && device.hardware_id && device.cache_ready === 0) state = 'degraded';
   else if (status === 'online' && device.last_error) state = 'degraded';
   // last_seen is also updated by manifest polling. Only the heartbeat timestamp
