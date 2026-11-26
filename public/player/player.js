@@ -287,16 +287,18 @@ function serverNow() {
 
 async function fetchManifest(options = {}) {
   if (!runtime.token) return;
+  const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/manifest', {
-      headers: { Authorization: `Bearer ${runtime.token}` },
+      headers: { Authorization: `Bearer ${requestToken}` },
       cache: 'no-store',
     });
     if (response.status === 401) {
-      handleUnauthorized();
+      handleUnauthorized(requestToken);
       return;
     }
     const data = await response.json().catch(() => null);
+    if (requestToken !== runtime.token) return;
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
@@ -311,6 +313,7 @@ async function fetchManifest(options = {}) {
     acceptManifest(manifest, Boolean(options.initial));
     runtime.cacheReady = await prefetchAssets(manifest);
   } catch (error) {
+    if (requestToken !== runtime.token) return;
     runtime.lastError = error.message;
     setOffline(true);
     if (!runtime.manifest) {
@@ -954,10 +957,11 @@ function escapeHtml(value) {
 
 async function sendHeartbeat() {
   if (!runtime.token) return;
+  const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/heartbeat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${runtime.token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
       body: JSON.stringify({
         state: runtime.offline ? 'offline' : runtime.currentNode ? 'playing' : 'waiting',
         currentContentId: runtime.currentContentId,
@@ -968,17 +972,20 @@ async function sendHeartbeat() {
       }),
     });
     if (response.status === 401) {
-      handleUnauthorized();
+      handleUnauthorized(requestToken);
       return;
     }
+    if (requestToken !== runtime.token) return;
     if (!response.ok) throw new Error(`heartbeat ${response.status}`);
     runtime.lastHeartbeatAt = new Date().toISOString();
   } catch {
+    if (requestToken !== runtime.token) return;
     setOffline(true);
   }
 }
 
-function handleUnauthorized() {
+function handleUnauthorized(requestToken = runtime.token) {
+  if (requestToken !== runtime.token) return;
   safeRemove(STORAGE.token);
   runtime.token = null;
   showPair('재생기 연결이 만료되었습니다. 관리 화면의 등록 코드를 다시 입력해 주세요.', safeGet(STORAGE.lastCode) || '');
