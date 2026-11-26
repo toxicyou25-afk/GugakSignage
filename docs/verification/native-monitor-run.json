@@ -1,0 +1,18 @@
+{
+  "source": "Windows Screen.AllScreens + EnumDisplayDevices host discovery",
+  "detectedAt": "2026-11-26T16:03:11.557Z",
+  "supported": true,
+  "monitors": [
+    {
+      "stableId": "<redacted-monitor-id>",
+      "deviceName": "\\\\.\\DISPLAY1",
+      "friendlyName": "Generic PnP Monitor",
+      "bounds": { "x": 0, "y": 0, "width": 1920, "height": 1080 },
+      "resolution": { "width": 1920, "height": 1080 },
+      "orientation": "landscape",
+      "primary": true,
+      "attached": true
+    }
+  ],
+  "note": "Observed on the current Windows host; one attached monitor detected. No multi-monitor physical setup was verified."
+}

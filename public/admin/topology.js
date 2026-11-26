@@ -3,6 +3,8 @@
   'use strict';
 
   let active = { siteId: '', detail: null, preview: null };
+  let monitorRefreshTimer = 0;
+  let monitorChangeHistory = [];
 
   const page = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -51,6 +53,7 @@
   }
 
   async function render(siteId, view) {
+    clearTimeout(monitorRefreshTimer);
     active = { siteId, detail: null, preview: null };
     view.innerHTML = '<div class="loading">장소와 화면 배치를 불러오는 중…</div>';
     try {
@@ -157,6 +160,10 @@
         </div>
 
         <aside class="stack">
+          <section class="card card-pad">
+            <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">HOST DISPLAY STATUS</p><h3>이 PC에 연결된 실제 모니터</h3><span class="tiny muted" data-native-monitors-status>감지 정보를 불러오는 중…</span></div></div>
+            <div data-native-monitors-list><div class="loading">Windows 디스플레이 확인 중…</div></div>
+          </section>
           <section class="card card-pad topology-preview-card">
             <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">3. RENDERPLAN PREVIEW</p><h3>게시 전 미리보기</h3><span class="tiny muted">송출과 같은 순수 엔진의 RenderPlan을 사용합니다.</span></div></div>
             <div id="topology-preview"><div class="loading">미리보기를 계산하는 중…</div></div>
@@ -170,6 +177,40 @@
         </aside>
       </div>`;
     await refreshPreview(view);
+    await refreshNativeMonitors(view);
+  }
+
+  async function refreshNativeMonitors(view) {
+    const list = view.querySelector('[data-native-monitors-list]');
+    const status = view.querySelector('[data-native-monitors-status]');
+    if (!list || !status || !view.isConnected) return;
+    try {
+      const result = await request('/api/native-monitors');
+      if (!list.isConnected) return;
+      if (!result.supported || result.error) {
+        status.textContent = result.error || '모니터 감지를 지원하지 않습니다.';
+        list.innerHTML = `<p class="tiny muted">${page(result.error || '실제 모니터 정보를 사용할 수 없습니다.')}</p>`;
+      } else {
+        const changes = result.changes || [];
+        monitorChangeHistory = [...monitorChangeHistory, ...changes.map((change) => ({ ...change, detectedAt: result.detectedAt }))].slice(-20);
+        status.textContent = `마지막 감지 ${dateTime(result.detectedAt)} · 15초 간격 확인`;
+        const changeNames = { bounds: '위치·영역', resolution: '해상도', orientation: '방향', primary: '주 디스플레이' };
+        const changeLabels = { connected: '연결됨', disconnected: '연결 해제됨', changed: '정보 변경됨' };
+        const history = monitorChangeHistory.length
+          ? `<div class="preview-plans">${monitorChangeHistory.slice().reverse().map((change) => `<div><span>${page(changeLabels[change.type])} · ${page(change.monitor.friendlyName)}</span><strong>${change.type === 'changed' ? page(change.changedAttributes.map((attribute) => changeNames[attribute]).join(', ')) : page(change.stableId)}</strong><small>${page(change.stableId)} · ${dateTime(change.detectedAt)}</small></div>`).join('')}</div>`
+          : '<p class="tiny muted">아직 모니터 변경을 감지하지 않았습니다.</p>';
+        const currentDisplays = result.monitors.length ? `<div class="screen-assignment-list">${result.monitors.map((monitor) => `
+          <div class="screen-assignment"><div class="screen-assignment-name"><span>${monitor.primary ? '★' : '•'}</span><div><strong>${page(monitor.friendlyName)}</strong><small>${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height} · ${page(monitor.orientation)}</small></div></div>
+          <small>${monitor.primary ? '주 디스플레이' : '보조 디스플레이'} · ${monitor.attached ? '연결됨' : '분리됨'} · (${monitor.bounds.x}, ${monitor.bounds.y})</small><small title="${page(monitor.stableId)}">${page(monitor.stableId)}</small></div>`).join('')}</div>` : '<p class="tiny muted">현재 연결된 모니터가 없습니다.</p>';
+        list.innerHTML = `<h4>감지된 모니터</h4>${currentDisplays}<h4>변경 이력</h4>${history}`;
+      }
+    } catch (error) {
+      status.textContent = '감지 상태를 확인하지 못했습니다.';
+      list.innerHTML = `<p class="form-error">${page(error.message)}</p>`;
+    } finally {
+      clearTimeout(monitorRefreshTimer);
+      if (list.isConnected) monitorRefreshTimer = setTimeout(() => refreshNativeMonitors(view), 15000);
+    }
   }
 
   function planCard(plan, display, slot) {

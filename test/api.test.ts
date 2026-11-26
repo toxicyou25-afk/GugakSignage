@@ -117,6 +117,14 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const me = await admin('/api/auth/me');
     assert.equal(me.body.authenticated, true);
+
+    const nativeMonitors = await request('/api/native-monitors');
+    assert.equal(nativeMonitors.status, 401);
+
+    const nativeMonitorStatus = await admin('/api/native-monitors');
+    assert.equal(nativeMonitorStatus.status, 200);
+    assert.equal(typeof nativeMonitorStatus.body.supported, 'boolean');
+    assert.ok(Array.isArray(nativeMonitorStatus.body.monitors));
   });
 
   await t.test('이미지·동영상 업로드와 URL 콘텐츠 추가', async () => {

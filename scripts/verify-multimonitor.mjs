@@ -159,6 +159,15 @@ try {
 
   await admin.locator('.site-card').first().click();
   await admin.waitForSelector('.topology-config');
+  await admin.getByRole('heading', { name: '이 PC에 연결된 실제 모니터' }).waitFor();
+  await admin.waitForFunction(() => {
+    const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
+    return status !== '감지 정보를 불러오는 중…';
+  });
+  step('현재 PC의 물리 모니터 감지 상태 표시', {
+    detectedMonitors: await admin.locator('[data-native-monitors-list] .screen-assignment').count(),
+    status: await admin.locator('[data-native-monitors-status]').textContent(),
+  });
   await admin.fill('.topology-config input[name=displayCount]', '4');
   await admin.fill('.topology-config input[name=width]', '1280');
   await admin.fill('.topology-config input[name=height]', '720');
