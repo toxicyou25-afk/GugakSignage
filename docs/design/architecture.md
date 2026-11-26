@@ -202,7 +202,7 @@ Site 1─* DisplayGroup 1─* Display
 
 ### 추가·해제
 
-- 하트비트 30초, 오프라인 90초 판정.
+- 현재 MVP 구현은 15초 heartbeat와 45초 online 판정 창을 사용한다(`HEARTBEAT_MS=15000`, `HEARTBEAT_ONLINE_SECONDS=45`). 운영 화면의 `status`는 `last_seen` 기준이며, heartbeat 생존 상태는 별도 `health=stale`로 구분한다.
 - 모니터 제거 시 그룹 레이아웃을 자동 재배치하거나, 운영자가 빈 슬롯을 유지할지 선택한다.
 - 모니터 추가 시 빈 슬롯 → 자동 배정, 없으면 새 행/열 또는 사용자 지정 배치를 제안한다.
 - 모든 상태 변화는 감사 로그에 남긴다.

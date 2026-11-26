@@ -96,7 +96,7 @@
 | 재생기 | `GET /api/player/config` | 관리 화면 링크, 샘플 모드·코드, 개발 모드 비밀번호 여부 |
 | 재생기 | `POST /api/player/register` | 코드 + hardwareId로 등록, 토큰 발급. `takeover: true`면 기존 연결 인수 |
 | 재생기 | `GET /api/player/manifest` | 게시 스냅샷·현재 서버 시각 |
-| 재생기 | `POST /api/player/heartbeat` | 15초 상태 갱신, 현재 콘텐츠·오류 |
+| 재생기 | `POST /api/player/heartbeat` | 15초 상태 갱신. 현재 콘텐츠·오류와 선택 `playerVersion`, 적용 `manifestVersion`, `cacheReady`를 보고하고 `reconnected`·`reconnectCount`를 응답한다. 상세 계약은 [Manager/Player API](manager-player-api.md)를 참고한다. |
 | 공통 | `GET /api/health` | 상태 확인 |
 
 ### 등록과 접속 상태
@@ -104,7 +104,7 @@
 1. 관리자가 기기를 만들면 6자리 코드와 무작위 재생기 토큰 자리의 기기 행이 생긴다.
 2. 재생기는 `hardwareId`(브라우저 UUID)를 localStorage에 만들고 코드와 함께 등록한다.
 3. 이미 다른 hardwareId가 연결된 기기는 `409`로 거절한다. 관리자가 연결을 해제한 뒤 다시 시도해야 한다.
-4. 마지막 하트비트가 45초 이내면 관리 화면은 `온라인`, 그 외 `오프라인`, 하드웨어 ID가 없으면 `연결 대기`로 표시한다.
+4. 기존 `status`는 하드웨어 ID가 없으면 `연결 대기`, `last_seen`이 없거나 45초 초과면 `오프라인`, 그 외 `온라인`이다. `last_seen`은 등록·manifest 조회·heartbeat에서 갱신될 수 있어 heartbeat 생존을 단독으로 뜻하지 않는다. 별도 `health`는 온라인 장비의 heartbeat가 45초 넘게 없으면 `stale`, 플레이어가 오프라인·캐시 미준비·오류를 보고하면 `degraded`로 표시한다. `attention` 및 `manifestBehind`는 추가 조치가 필요한 상태를 요약한다.
 5. 상태는 별도 폴링 없이 관리 화면에서 새로고침할 때 계산한다.
 
 ### 시간표
