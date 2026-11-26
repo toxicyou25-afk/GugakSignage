@@ -4,7 +4,12 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { createFullscreenPlayerWindows, selectPlayerHealthTargets } from './player-windows.mjs';
+import {
+  createFullscreenPlayerWindows,
+  playerWindowTargetsAreCurrent,
+  readTargetsForPlayerReconciliation,
+  selectPlayerHealthTargets,
+} from './player-windows.mjs';
 import { classifyPlayerState } from './watchdog-health.mjs';
 import { openAdminOnStartup } from './admin-startup.mjs';
 import { verifyAdoptedPlayerStillOwned, verifyPlayerProcessIdentity } from './player-adoption.mjs';
@@ -174,6 +179,7 @@ let playerDeviceId = persistedPlayerState.deviceId;
 let playerUrl = persistedPlayerState.playerUrl || config.playerUrl;
 let playerScreenTargets = persistedPlayerState.screenTargets || [];
 let playerWindowSetupPending = playerScreenTargets.length > 0;
+let playerWindowConfiguredTargets = null;
 let lastScreenWindowCheckAt = 0;
 let playerLastError = persistedPlayerState.lastError;
 let playerLastExit = null;
@@ -342,6 +348,7 @@ async function retainFallbackCanvas(existingTargets) {
 async function configurePlayerWindows(existingTargets) {
   if (!playerScreenTargets.length) {
     playerWindowSetupPending = false;
+    playerWindowConfiguredTargets = null;
     return true;
   }
   lastScreenWindowCheckAt = Date.now();
@@ -378,10 +385,26 @@ async function configurePlayerWindows(existingTargets) {
     targets.push({ ...assignment, bounds: monitor.bounds });
   }
   const complete = missing.length === 0 && targets.length === playerScreenTargets.length;
-  const pages = (existingTargets || await readCdpTargets()).filter(isPlayerPageTarget);
+  const targetRead = await readTargetsForPlayerReconciliation(existingTargets, readCdpTargets);
+  if (!targetRead.targets) {
+    playerWindowSetupPending = true;
+    playerLastError = '모니터별 재생 창을 준비하는 중입니다.';
+    writeLog('INFO', 'browser CDP targets are not ready; monitor window setup will retry', {
+      message: targetRead.error?.message || 'CDP target list unavailable',
+    });
+    writeState();
+    writePlayerState();
+    return false;
+  }
+  const pages = targetRead.targets.filter(isPlayerPageTarget);
+  if (!playerWindowSetupPending && playerWindowTargetsAreCurrent(playerWindowConfiguredTargets, targets, pages)) {
+    playerLastError = null;
+    return true;
+  }
   if (!complete || !targets.length) {
     const fallback = await retainFallbackCanvas(pages);
     playerWindowSetupPending = true;
+    playerWindowConfiguredTargets = null;
     playerLastError = targets.length
       ? '일부 배정 모니터가 연결되지 않아 기본 화면으로 재생합니다.'
       : '배정된 모니터가 연결되지 않아 기본 화면으로 재생합니다.';
@@ -405,24 +428,29 @@ async function configurePlayerWindows(existingTargets) {
     });
     if (!result.success) throw new Error(result.error || 'CDP window setup failed.');
     let ready = false;
+    let finalized = false;
     if (complete) {
       ready = await waitForPlayerDisplayTargets(targets, watchdogConfig.browserTargetMissingGraceMs);
       if (ready) {
         const refreshedPages = (await readCdpTargets()).filter(isPlayerPageTarget);
         const refreshedFallback = refreshedPages.find(isFallbackPlayerTarget);
-        const finalized = await createFullscreenPlayerWindows({
+        const finalizationResult = await createFullscreenPlayerWindows({
           webSocketDebuggerUrl: await readBrowserDebuggerUrl(),
           basePlayerUrl: playerUrl || config.playerUrl,
           fallbackTargetId: refreshedFallback?.id || '',
           closeFallback: true,
+          skipExistingDisplaySetup: true,
           screenTargets: targets,
           existingTargets: refreshedPages.map((target) => ({ id: target.id, url: target.url })),
         });
-        if (!finalized.success) throw new Error(finalized.error || 'CDP fallback close failed.');
+        if (!finalizationResult.success) throw new Error(finalizationResult.error || 'CDP fallback close failed.');
+        finalized = true;
       }
     }
-    playerWindowSetupPending = !complete || !ready;
-    playerLastError = complete && ready ? null : '모니터별 재생 창이 준비되지 않아 기본 화면을 유지합니다.';
+    const configured = complete && ready && finalized;
+    playerWindowSetupPending = !configured;
+    playerWindowConfiguredTargets = configured ? targets : null;
+    playerLastError = configured ? null : '모니터별 재생 창이 준비되지 않아 기본 화면을 유지합니다.';
     writeLog(complete ? 'INFO' : 'WARN', 'per-display player windows reconciled', {
       assignedDisplays: playerScreenTargets.length,
       connectedDisplays: targets.length,
@@ -432,7 +460,7 @@ async function configurePlayerWindows(existingTargets) {
     });
     writeState();
     writePlayerState();
-    return complete && ready;
+    return configured;
   } catch (error) {
     await retainFallbackCanvas(existingTargets);
     playerWindowSetupPending = true;
@@ -802,6 +830,7 @@ async function startBrowser(reason) {
     });
     browser = child;
     browserStartedAt = Date.now();
+    playerWindowConfiguredTargets = null;
     browserHealthySince = 0;
     browserHealthMisses = 0;
     child.once('error', (error) => {
@@ -821,6 +850,7 @@ async function startBrowser(reason) {
     child.once('exit', (code, signal) => {
       writeLog('WARN', 'browser exited', { pid: child.pid, code, signal });
       if (browser === child) browser = null;
+      playerWindowConfiguredTargets = null;
       browserStartedAt = 0;
       browserHealthySince = 0;
       browserHealthMisses = 0;
@@ -910,8 +940,8 @@ async function handlePlayerCommand() {
   clearPlayerCommand(config.dataDir);
   try {
     if (command.action === 'stop') {
-      playerScreenTargets = [];
       playerWindowSetupPending = false;
+      playerWindowConfiguredTargets = null;
       await stopBrowser('admin-request');
       return;
     }
@@ -947,6 +977,7 @@ async function handlePlayerCommand() {
     playerUrl = requestedUrl.toString();
     playerScreenTargets = Array.isArray(command.screenTargets) ? command.screenTargets : [];
     playerWindowSetupPending = playerScreenTargets.length > 0;
+    playerWindowConfiguredTargets = null;
     lastScreenWindowCheckAt = 0;
     playerLastError = null;
     playerLastExit = null;
@@ -965,6 +996,7 @@ async function replaceBrowser(reason) {
   const child = browser;
   child.__watchdogIntentionalStop = true;
   browser = null;
+  playerWindowConfiguredTargets = null;
   writeLog('WARN', 'browser check failed; replacing process', { pid: child.pid, reason });
   try {
     await killProcessTree(child);

@@ -12,7 +12,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { all, get, openDatabase, run, type DB } from '../src/db.js';
 import { seedDatabase } from '../src/seed.js';
-import { buildWallPlans, buildWallSnapshot, createSite, engineSnapshotForWall } from '../src/topology.js';
+import { buildWallPlans, buildWallSnapshot, createSite, engineSnapshotForWall, updateDisplay } from '../src/topology.js';
 import { ensureDeviceTopology } from '../src/topology-migration.js';
 
 const require = createRequire(import.meta.url);
@@ -357,6 +357,39 @@ test('기존 디스플레이 행을 보존하며 native_monitor_id를 반복 안
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test('physical monitor binding uses the configured heartbeat window', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-native-monitor-heartbeat-'));
+  const db = openDatabase(path.join(tempDir, 'topology.sqlite'));
+  try {
+    const site = createSite(db, { name: 'Heartbeat site', timezone: 'Asia/Seoul', notes: null });
+    const display = get<{ id: string }>(db, 'SELECT id FROM displays WHERE site_id = ?', site.site.id)!;
+    const now = new Date().toISOString();
+    run(db, `INSERT INTO devices(id, name, orientation, width, height, pairing_code, published_version,
+               last_host_local, last_seen, created_at, updated_at)
+             VALUES ('device-heartbeat', 'Local PC', 'landscape', 1920, 1080, 'HEART1', 0, 1, ?, ?, ?),
+                    ('device-other', 'Other PC', 'landscape', 1920, 1080, 'OTHER1', 0, 0, NULL, ?, ?)`,
+      new Date(Date.now() - 30_000).toISOString(), now, now, now, now);
+    updateDisplay(db, display.id, 60_000, { deviceId: 'device-other' });
+    assert.throws(
+      () => updateDisplay(db, display.id, 20_000, {
+        deviceId: 'device-heartbeat', nativeMonitorId: 'MONITOR\\HEARTBEAT',
+      }),
+      /원격 Player의 모니터 배정/,
+    );
+    assert.doesNotThrow(() => updateDisplay(db, display.id, 60_000, {
+      deviceId: 'device-heartbeat', nativeMonitorId: 'MONITOR\\HEARTBEAT',
+    }));
+    const rebound = get<{ device_id: string; native_monitor_id: string }>(
+      db, 'SELECT device_id, native_monitor_id FROM displays WHERE id = ?', display.id,
+    );
+    assert.equal(rebound.device_id, 'device-heartbeat');
+    assert.equal(rebound.native_monitor_id, 'MONITOR\\HEARTBEAT');
+  } finally {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-topology-api-'));
   const config: AppConfig = loadConfig({
@@ -497,6 +530,21 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\RIGHT', 'MONITOR\\DISCONNECTED-SAVED',
     ]);
     fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+
+    run(db, 'UPDATE devices SET last_host_local = 1, last_seen = ? WHERE id = ?',
+      new Date(Date.now() - config.heartbeatOnlineMs * 2).toISOString(), device.body.device.id);
+    const staleLocalLaunch = await request('/api/player/launch', {
+      method: 'POST', body: { deviceId: device.body.device.id },
+    });
+    assert.equal(staleLocalLaunch.status, 202, JSON.stringify(staleLocalLaunch.body));
+    assert.equal(staleLocalLaunch.body.screenTargetCount, 4);
+    const staleLaunchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
+    assert.deepEqual(staleLaunchCommand.screenTargets.map((target: any) => target.displayId), displays.map((display: any) => display.id));
+    assert.deepEqual(staleLaunchCommand.screenTargets.map((target: any) => target.nativeMonitorId), [
+      'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\RIGHT', 'MONITOR\\DISCONNECTED-SAVED',
+    ]);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+    run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', new Date().toISOString(), device.body.device.id);
 
     const hostMonitors = await request('/api/native-monitors');
     assert.equal(hostMonitors.status, 200, JSON.stringify(hostMonitors.body));

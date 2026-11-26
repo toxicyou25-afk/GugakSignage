@@ -38,6 +38,56 @@ export function buildPlayerWindowTargets(basePlayerUrl, screenTargets) {
   });
 }
 
+function windowTargetKey(target) {
+  if (!target || typeof target.displayId !== 'string' || typeof target.nativeMonitorId !== 'string') return null;
+  const bounds = target.bounds;
+  if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isSafeInteger)) return null;
+  return JSON.stringify({
+    displayId: target.displayId,
+    nativeMonitorId: target.nativeMonitorId,
+    bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+  });
+}
+
+export function playerWindowTargetsAreCurrent(previousTargets, desiredTargets, existingTargets) {
+  if (!Array.isArray(previousTargets) || !Array.isArray(desiredTargets) || !Array.isArray(existingTargets) ||
+      desiredTargets.length === 0 || previousTargets.length !== desiredTargets.length ||
+      existingTargets.length !== desiredTargets.length) return false;
+  const previousByDisplay = new Map();
+  const desiredByDisplay = new Map();
+  for (const [list, targets] of [[previousByDisplay, previousTargets], [desiredByDisplay, desiredTargets]]) {
+    for (const target of targets) {
+      const key = windowTargetKey(target);
+      if (!key || list.has(target.displayId)) return false;
+      list.set(target.displayId, key);
+    }
+  }
+  if ([...desiredByDisplay].some(([displayId, key]) => previousByDisplay.get(displayId) !== key)) return false;
+  const existingDisplayIds = new Set();
+  for (const target of existingTargets) {
+    try {
+      const url = new URL(target?.url);
+      const displayId = url.searchParams.get('display');
+      if (!displayId || !desiredByDisplay.has(displayId) || existingDisplayIds.has(displayId)) return false;
+      existingDisplayIds.add(displayId);
+    } catch {
+      return false;
+    }
+  }
+  return existingDisplayIds.size === desiredByDisplay.size;
+}
+
+export async function readTargetsForPlayerReconciliation(existingTargets, readTargets) {
+  if (Array.isArray(existingTargets)) return { targets: existingTargets, error: null };
+  try {
+    const targets = await readTargets();
+    if (!Array.isArray(targets)) throw new Error('CDP target list is invalid.');
+    return { targets, error: null };
+  } catch (error) {
+    return { targets: null, error };
+  }
+}
+
 export function selectPlayerHealthTargets(playerPages, displayIds) {
   const pages = Array.isArray(playerPages) ? playerPages : [];
   const ids = Array.isArray(displayIds) ? displayIds : [];
@@ -135,6 +185,7 @@ export async function createFullscreenPlayerWindows({
   screenTargets,
   existingTargets = [],
   closeFallback = true,
+  skipExistingDisplaySetup = false,
   webSocketFactory = (url) => connectLocalDevtoolsWebSocket(url),
   timeoutMs = 5000,
 }) {
@@ -191,6 +242,7 @@ export async function createFullscreenPlayerWindows({
         created.push(targetId);
       }
       active.push(targetId);
+      if (existing && skipExistingDisplaySetup) continue;
       const window = await cdp.call('Browser.getWindowForTarget', { targetId });
       if (!Number.isInteger(window.windowId)) throw new Error('CDP returned no window ID.');
       await cdp.call('Browser.setWindowBounds', {

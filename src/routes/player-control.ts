@@ -29,11 +29,8 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
       'SELECT id, native_monitor_id FROM displays WHERE device_id = ? AND enabled = 1 ORDER BY start_index, created_at, id',
       deviceId,
     );
-    const lastSeen = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
-    const heartbeatAge = Date.now() - lastSeen;
-    const localHostOnline = device.last_host_local === 1 && Number.isFinite(lastSeen) &&
-      heartbeatAge >= 0 && heartbeatAge <= config.heartbeatOnlineMs;
-    const screenTargets = localHostOnline && assignments.length > 0 && assignments.every((display) => Boolean(display.native_monitor_id))
+    // A stale heartbeat must not discard saved local monitor bindings on stop/restart.
+    const screenTargets = device.last_host_local === 1 && assignments.length > 0 && assignments.every((display) => Boolean(display.native_monitor_id))
       ? assignments.map((display) => ({ displayId: display.id, nativeMonitorId: display.native_monitor_id! }))
       : [];
     const result = requestPlayerLaunch(config, device, screenTargets);

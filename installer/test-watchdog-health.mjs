@@ -5,7 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { classifyPlayerState } from './ops/watchdog-health.mjs';
-import { buildPlayerWindowTargets, createFullscreenPlayerWindows, selectPlayerHealthTargets } from './ops/player-windows.mjs';
+import {
+  buildPlayerWindowTargets,
+  createFullscreenPlayerWindows,
+  playerWindowTargetsAreCurrent,
+  readTargetsForPlayerReconciliation,
+  selectPlayerHealthTargets,
+} from './ops/player-windows.mjs';
 import { playerStatePath, readPlayerState } from './ops/player-state.mjs';
 
 const now = Date.parse('2026-11-24T12:00:00.000Z');
@@ -71,6 +77,34 @@ test('display window targets preserve the pairing query and carry physical bound
   assert.equal(new URL(targets[0].url).searchParams.get('display'), 'display-a');
   assert.deepEqual(targets[0].bounds, screenTargets[0].bounds);
   assert.equal(new URL(targets[1].url).searchParams.get('display'), 'display-b');
+});
+
+test('unchanged healthy display windows need no fullscreen reconciliation', () => {
+  const pages = screenTargets.map((target) => ({
+    id: target.displayId,
+    url: `http://127.0.0.1:3000/player/?display=${target.displayId}`,
+  }));
+  assert.equal(playerWindowTargetsAreCurrent(screenTargets, screenTargets, pages), true);
+  assert.equal(playerWindowTargetsAreCurrent(screenTargets, screenTargets, pages.slice().reverse()), true);
+});
+
+test('display reconciliation runs after bounds change, missing window, or stale window', () => {
+  const pages = screenTargets.map((target) => ({
+    id: target.displayId,
+    url: `http://127.0.0.1:3000/player/?display=${target.displayId}`,
+  }));
+  const movedTargets = [{ ...screenTargets[0], bounds: { ...screenTargets[0].bounds, x: -2560 } }, screenTargets[1]];
+  assert.equal(playerWindowTargetsAreCurrent(screenTargets, movedTargets, pages), false);
+  assert.equal(playerWindowTargetsAreCurrent(screenTargets, screenTargets, pages.slice(1)), false);
+  assert.equal(playerWindowTargetsAreCurrent(screenTargets, screenTargets, [...pages, {
+    id: 'stale', url: 'http://127.0.0.1:3000/player/?display=display-removed',
+  }]), false);
+});
+
+test('CDP target discovery failure is returned as retryable reconciliation state', async () => {
+  const failure = new Error('CDP is not ready');
+  const result = await readTargetsForPlayerReconciliation(undefined, async () => { throw failure; });
+  assert.deepEqual(result, { targets: null, error: failure });
 });
 
 test('display window target validation rejects duplicate or invalid physical bindings', () => {
@@ -139,6 +173,32 @@ test('CDP opens one fullscreen window per logical display before closing the fal
   assert.equal(calls.at(-1).method, 'Target.closeTarget');
   assert.equal(calls.at(-1).params.targetId, 'fallback-canvas');
   assert.equal(socket.closed, true);
+});
+
+test('CDP fallback finalization closes only the fallback after display windows are ready', async () => {
+  const socket = new FakeCdpSocket();
+  const existingTargets = [
+    ...screenTargets.map((target) => ({
+      id: `target-${target.displayId}`,
+      url: `http://127.0.0.1:3000/player/?display=${target.displayId}`,
+    })),
+    { id: 'fallback-canvas', url: wallPlayerUrl },
+  ];
+  const result = await createFullscreenPlayerWindows({
+    webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/test',
+    basePlayerUrl: wallPlayerUrl,
+    fallbackTargetId: 'fallback-canvas',
+    screenTargets,
+    existingTargets,
+    closeFallback: true,
+    skipExistingDisplaySetup: true,
+    webSocketFactory: () => socket,
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.fallbackClosed, true);
+  assert.deepEqual(result.activeTargetIds, ['target-display-a', 'target-display-b']);
+  assert.equal(socket.messages.some((call) => call.method === 'Browser.setWindowBounds'), false);
+  assert.deepEqual(socket.messages.filter((call) => call.method === 'Target.closeTarget').map((call) => call.params.targetId), ['fallback-canvas']);
 });
 
 test('CDP reuses and repositions existing display windows while a disconnected target keeps fallback playback', async () => {
