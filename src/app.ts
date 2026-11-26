@@ -53,11 +53,11 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
   const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024, files: 1 } });
-  app.get('/api/settings/logo', admin, (_req, res) => {
+  app.get('/api/settings/logo', admin, (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ dataUrl: getMeta(db, 'institution_logo') || null });
   });
-  app.put('/api/settings/logo', admin, logoUpload.single('logo'), (req, res) => {
+  app.put('/api/settings/logo', admin, logoUpload.single('logo'), (req: Request, res: Response) => {
     const file = req.file;
     if (!file) { res.status(400).json({ error: '로고 파일을 선택하세요.' }); return; }
     try {
@@ -73,7 +73,7 @@ export function createApp(db: DB, config: AppConfig) {
       res.status(400).json({ error: '올바른 이미지 파일이 아닙니다.' });
     }
   });
-  app.delete('/api/settings/logo', admin, (_req, res) => {
+  app.delete('/api/settings/logo', admin, (_req: Request, res: Response) => {
     setMeta(db, 'institution_logo', '');
     res.json({ dataUrl: null });
   });
