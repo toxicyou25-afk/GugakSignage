@@ -503,7 +503,7 @@ export function updateDisplay(
   const requestedNativeMonitorId = input.nativeMonitorId === undefined
     ? display.native_monitor_id
     : input.nativeMonitorId;
-  if (requestedNativeMonitorId !== null && !finalDeviceId) {
+  if (input.nativeMonitorId !== undefined && requestedNativeMonitorId !== null && !finalDeviceId) {
     throw new Error('물리 모니터를 지정하려면 먼저 PC 기기를 연결해 주세요.');
   }
   const finalDevice = finalDeviceId

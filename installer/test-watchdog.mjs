@@ -38,6 +38,14 @@ try {
     path.join(repoRoot, 'installer', 'ops', 'player-adoption.mjs'),
     path.join(opsDir, 'player-adoption.mjs'),
   );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'player-windows.mjs'),
+    path.join(opsDir, 'player-windows.mjs'),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'cdp-websocket.mjs'),
+    path.join(opsDir, 'cdp-websocket.mjs'),
+  );
   const config = {
     installDir,
     dataDir,

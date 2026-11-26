@@ -560,6 +560,11 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       method: 'PUT', body: { deviceId: null, nativeMonitorId: 'MONITOR\\DISCONNECTED-SAVED' },
     });
     assert.equal(monitorWithoutDevice.status, 400);
+    const unpairAndClearSavedMonitor = await request(`/api/displays/${displays[3].id}`, {
+      method: 'PUT', body: { deviceId: null },
+    });
+    assert.equal(unpairAndClearSavedMonitor.status, 200, JSON.stringify(unpairAndClearSavedMonitor.body));
+    assert.equal(unpairAndClearSavedMonitor.body.nativeMonitorId, null);
 
     const unreportedRemoteBinding = await request(`/api/displays/${displays[3].id}`, {
       method: 'PUT', body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-UNREPORTED' },
