@@ -51,11 +51,11 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
-  app.get('/api/settings/institution', admin, (_req, res) => {
+  app.get('/api/settings/institution', admin, (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ name: getMeta(db, 'institution_name') ?? '' });
   });
-  app.put('/api/settings/institution', admin, (req, res) => {
+  app.put('/api/settings/institution', admin, (req: Request, res: Response) => {
     const raw: unknown = req.body?.name;
     if (typeof raw !== 'string' || raw.length > 100 || /[\u0000-\u001f\u007f]/u.test(raw)) {
       res.status(400).json({ error: '기관명은 제어문자 없이 100자 이내로 입력하세요.' });
