@@ -253,11 +253,38 @@ try {
   if (localMonitor) await refreshedFourth.locator('[data-screen-native-monitor]').selectOption(localMonitor);
   await refreshedFourth.locator('[data-screen-fit]').selectOption('cover');
   await refreshedFourth.locator('[data-screen-playlist]').selectOption(playlist.urlPlaylistId);
+  const screenDisplayId = await refreshedFourth.getAttribute('data-display-id');
+  if (!screenDisplayId) throw new Error('4번 화면의 ID를 확인할 수 없습니다.');
+  const screenSaveResponsePromise = admin.waitForResponse((response) =>
+    response.url().includes(`/api/displays/${encodeURIComponent(screenDisplayId)}`) &&
+    response.request().method() === 'PUT',
+  );
   await refreshedFourth.locator('[data-topology-action=save-screen]').click();
+  const screenSaveResponse = await screenSaveResponsePromise;
+  let screenSaveBody;
+  try { screenSaveBody = await screenSaveResponse.json(); } catch { screenSaveBody = null; }
+  report.screenSave = { status: screenSaveResponse.status(), body: screenSaveBody };
+  if (!screenSaveResponse.ok()) {
+    throw new Error(`화면 배정 저장 API가 실패했습니다: ${screenSaveResponse.status()} ${JSON.stringify(screenSaveBody)}`);
+  }
   await admin.waitForSelector('.preview-canvas');
-  await admin.waitForFunction((playlistId) =>
-    document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value === playlistId,
-  playlist.urlPlaylistId);
+  try {
+    await admin.waitForFunction((playlistId) =>
+      document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value === playlistId,
+    playlist.urlPlaylistId);
+  } catch (error) {
+    report.screenSaveFailureState = await admin.evaluate(async () => {
+      const sites = await (await fetch('/api/sites')).json();
+      const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
+      return {
+        uiPlaylistId: document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value || null,
+        savedPlaylistId: detail.groups[0].displays[3]?.playlist_id || null,
+        savedDeviceId: detail.groups[0].displays[3]?.device_id || null,
+        toast: document.querySelector('.toast:not([hidden])')?.textContent || null,
+      };
+    });
+    throw error;
+  }
   await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
   const adminUrlHeading = await admin.frameLocator('.preview-screen iframe').locator('h1').innerText({ timeout: 10_000 });
   if (!adminUrlHeading.includes('오늘의 안내')) throw new Error(`관리 미리보기 URL iframe이 표시되지 않았습니다: ${adminUrlHeading}`);
