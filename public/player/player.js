@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
+import { createCacheReadiness } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v4';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -44,6 +45,7 @@ const el = {
 };
 
 const runtime = {
+  cacheReadiness: createCacheReadiness(),
   token: safeGet(STORAGE.token),
   deviceId: safeGet(STORAGE.deviceId),
   manifest: null,
@@ -189,6 +191,8 @@ async function pair(code, auto = false, options = {}) {
     clearInterval(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
     safeSet(STORAGE.token, data.token);
+    runtime.cacheReadiness.invalidate();
+    runtime.cacheReady = false;
     if (runtime.deviceId) safeSet(STORAGE.deviceId, runtime.deviceId);
     safeSet(STORAGE.lastCode, normalized);
     if (previousDevice && previousDevice !== runtime.deviceId) {
@@ -288,6 +292,7 @@ function serverNow() {
 async function fetchManifest(options = {}) {
   if (!runtime.token) return;
   const requestToken = runtime.token;
+  const manifestGeneration = runtime.cacheReadiness.begin();
   try {
     const response = await fetch('/api/player/manifest', {
       headers: { Authorization: `Bearer ${requestToken}` },
@@ -312,11 +317,16 @@ async function fetchManifest(options = {}) {
     safeSet(STORAGE.manifestCachedAt, String(Date.now()));
     el.error.hidden = true;
     acceptManifest(manifest, Boolean(options.initial));
-    runtime.cacheReady = await prefetchAssets(manifest);
+    runtime.cacheReady = await runtime.cacheReadiness.prepare(
+      manifestGeneration,
+      () => prefetchAssets(manifest, requestToken, manifestGeneration),
+    );
   } catch (error) {
     if (requestToken !== runtime.token) return;
+    if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.lastError = error.message;
     setOffline(true);
+    runtime.cacheReady = false;
     if (!runtime.manifest) {
       const cached = loadCachedManifest();
       if (cached) {
@@ -1085,8 +1095,7 @@ function collectContents(manifest) {
   return [...map.values()];
 }
 
-async function prefetchAssets(manifest) {
-  if (runtime.prefetching) return;
+async function prefetchAssets(manifest, requestToken, manifestGeneration) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
   const activeIds = new Set(contents.map((content) => content.id));
@@ -1100,7 +1109,10 @@ async function prefetchAssets(manifest) {
       request.onerror = () => reject(request.error);
     });
     for (const content of contents) {
-      if (!runtime.token) break;
+      if (!runtime.token || runtime.token !== requestToken || !runtime.cacheReadiness.isCurrent(manifestGeneration)) {
+        ready = false;
+        break;
+      }
       if (existing.has(content.id)) continue;
       try {
         const response = await fetch(content.url, { cache: 'default' });
