@@ -3,7 +3,7 @@
 
 const CACHE = 'gugak-signage-shell-v4';
 const SHELL = [
-  './', './index.html', './styles.css', './player.js',
+  './', './index.html', './styles.css', './player.js', './player-runtime.js',
   '/engine/index.js',
   '/engine/types.js',
   '/engine/src/validation.js',
