@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import { imageSize } from 'image-size';
@@ -17,6 +18,19 @@ import { playerRoutes } from './routes/player.js';
 import { playerControlRoutes } from './routes/player-control.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
+
+type DecodedImage = { width: number; height: number; data: Uint8Array };
+const require = createRequire(import.meta.url);
+const pngDecoder = require('pngjs') as {
+  PNG: { sync: { read: (buffer: Buffer, options?: { checkCRC?: boolean }) => DecodedImage } };
+};
+const jpegDecoder = require('jpeg-js') as {
+  decode: (buffer: Buffer, options: {
+    tolerantDecoding: boolean;
+    maxResolutionInMP: number;
+    maxMemoryUsageInMB: number;
+  }) => DecodedImage;
+};
 
 export function createApp(db: DB, config: AppConfig) {
   initializePlayerControl(config);
@@ -65,6 +79,16 @@ export function createApp(db: DB, config: AppConfig) {
       const mime = info.type === 'png' ? 'image/png' : info.type === 'jpg' ? 'image/jpeg' : null;
       if (!mime || !info.width || !info.height || info.width > 2048 || info.height > 2048) {
         res.status(400).json({ error: '2048×2048 이하의 PNG 또는 JPEG 파일만 사용할 수 있습니다.' }); return;
+      }
+      const decoded = info.type === 'png'
+        ? pngDecoder.PNG.sync.read(file.buffer, { checkCRC: true })
+        : jpegDecoder.decode(file.buffer, {
+            tolerantDecoding: false,
+            maxResolutionInMP: 4.2,
+            maxMemoryUsageInMB: 64,
+          });
+      if (decoded.width !== info.width || decoded.height !== info.height || decoded.data.byteLength !== info.width * info.height * 4) {
+        res.status(400).json({ error: '올바른 이미지 파일이 아닙니다.' }); return;
       }
       const dataUrl = 'data:' + mime + ';base64,' + file.buffer.toString('base64');
       setMeta(db, 'institution_logo', dataUrl);
