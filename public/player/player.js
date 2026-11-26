@@ -302,6 +302,7 @@ async function fetchManifest(options = {}) {
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
+    if (runtime.token !== requestToken) return;
     setOffline(false);
     if (runtime.lastError) runtime.lastError = null;
     const serverMs = Date.parse(manifest.serverTime);
