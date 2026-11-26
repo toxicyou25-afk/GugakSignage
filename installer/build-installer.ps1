@@ -69,6 +69,11 @@ Push-Location $payloadApp
 try { & $npmCommand.Source ci --omit=dev --ignore-scripts } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw "프로덕션 의존성 설치 실패" }
 
+Write-Step "실제 payload 라이선스 파일 검증"
+$licenseVerifier = Join-Path $repoRoot "scripts\verify-license-payload.mjs"
+& $nodeCommand.Source $licenseVerifier $repoRoot $payloadApp
+if ($LASTEXITCODE -ne 0) { throw "Windows payload 라이선스 검증 실패" }
+
 $portableRoot = Join-Path $OutputDir "portable\GugakSignage"
 Copy-DirectoryContents -Source $payloadApp -Destination (Join-Path $portableRoot "app")
 $portableInstaller = Join-Path $portableRoot "installer"

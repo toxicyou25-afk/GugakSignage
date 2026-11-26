@@ -15,9 +15,29 @@ multer, jpeg-js, and pngjs.
 Third-party trademarks, product names and screenshots remain the property of
 their respective owners and are not part of this project's licensed source code.
 
+Windows setup builder:
+- The Windows setup executable uses Inno Setup 6.7.3. Its release license
+  credits Jordan Russell and Martijn Laan and permits commercial applications.
+  The exact release license is at
+  https://github.com/jrsoftware/issrc/blob/is-6_7_3/license.txt. The Inno Setup
+  compiler is a build tool and is not included in the installed application.
+
+External runtime prerequisites:
+- The Windows installer does not bundle Node.js or Microsoft Edge/Chrome. It
+  requires an existing Node.js 24 or later and a supported browser installed by
+  the operator; the application package does not redistribute those executables.
+
 Sample media:
-- "Big Buck Bunny" (seed/sample-video.mp4), Copyright 2008 Blender Foundation,
-  www.bigbuckbunny.org, licensed under CC BY 3.0
-  (https://creativecommons.org/licenses/by/3.0/). Used only as a short
-  playback test clip. The sample posters in seed/ are original fictional
-  artwork created for this repository and licensed under Apache-2.0.
+- "Big Buck Bunny" excerpt (seed/sample-video.mp4), Copyright 2008 Blender
+  Foundation / www.bigbuckbunny.org, licensed under CC BY 3.0
+  (https://creativecommons.org/licenses/by/3.0/). Source transcode: Test Videos,
+  https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4.
+  Test Videos states its clips are FFmpeg transcodes, free to use under the
+  original terms, and links to the Blender project. Blender's license terms and
+  excerpt-credit example are at https://peach.blender.org/about/.
+  Local SHA-256: 77145c94c11f3754207499158df22406e1fe7635553c1c86dc5e881dfeb32016.
+  The original source publisher does not provide a checksum; byte-for-byte match
+  to the linked transcode was not verified.
+- The sample posters in seed/ have tracked SVG originals and are fictional
+  repository artwork licensed under Apache-2.0. They contain no bundled font
+  files or official institution emblems.
