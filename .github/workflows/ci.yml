@@ -129,6 +129,10 @@ jobs:
         run: npm run build
       - name: Unit and API tests
         run: npm test
+      - name: Install prototype license audit packages
+        run: npm ci --prefix prototype
+      - name: Verify dependency license inventory
+        run: npm run verify:licenses
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow

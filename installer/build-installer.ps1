@@ -60,6 +60,9 @@ foreach ($directory in @("dist", "public", "poc\packages\engine", "seed")) {
 foreach ($file in @("package.json", "package-lock.json", "LICENSE", "NOTICE")) {
     Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $payloadApp $file) -Force
 }
+$payloadLegal = Join-Path $payloadApp "docs\legal"
+New-Item -ItemType Directory -Path $payloadLegal -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoRoot "docs\legal\dependency-licenses.md") -Destination $payloadLegal -Force
 
 Write-Step "프로덕션 의존성 설치"
 Push-Location $payloadApp

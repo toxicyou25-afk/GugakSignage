@@ -22,6 +22,7 @@ COPY public ./public
 COPY poc/packages/engine ./poc/packages/engine
 COPY seed ./seed
 COPY LICENSE NOTICE ./
+COPY docs/legal/dependency-licenses.md ./docs/legal/dependency-licenses.md
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 EXPOSE 3000

@@ -4,10 +4,16 @@ Copyright 2026 GugakSignage contributors
 This product is licensed under the Apache License, Version 2.0.
 See the LICENSE file for the full license text.
 
-Third-party components, references and attribution are documented in
-docs/research/licenses.md. Third-party trademarks, product names and
-screenshots remain the property of their respective owners and are not
-part of this project's licensed source code.
+The versioned license-text inventory for every locked direct and indirect
+dependency is documented in docs/legal/dependency-licenses.md. The Windows and
+Docker production dependency install retains original package LICENSE and
+NOTICE files under node_modules. cookie-signature@1.0.7 has no separate LICENSE
+file; its complete MIT text is in the package Readme.md, which is also retained.
+The inventory records each exact locked version, scope, source path, copyright
+text, and SHA-256. The root runtime dependencies include express, image-size,
+multer, jpeg-js, and pngjs.
+Third-party trademarks, product names and screenshots remain the property of
+their respective owners and are not part of this project's licensed source code.
 
 Sample media:
 - "Big Buck Bunny" (seed/sample-video.mp4), Copyright 2008 Blender Foundation,

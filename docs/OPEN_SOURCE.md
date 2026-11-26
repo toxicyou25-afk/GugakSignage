@@ -18,7 +18,7 @@
 
 - 기여물은 Apache-2.0으로 제공됩니다. 자세한 내용은 [CONTRIBUTING.md](../CONTRIBUTING.md)를 참고하세요.
 - 새 소스 파일에는 가능하면 `SPDX-License-Identifier: Apache-2.0`을 넣습니다.
-- 제3자 코드·아이콘·폰트·이미지를 추가하면 [licenses.md](research/licenses.md)와 `NOTICE`에 출처·라이선스·고지 문구를 기록합니다.
+- 제3자 코드·아이콘·폰트·이미지를 추가하면 [dependency-licenses.md](legal/dependency-licenses.md)와 `NOTICE`에 잠금 버전·원문 고지 경로·배포 범위를 기록합니다. 조사 참고자료는 [licenses.md](research/licenses.md)에 구분해 둡니다.
 - GPL/AGPL 코드를 가져오려면 먼저 Issue에서 논의합니다.
 
 ## 재사용하는 기관·개발자를 위한 안내
