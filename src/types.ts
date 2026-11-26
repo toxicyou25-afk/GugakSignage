@@ -65,6 +65,13 @@ export interface DeviceRow {
   last_ip: string | null;
   player_state: string | null;
   last_error: string | null;
+  player_version: string | null;
+  manifest_version: number | null;
+  last_manifest_at: string | null;
+  cache_ready: number | null;
+  last_heartbeat_at: string | null;
+  reconnect_count: number;
+  last_reconnect_at: string | null;
   notes: string | null;
   reported_width: number | null;
   reported_height: number | null;

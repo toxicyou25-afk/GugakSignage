@@ -45,6 +45,19 @@ export function asTrimmed(value: unknown, max = 200): string {
   return String(value ?? '').trim().slice(0, max);
 }
 
+export function optionalInt(value: unknown, min: number, max: number): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isSafeInteger(parsed)) return null;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
+}
+
+export function optionalBool(value: unknown): number | null {
+  if (value === true || value === 1 || value === '1' || value === 'true') return 1;
+  if (value === false || value === 0 || value === '0' || value === 'false') return 0;
+  return null;
+}
+
 export function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);

@@ -14,6 +14,7 @@ import {
   type CurrentBroadcast,
 } from '../current-display.js';
 import { buildPlaylist, latestPublication, type Snapshot } from '../publishing.js';
+import { playerHealth, summarizePlayerHealth } from '../player-health.js';
 import { readPlayerState, type PlayerControlState } from '../player-control.js';
 import type { ContentRow, DeviceRow } from '../types.js';
 import { safeJsonParse } from '../util.js';
@@ -93,6 +94,8 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
   router.get('/', (_req, res) => {
     const contents = all<ContentRow>(db, 'SELECT * FROM contents ORDER BY created_at DESC LIMIT 6');
     const devices = all<DeviceRow>(db, 'SELECT * FROM devices ORDER BY created_at ASC');
+    const healthNow = Date.now();
+    const health = summarizePlayerHealth(devices.map((device) => playerHealth(device, config.heartbeatOnlineMs, healthNow)));
     const now = new Date();
     const playerControl = readPlayerState(config.dataDir);
     const deviceSummary: DashboardDevice[] = devices.map((device) => {
@@ -118,7 +121,14 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
       playlists: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM playlists')?.n ?? 0),
       devices: devices.length,
       onlineDevices: deviceSummary.filter((device) => device.status === 'online').length,
-      pendingDevices: deviceSummary.filter((device) => device.status === 'pending').length,
+      healthyDevices: health.online,
+      offlineDevices: health.offline,
+      pendingDevices: health.pending,
+      degradedDevices: health.degraded,
+      staleDevices: health.stale,
+      behindDevices: health.behind,
+      attentionDevices: health.attention,
+      reconnectedDevices: deviceSummary.filter((device) => device.reconnectCount > 0).length,
       publishedDevices: devices.filter((device) => device.published_version > 0).length,
     };
     const recentPublications = all<{
@@ -136,6 +146,7 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
     );
     res.json({
       counts,
+      health,
       devices: deviceSummary,
       contents: contents.map(contentDto),
       recentPublications,

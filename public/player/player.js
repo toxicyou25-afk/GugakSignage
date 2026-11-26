@@ -64,6 +64,7 @@ const runtime = {
   cacheDbPromise: null,
   objectUrls: new Map(),
   prefetching: false,
+  cacheReady: false,
   lastError: null,
   lastHeartbeatAt: null,
   sampleMode: false,
@@ -286,20 +287,24 @@ function serverNow() {
 
 async function fetchManifest(options = {}) {
   if (!runtime.token) return;
+  const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/manifest', {
-      headers: { Authorization: `Bearer ${runtime.token}` },
+      headers: { Authorization: `Bearer ${requestToken}` },
       cache: 'no-store',
     });
     if (response.status === 401) {
-      handleUnauthorized();
+      handleUnauthorized(requestToken);
       return;
     }
     const data = await response.json().catch(() => null);
+    if (requestToken !== runtime.token) return;
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
+    if (runtime.token !== requestToken) return;
     setOffline(false);
+    if (runtime.lastError) runtime.lastError = null;
     const serverMs = Date.parse(manifest.serverTime);
     if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
     safeSet(STORAGE.manifest, JSON.stringify(manifest));
@@ -307,8 +312,9 @@ async function fetchManifest(options = {}) {
     safeSet(STORAGE.manifestCachedAt, String(Date.now()));
     el.error.hidden = true;
     acceptManifest(manifest, Boolean(options.initial));
-    prefetchAssets(manifest);
+    runtime.cacheReady = await prefetchAssets(manifest);
   } catch (error) {
+    if (requestToken !== runtime.token) return;
     runtime.lastError = error.message;
     setOffline(true);
     if (!runtime.manifest) {
@@ -952,28 +958,35 @@ function escapeHtml(value) {
 
 async function sendHeartbeat() {
   if (!runtime.token) return;
+  const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/heartbeat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${runtime.token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
       body: JSON.stringify({
         state: runtime.offline ? 'offline' : runtime.currentNode ? 'playing' : 'waiting',
         currentContentId: runtime.currentContentId,
         error: runtime.lastError,
+        playerVersion: '1.0.0',
+        manifestVersion: runtime.manifest?.version ?? null,
+        cacheReady: !runtime.offline && Boolean(runtime.manifest) && runtime.cacheReady === true,
       }),
     });
     if (response.status === 401) {
-      handleUnauthorized();
+      handleUnauthorized(requestToken);
       return;
     }
+    if (requestToken !== runtime.token) return;
     if (!response.ok) throw new Error(`heartbeat ${response.status}`);
     runtime.lastHeartbeatAt = new Date().toISOString();
   } catch {
+    if (requestToken !== runtime.token) return;
     setOffline(true);
   }
 }
 
-function handleUnauthorized() {
+function handleUnauthorized(requestToken = runtime.token) {
+  if (requestToken !== runtime.token) return;
   safeRemove(STORAGE.token);
   runtime.token = null;
   showPair('재생기 연결이 만료되었습니다. 관리 화면의 등록 코드를 다시 입력해 주세요.', safeGet(STORAGE.lastCode) || '');
@@ -1077,6 +1090,7 @@ async function prefetchAssets(manifest) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
   const activeIds = new Set(contents.map((content) => content.id));
+  let ready = true;
   try {
     const db = await openCacheDb();
     const existing = await new Promise((resolve, reject) => {
@@ -1090,13 +1104,14 @@ async function prefetchAssets(manifest) {
       if (existing.has(content.id)) continue;
       try {
         const response = await fetch(content.url, { cache: 'default' });
-        if (!response.ok) continue;
+        if (!response.ok) { ready = false; continue; }
         const blob = await response.blob();
-        if (blob.size === 0) continue;
+        if (blob.size === 0) { ready = false; continue; }
         await putCachedBlob(content.id, blob, content);
         existing.add(content.id);
       } catch {
         // A single asset failure must not stop the playlist.
+        ready = false;
       }
     }
     const stale = [...existing].filter((id) => !activeIds.has(id));
@@ -1109,9 +1124,11 @@ async function prefetchAssets(manifest) {
     revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
   } catch (error) {
     console.warn('[signage] 콘텐츠 캐시를 준비하지 못했습니다.', error);
+    ready = false;
   } finally {
     runtime.prefetching = false;
   }
+  return ready;
 }
 
 function revokeUnusedObjectUrls(activeIds, keepContentId) {

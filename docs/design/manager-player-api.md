@@ -2,7 +2,7 @@
 
 작성일: 2026-11-24
 
-최종 갱신: 2026-11-25
+최종 갱신: 2026-11-26 (PR #14 구현 대기; 기준 main에 아직 미병합)
 
 기준: `main` `7d802e1606fb5c735563d49e2f7b382077d9eaae` (2026-11-25 현재 main). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합됐고, PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12)는 문서·증거만 추가했다.
 
@@ -26,8 +26,10 @@
 | 현재 경로 | 현재 용도 / 인증 | 현재 사실과 분리 시 주의 |
 |---|---|---|
 | `POST /api/player/register` | pair code + `hardwareId`로 연결, Player token 발급 | token은 현재 DB의 device row에 평문으로 저장된다(hash 아님). 화면 정보 일부를 보고하고, 동일 hardware면 기존 token을 반환할 수 있다. pair code는 현재 만료·1회 소비·실패 횟수 계약이 없다. 실패 응답은 잘못된 코드 404, 기기 충돌 409 등이다. |
-| `GET /api/player/manifest` | Bearer device token 필요 | 현재 게시 snapshot 기반 manifest와 `serverTime`을 응답한다. 현재 `ETag`/304 계약은 없다. |
-| `POST /api/player/heartbeat` | Bearer device token 필요 | state, current content ID, error 및 last seen/IP를 저장한다. 응답에 published version과 server time이 있다. |
+| `GET /api/player/manifest` | Bearer device token 필요 | 현재 게시 snapshot 기반 manifest와 `serverTime`을 응답한다. 현재 `ETag`/304 계약은 없다. 조회 시 `last_seen`, `last_ip`, `last_manifest_at`을 갱신한다. `manifest_version`은 마지막으로 성공적으로 가져온 버전이 아니라 heartbeat에서 보고한 적용 버전이다. |
+| `POST /api/player/heartbeat` | Bearer device token 필요 | `state`, `currentContentId`, `error`와 선택 필드 `playerVersion`, `manifestVersion`, `cacheReady`를 받는다. `last_seen`, `last_heartbeat_at` 등 장비 상태를 갱신하고 `{ ok, publishedVersion, serverTime, reconnected, reconnectCount }`를 반환한다. 선택 필드의 누락/잘못된 값은 기존 저장값을 유지한다. |
+| `GET /api/devices` | 관리자 세션 | 기존 `status`/`lastSeen` 외에 `health`, `attention`, `playerVersion`, 적용 `manifestVersion`, `cacheReady`, `lastHeartbeatAt`, `reconnectCount`, `lastReconnectAt`, `lastManifestAt`, `offlineSince`, `heartbeatAgeMs`, `manifestBehind`를 반환한다. |
+| `GET /api/dashboard` | 관리자 세션 | 기존 데이터에 `health` 요약과 `healthyDevices`, `offlineDevices`, `degradedDevices`, `staleDevices`, `behindDevices`, `attentionDevices`, `reconnectedDevices` 집계를 추가한다. 기존 `onlineDevices`는 호환성을 위해 연결 상태(`status=online`) 기준을 유지한다. |
 | `GET /api/player/config` | 현재 공개 설정/샘플 정보 | 독립 설치 안내 등 공개 설정만 전달한다. 등록 비밀·관리자 세션을 전달하지 않는다. |
 | `GET /api/time` | no-store 시각 조회 | 현재 Manager 서버 시각을 전달한다. 시간 offset protocol은 추가 정의가 필요하다. |
 | `GET /api/player/state` | 관리자 session + loopback 제한(`0000` 테스트 기본값 동안) | `Cache-Control: no-store`로 `{ player: { schemaVersion, desired, running, pid, startedAt, deviceId, playerUrl, lastError, updatedAt } }`를 반환한다. `data/control/player-state.json`을 읽고, 파일이 없거나 깨졌으면 stopped 기본값을 반환한다. Player token용 API가 아니라 관리자 화면용 상태 조회다. |
@@ -53,6 +55,16 @@
 
 현재 제한: player control API는 관리자 전용이며 Player token 인증이 아니다. `0000` 테스트 기본값 동안 loopback만 허용하고, 암호 변경 후에는 LAN 관리자도 서버 PC의 Edge 실행을 요청할 수 있다. TLS·token hash·회전 API·1회용 등록 코드·ETag는 아직 없다. 실제 재부팅·로그온, 별도 PC LAN, 물리 모니터, 24시간 soak, CI는 [1차 마감 검증](../install/verification.md)에서도 `NOT_RUN`이다.
 
+### PR #14에서 추가된 플레이어 상태 계약(아직 미병합)
+
+- `/api/player/config`가 보고하는 heartbeat 주기와 Player 기본 주기는 15초이며, 기본 온라인 판정 창은 `HEARTBEAT_ONLINE_SECONDS=45`초다.
+- `status`는 기존 호환을 위해 `last_seen` 기준으로 `pending|online|offline`을 계산한다. `last_seen`은 등록, manifest 조회, heartbeat 때 갱신되므로 `status=online`만으로 heartbeat loop가 정상이라고 단정하지 않는다.
+- 별도 `health`는 `status=online`인 연결 장비에서 `last_heartbeat_at`이 없거나 45초 초과면 `stale`, 보고된 `player_state`가 `offline`/`offline:<contentId>`, `cacheReady=false` 또는 `lastError`가 있으면 `degraded`로 표시한다. 현재 우선순위는 `degraded`를 `stale`보다 우선하며, `attention`은 offline/degraded/stale 또는 게시 적용 지연이면 참이다.
+- `manifestVersion`은 Player가 현재 적용한 manifest 버전 보고다. manifest pull 시각은 별도 `lastManifestAt`이며, fetch 자체를 적용 완료로 간주하지 않는다. `manifestBehind`는 연결된 장비의 `publishedVersion > manifestVersion`일 때 참이며, 아직 적용 버전을 보고하지 않은 경우도 지연으로 취급한다.
+- `cacheReady`는 플레이어가 활성 manifest에 필요한 자산을 IndexedDB에 준비했다고 보고한 상태다. 서버가 실제 미디어 바이트를 독립 검증하는 값은 아니다. `playerVersion`도 Player 자기 보고다.
+- 재등록/연결 해제는 현재 연결에 종속된 heartbeat, cache, manifest 및 버전 telemetry를 초기화한다. `reconnectCount`는 기기 레코드의 누적 이력으로 보존한다.
+- `reconnected`는 기존 heartbeat/접속 timestamp가 온라인 창을 넘어선 뒤 들어온 heartbeat를 나타낸다. 최초 페어링은 복구로 세지 않는다. heartbeat event ID/sequence 중복 제거는 아직 구현되지 않았고 아래 목표 계약에 남는다.
+
 ## 3. 목표 계약 표
 
 | 동작 | 목표 HTTP 계약 | 인증 / 주요 필드 | 오류·재시도·멱등성 |
@@ -60,7 +72,7 @@
 | 장비 생성·등록 코드 발급 | 관리자 `POST /api/devices`; 재발급 `POST /api/devices/:id/regenerate-code`; Player `POST /api/player/register` | 관리자 세션. Player 요청: `pairingCode`, `hardwareId`, `requestId`, `playerVersion`, `capabilities`, Host가 Windows DisplayConfig/Win32로 관측한 `displays[]`(논리 ID, width, height, orientation, rotation, refresh rate 가능 여부). browser 값은 보조 검증용이다. 성공 응답은 장비 ID, 단 한 번 보여 주는 token, Manager URL, polling 정책, server time. | Pairing code는 짧은 수명·1회 사용·시도 제한. 같은 `Idempotency-Key` 재요청은 연결 레코드를 중복 생성하지 않는다. token 응답 유실은 같은 키의 제한 시간 내 안전한 replay 또는 관리자 재발급 흐름으로 복구한다. 코드 소진/다른 hardware 연결은 `409`; 만료·폐기는 `410`. |
 | token 확인 / 철회 / 회전 | 관리자 `POST /api/devices/:id/token/rotate`, `DELETE /api/devices/:id/token` (경로는 구현 시 확정) | 관리자 세션과 재인증. 장비 token은 Bearer, opaque random 값. 서버는 token hash, scope, 생성·회전·폐기 시각만 저장한다. | 회전은 한 트랜잭션에서 이전 token을 즉시 폐기하고 새 token을 한 번만 보여 준다. 분실 응답은 새 회전으로 복구. token 없는 요청 `401`, 비활성 장비 `403`. 로그에는 원문을 쓰지 않는다. |
 | Manifest pull | `GET /api/player/manifest` | `Authorization: Bearer <device-token>`, `If-None-Match: "<sha256>"`. 성공 JSON: `schemaVersion`, `publicationVersion`, `etag`, `issuedAt`, `serverTime`, `minPlayerVersion`, `device`, `displays[]`, `playlists/schedules/wall`, immutable `assets[]`. | 변경 없음은 `304 Not Modified`; 변경은 `200`. 읽기 전용이므로 연결 실패·`5xx`는 exponential backoff+jitter로 재시도한다. `401/403`은 token 재시도 루프 대신 등록 대기/관리자 조치를 표시한다. 서버는 게시 전 상태를 노출하지 않는다. |
-| Heartbeat / 상태 보고 | `POST /api/player/heartbeat` | Bearer token. `eventId`, `sequence`, `playerVersion`, `publicationVersion`, `state`, `currentContentId`, `displayStates[]`, last successful pull, cache health, OS/Edge version, 제한된 오류 코드와 시각. IP는 서버가 관측한다. | `eventId`로 중복 제거하고 동일 heartbeat 재전송은 동일 상태로 수렴한다. 15초 기본 주기 + ±3초 jitter. 단절 중 큐는 제한된 크기로 저장하고 최신 health snapshot을 우선 전송한다. 내용 없는 일반 상태는 drop 가능하나 오류 전이와 복구 이벤트를 보존한다. |
+| Heartbeat / 상태 보고 | `POST /api/player/heartbeat` | Bearer token. 목표 필드: `eventId`, `sequence`, `playerVersion`, `publicationVersion`, `state`, `currentContentId`, `displayStates[]`, last successful pull, cache health, OS/Edge version, 제한된 오류 코드와 시각. 현재 PR #14 구현은 `playerVersion`, 적용 `manifestVersion`, `cacheReady`, `reconnected`, `reconnectCount`를 추가하며 `eventId`/`sequence`는 아직 없다. IP는 서버가 관측한다. | 목표는 `eventId`로 중복 제거하고 동일 heartbeat 재전송을 수렴시키는 것. 현재 구현은 이전 heartbeat 시각으로 reconnect 전이를 세며 sequence 기반 중복 제거는 없다. 현재 기본 15초 주기, ±3초 jitter와 단절 중 큐는 미구현이다. |
 | 시간 동기 | 기존 `GET /api/time`, 목표 `GET /api/player/time` 또는 호환 응답 | token scope를 제한하거나 공개 서버 시각만 제공한다. 요청/응답에 `serverReceivedAt`, `serverSentAt`을 넣고 Player는 요청 시작·응답 수신 monotonic timestamp를 기록한다. | `Cache-Control: no-store`. 여러 샘플 중 RTT가 낮은 값을 선택해 offset을 추정한다. 네트워크 지연이 크면 재생 시간에 순간 jump를 적용하지 않고 천천히 보정한다. |
 | 게시 / 버전 생성 | 기존 관리자 `POST /api/devices/:id/publish`, `POST /api/groups/:id/publish` | 관리자 session, `Idempotency-Key`, 편집 대상 `If-Match: "<draft revision>"`. 성공 시 immutable `publicationVersion`, content hash, ETag, `publishedAt`, 대상 장비 목록을 반환한다. | 같은 key 재요청은 같은 publication 결과를 돌려준다. `If-Match`가 오래되면 `412`; 대상 설정을 다시 불러오게 한다. 해당 version 응답은 `200`으로 반환되며 사전 staging에서 `5xx`가 나면 이전 version을 유지한다. |
 | Media 다운로드 | 목표 `GET /api/media/:sha256` (기존 static uploads는 하위 호환) | Player Bearer token. Manifest에 `{sha256, url, mime, byteLength, width, height}`를 제공한다. URL은 same-origin standalone에서 상대 경로, central/LAN에서는 Manager base URL 기준 절대 URL이 가능하다. | hash가 URL/resource identity다. `ETag`는 강한 content hash, `Range` 요청을 지원한다. 자산은 checksum 일치 후에만 local cache에 활성화한다. 인증 실패 `401/403`, hash 불일치 `422`, 제한 초과 `413`; 일시 오류는 지수 backoff. |

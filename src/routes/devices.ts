@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { AppConfig } from '../config.js';
 import { all, get, run, transaction, type DB } from '../db.js';
 import { PublishError, publishDevice } from '../publishing.js';
+import { playerHealth } from '../player-health.js';
 import { ensureDeviceTopology } from '../topology-migration.js';
 import type { DeviceRow, Orientation, PlaylistRow, ScheduleRow } from '../types.js';
 import { asTrimmed, deviceStatus, id, newPairingCode, nowIso, parseIntRange } from '../util.js';
@@ -48,6 +49,8 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?',
     device.id,
   )?.n ?? 0);
+  const status = deviceStatus(device, config.heartbeatOnlineMs);
+  const health = playerHealth(device, config.heartbeatOnlineMs);
   return {
     id: device.id,
     name: device.name,
@@ -64,12 +67,26 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     lastSeen: device.last_seen,
     playerState: device.player_state,
     lastError: device.last_error,
+    playerVersion: device.player_version,
+    manifestVersion: device.manifest_version,
+    lastManifestAt: device.last_manifest_at,
+    cacheReady: device.cache_ready === null || device.cache_ready === undefined
+      ? null
+      : Boolean(device.cache_ready),
+    lastHeartbeatAt: device.last_heartbeat_at,
+    reconnectCount: device.reconnect_count,
+    lastReconnectAt: device.last_reconnect_at,
+    health: health.state,
+    attention: health.attention,
+    offlineSince: health.offlineSince,
+    heartbeatAgeMs: health.heartbeatAgeMs,
+    manifestBehind: health.manifestBehind,
     reportedWidth: device.reported_width,
     reportedHeight: device.reported_height,
     notes: device.notes,
     createdAt: device.created_at,
     updatedAt: device.updated_at,
-    status: deviceStatus(device, config.heartbeatOnlineMs),
+    status,
     playerUrl: `/player/?code=${encodeURIComponent(device.pairing_code)}`,
     schedules,
     siteId: device.site_id,
@@ -308,7 +325,9 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
     run(
       db,
       `UPDATE devices SET pairing_code = ?, hardware_id = NULL, player_token = NULL, last_seen = NULL,
-             last_ip = NULL, player_state = NULL, last_error = NULL, updated_at = ?
+             last_ip = NULL, player_state = NULL, last_error = NULL, player_version = NULL,
+             manifest_version = NULL, last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL,
+             last_reconnect_at = NULL, updated_at = ?
         WHERE id = ?`,
       code,
       nowIso(),
@@ -327,7 +346,9 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
     run(
       db,
       `UPDATE devices SET hardware_id = NULL, player_token = NULL, last_seen = NULL, last_ip = NULL,
-             player_state = NULL, last_error = NULL, updated_at = ?
+             player_state = NULL, last_error = NULL, player_version = NULL, manifest_version = NULL,
+             last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL, last_reconnect_at = NULL,
+             updated_at = ?
         WHERE id = ?`,
       nowIso(),
       device.id,
