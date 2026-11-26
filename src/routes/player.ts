@@ -8,7 +8,6 @@ import type { DeviceRow } from '../types.js';
 import {
   asTrimmed,
   clientIp,
-  deviceStatus,
   newPlayerToken,
   normalizePairingCode,
   nowIso,
@@ -136,8 +135,13 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const now = nowIso();
     // A heartbeat after the online threshold means this player recovered from a
     // network/restart outage. Count the transition once per outage, not per beat.
-    const previousStatus = deviceStatus(device, config.heartbeatOnlineMs);
-    const reconnected = Boolean(device.hardware_id) && previousStatus === 'offline';
+    const previouslyOffline = !device.last_seen || (() => {
+      const seen = Date.parse(device.last_seen);
+      return !Number.isFinite(seen) || Date.parse(now) - seen > config.heartbeatOnlineMs;
+    })();
+    const previousHeartbeat = device.last_heartbeat_at ? Date.parse(device.last_heartbeat_at) : Number.NaN;
+    const heartbeatWasStale = !Number.isFinite(previousHeartbeat) || Date.parse(now) - previousHeartbeat > config.heartbeatOnlineMs;
+    const reconnected = Boolean(device.hardware_id) && (previouslyOffline || heartbeatWasStale);
     const reconnectCount = device.reconnect_count + (reconnected ? 1 : 0);
     run(
       db,

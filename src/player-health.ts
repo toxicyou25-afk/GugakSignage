@@ -15,7 +15,8 @@ export interface PlayerHealth {
 /** Derive operator-facing health from persisted player reports, without a sweeper. */
 export function playerHealth(device: DeviceRow, onlineMs: number, now = Date.now()): PlayerHealth {
   const lastSeenMs = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
-  const heartbeatAgeMs = Number.isFinite(lastSeenMs) ? Math.max(0, now - lastSeenMs) : null;
+  const heartbeatMs = device.last_heartbeat_at ? Date.parse(device.last_heartbeat_at) : Number.NaN;
+  const heartbeatAgeMs = Number.isFinite(heartbeatMs) ? Math.max(0, now - heartbeatMs) : null;
   const status = deviceStatus(device, onlineMs, now);
   const manifestBehind = Boolean(
     device.hardware_id &&
@@ -27,8 +28,7 @@ export function playerHealth(device: DeviceRow, onlineMs: number, now = Date.now
   if (status === 'online' && device.last_error) state = 'degraded';
   // last_seen is also updated by manifest polling. Only the heartbeat timestamp
   // is evidence that the player loop is alive; do not use last_seen here.
-  if (status === 'online' && device.last_heartbeat_at) {
-    const heartbeatMs = Date.parse(device.last_heartbeat_at);
+  if (status === 'online' && device.hardware_id) {
     if (!Number.isFinite(heartbeatMs) || now - heartbeatMs > onlineMs) state = 'stale';
   }
   const offlineSince = status === 'offline' && Number.isFinite(lastSeenMs)
