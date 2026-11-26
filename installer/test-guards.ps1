@@ -159,6 +159,17 @@ try {
     if ($message -notmatch "설치 폴더|install") { throw "내부 데이터 경로 오류가 명확하지 않습니다: $message" }
     $results.legacyDataInsideInstallBlocked = $true
 
+    $fallbackProfile = Join-Path ([IO.Path]::GetPathRoot($env:SystemRoot)) "GugakSignage-ServiceProfile-$suffix"
+    $fallbackDocuments = Get-UserDocumentsPath -KnownFolderPath "" -UserProfilePath $fallbackProfile
+    $expectedDocuments = Join-Path $fallbackProfile "Documents"
+    if (-not (Test-PathEqual -Left $fallbackDocuments -Right $expectedDocuments)) {
+        throw "제한 계정의 Documents 경로 fallback이 잘못되었습니다: $fallbackDocuments"
+    }
+    $null = Assert-Throws -Description "fallback Documents data removal blocked" -Action {
+        Assert-SafeDataRemovalTarget -DataDir (Join-Path $fallbackDocuments "GugakSignage\data") -ProtectedPaths @($fallbackDocuments)
+    }
+    $results.restrictedProfileDocumentsPathBlocked = $true
+
     $equalDir = Join-Path $tempRoot "equal"
     $message = Assert-Throws -Description "설치 폴더와 같은 데이터 폴더" -Action {
         & $installScript -SourceDir $repoRoot -InstallDir $equalDir -DataDir $equalDir -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Equal-$suffix"

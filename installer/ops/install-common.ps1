@@ -121,6 +121,24 @@ function Get-PathDepthBelowRoot {
     return @($relative -split "[\\/]" | Where-Object { $_ }).Count
 }
 
+function Get-UserDocumentsPath {
+    param(
+        [AllowEmptyString()][string]$KnownFolderPath,
+        [AllowEmptyString()][string]$UserProfilePath
+    )
+    if (-not $PSBoundParameters.ContainsKey("KnownFolderPath")) {
+        $KnownFolderPath = [Environment]::GetFolderPath("MyDocuments")
+    }
+    if (-not $PSBoundParameters.ContainsKey("UserProfilePath")) {
+        $UserProfilePath = $env:USERPROFILE
+    }
+    if (-not [string]::IsNullOrWhiteSpace($KnownFolderPath)) {
+        return Get-NormalizedPath -Path $KnownFolderPath
+    }
+    if ([string]::IsNullOrWhiteSpace($UserProfilePath)) { return "" }
+    return Get-NormalizedPath -Path (Join-Path $UserProfilePath "Documents")
+}
+
 function Assert-SafeDataRemovalTarget {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
@@ -140,9 +158,10 @@ function Assert-SafeDataRemovalTarget {
         (Join-Path $env:ProgramFiles ""),
         ([Environment]::GetEnvironmentVariable("ProgramFiles(x86)")),
         ([Environment]::GetFolderPath("Desktop")),
-        ([Environment]::GetFolderPath("MyDocuments")),
+        (Get-UserDocumentsPath),
         ([Environment]::GetFolderPath("MyPictures")),
-        ([Environment]::GetFolderPath("MyVideos"))
+        ([Environment]::GetFolderPath("MyVideos")),
+        $ProtectedPaths
     ) | Where-Object { $_ } | ForEach-Object { Get-NormalizedPath -Path $_ }
 
     foreach ($protectedRoot in $protectedTrees) {
