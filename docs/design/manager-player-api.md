@@ -2,9 +2,9 @@
 
 작성일: 2026-11-24
 
-최종 갱신: 2026-11-26 (PR #14 구현 대기; 기준 main에 아직 미병합)
+최종 갱신: 2026-11-26 (PR #14 병합 반영)
 
-기준: `main` `7d802e1606fb5c735563d49e2f7b382077d9eaae` (2026-11-25 현재 main). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11)이 모두 병합됐고, PR [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12)는 문서·증거만 추가했다.
+기준: `main` `dec7c24576dfb29f6970813df720d4f24b447c4e` (PR #14 병합본). PR [#4](https://github.com/toxicyou25-afk/GugakSignage/pull/4), [#6](https://github.com/toxicyou25-afk/GugakSignage/pull/6), [#8](https://github.com/toxicyou25-afk/GugakSignage/pull/8), [#9](https://github.com/toxicyou25-afk/GugakSignage/pull/9), [#11](https://github.com/toxicyou25-afk/GugakSignage/pull/11), [#12](https://github.com/toxicyou25-afk/GugakSignage/pull/12), [#14](https://github.com/toxicyou25-afk/GugakSignage/pull/14)이 병합됐다.
 
 동작 확인 기준: `a9394436c0485a5500789aa2c7c2d3ec3c299cd3`. 런타임 코드는 `7d802e1`과 같다. 이 문서의 `2. 기준 main의 API`는 현재 구현, `3. 목표 계약 표`는 아직 구현되지 않은 목표다.
 
@@ -55,7 +55,7 @@
 
 현재 제한: player control API는 관리자 전용이며 Player token 인증이 아니다. `0000` 테스트 기본값 동안 loopback만 허용하고, 암호 변경 후에는 LAN 관리자도 서버 PC의 Edge 실행을 요청할 수 있다. TLS·token hash·회전 API·1회용 등록 코드·ETag는 아직 없다. 실제 재부팅·로그온, 별도 PC LAN, 물리 모니터, 24시간 soak, CI는 [1차 마감 검증](../install/verification.md)에서도 `NOT_RUN`이다.
 
-### PR #14에서 추가된 플레이어 상태 계약(아직 미병합)
+### PR #14에서 추가된 플레이어 상태 계약
 
 - `/api/player/config`가 보고하는 heartbeat 주기와 Player 기본 주기는 15초이며, 기본 온라인 판정 창은 `HEARTBEAT_ONLINE_SECONDS=45`초다.
 - `status`는 기존 호환을 위해 `last_seen` 기준으로 `pending|online|offline`을 계산한다. `last_seen`은 등록, manifest 조회, heartbeat 때 갱신되므로 `status=online`만으로 heartbeat loop가 정상이라고 단정하지 않는다.
