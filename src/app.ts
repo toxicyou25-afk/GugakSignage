@@ -10,6 +10,7 @@ import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPasswor
 import type { AppConfig } from './config.js';
 import { getMeta, setMeta, type DB } from './db.js';
 import { initializePlayerControl } from './player-control.js';
+import { discoverNativeMonitors, NativeMonitorSnapshotTracker } from './native-monitors.js';
 import { authRoutes } from './routes/auth.js';
 import { contentRoutes } from './routes/contents.js';
 import { dashboardRoutes } from './routes/dashboard.js';
@@ -33,6 +34,7 @@ const jpegDecoder = require('jpeg-js') as {
 };
 
 export function createApp(db: DB, config: AppConfig) {
+  const nativeMonitorTracker = new NativeMonitorSnapshotTracker();
   initializePlayerControl(config);
   initializeAdminPassword(db, config);
   const app = express();
@@ -66,6 +68,10 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
+  app.get('/api/native-monitors', admin, async (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(nativeMonitorTracker.update(await discoverNativeMonitors(process.platform, config.rootDir)));
+  });
   const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024, files: 1 } });
   app.get('/api/settings/logo', admin, (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
