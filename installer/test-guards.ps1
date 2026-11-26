@@ -292,19 +292,30 @@ try {
     }
     $results.foreignScheduledTaskDetected = $true
 
-    $currentProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $PID"
+    $testProcessId = 424242
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+        CommandLine = "powershell.exe -NoLogo -NoProfile -File test-guards.ps1"
+        CreationDate = [DateTime]::UtcNow.ToString("o")
+    }
+    function Get-CimInstance {
+        [CmdletBinding()]
+        param([string]$ClassName, [string]$Filter)
+        if ($ClassName -ne "Win32_Process" -or $Filter -notmatch "ProcessId\s*=\s*$testProcessId\b") { return }
+        $currentProcess
+    }
     $actualStart = ([DateTime]$currentProcess.CreationDate).ToUniversalTime().ToString("o")
-    $verified = Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
-    if (-not $verified) { throw "현재 PowerShell 프로세스의 정상 소유권 검증이 실패했습니다." }
+    $verified = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
+    if (-not $verified) { throw "현재 프로세스 메타데이터의 정상 소유권 검증이 실패했습니다." }
     $wrongTime = ([DateTime]$currentProcess.CreationDate).AddHours(-2).ToUniversalTime().ToString("o")
-    if (Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
         throw "잘못된 시작 시각을 가진 PID를 소유 프로세스로 판정했습니다."
     }
-    if (Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")) {
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")) {
         throw "다른 실행 파일을 가진 PID를 소유 프로세스로 판정했습니다."
     }
     $null = Assert-Throws -Description "검증 실패 프로세스 종료 거부" -Action {
-        Stop-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
+        Stop-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
     }
     $results.pidIdentityMismatchBlocked = $true
 
