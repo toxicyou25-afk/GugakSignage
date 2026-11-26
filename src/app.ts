@@ -2,6 +2,7 @@
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
+import { imageSize } from 'image-size';
 import { restrictAdminToLoopback } from './admin-access.js';
 import { requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
@@ -51,6 +52,31 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/auth', localOnlyAdmin, authRoutes(db, config));
   app.use('/api/player', playerRoutes(db, config));
   app.use('/api/player', admin, playerControlRoutes(db, config));
+  const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512 * 1024, files: 1 } });
+  app.get('/api/settings/logo', admin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ dataUrl: getMeta(db, 'institution_logo') || null });
+  });
+  app.put('/api/settings/logo', admin, logoUpload.single('logo'), (req, res) => {
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: '로고 파일을 선택하세요.' }); return; }
+    try {
+      const info = imageSize(file.buffer);
+      const mime = info.type === 'png' ? 'image/png' : info.type === 'jpg' ? 'image/jpeg' : null;
+      if (!mime || !info.width || !info.height || info.width > 2048 || info.height > 2048) {
+        res.status(400).json({ error: '2048×2048 이하의 PNG 또는 JPEG 파일만 사용할 수 있습니다.' }); return;
+      }
+      const dataUrl = 'data:' + mime + ';base64,' + file.buffer.toString('base64');
+      setMeta(db, 'institution_logo', dataUrl);
+      res.json({ dataUrl });
+    } catch {
+      res.status(400).json({ error: '올바른 이미지 파일이 아닙니다.' });
+    }
+  });
+  app.delete('/api/settings/logo', admin, (_req, res) => {
+    setMeta(db, 'institution_logo', '');
+    res.json({ dataUrl: null });
+  });
   app.get('/api/settings/institution', admin, (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ name: getMeta(db, 'institution_name') ?? '' });
