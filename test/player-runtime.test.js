@@ -27,7 +27,10 @@ test('a previous manifest prefetch cannot overwrite readiness for a newer manife
   const cache = createCacheReadiness();
   const oldToken = cache.begin();
   const gate = deferred();
-  const oldResult = cache.prepare(oldToken, () => gate.promise);
+  const oldResult = cache.prepare(oldToken, async (isCurrent) => {
+    await gate.promise;
+    return isCurrent();
+  });
   const newToken = cache.begin();
   const newResult = cache.prepare(newToken, async () => false);
   gate.resolve(true);
@@ -40,7 +43,10 @@ test('re-pair invalidation prevents old in-flight cache results from becoming re
   const cache = createCacheReadiness();
   const oldToken = cache.begin();
   const gate = deferred();
-  const oldResult = cache.prepare(oldToken, () => gate.promise);
+  const oldResult = cache.prepare(oldToken, async (isCurrent) => {
+    await gate.promise;
+    return isCurrent();
+  });
   cache.invalidate();
   gate.resolve(true);
   assert.equal(await oldResult, false);

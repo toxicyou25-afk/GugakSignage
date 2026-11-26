@@ -319,7 +319,7 @@ async function fetchManifest(options = {}) {
     acceptManifest(manifest, Boolean(options.initial));
     runtime.cacheReady = await runtime.cacheReadiness.prepare(
       manifestGeneration,
-      () => prefetchAssets(manifest, requestToken, manifestGeneration),
+      (isCurrent) => prefetchAssets(manifest, requestToken, isCurrent),
     );
   } catch (error) {
     if (requestToken !== runtime.token) return;
@@ -1095,7 +1095,7 @@ function collectContents(manifest) {
   return [...map.values()];
 }
 
-async function prefetchAssets(manifest, requestToken, manifestGeneration) {
+async function prefetchAssets(manifest, requestToken, isCurrent) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
   const activeIds = new Set(contents.map((content) => content.id));
@@ -1109,7 +1109,7 @@ async function prefetchAssets(manifest, requestToken, manifestGeneration) {
       request.onerror = () => reject(request.error);
     });
     for (const content of contents) {
-      if (!runtime.token || runtime.token !== requestToken || !runtime.cacheReadiness.isCurrent(manifestGeneration)) {
+      if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
         ready = false;
         break;
       }
@@ -1119,6 +1119,10 @@ async function prefetchAssets(manifest, requestToken, manifestGeneration) {
         if (!response.ok) { ready = false; continue; }
         const blob = await response.blob();
         if (blob.size === 0) { ready = false; continue; }
+        if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
+          ready = false;
+          break;
+        }
         await putCachedBlob(content.id, blob, content);
         existing.add(content.id);
       } catch {
@@ -1126,6 +1130,7 @@ async function prefetchAssets(manifest, requestToken, manifestGeneration) {
         ready = false;
       }
     }
+    if (!isCurrent()) return false;
     const stale = [...existing].filter((id) => !activeIds.has(id));
     if (stale.length) {
       const tx = db.transaction('media', 'readwrite');
@@ -1133,6 +1138,7 @@ async function prefetchAssets(manifest, requestToken, manifestGeneration) {
       for (const id of stale) store.delete(id);
       await transactionPromise(tx);
     }
+    if (!isCurrent()) return false;
     revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
   } catch (error) {
     console.warn('[signage] 콘텐츠 캐시를 준비하지 못했습니다.', error);

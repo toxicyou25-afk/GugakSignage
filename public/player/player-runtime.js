@@ -21,7 +21,9 @@ export function createCacheReadiness() {
     async prepare(token, prepareAssets) {
       if (token !== generation) return false;
       if (flights.has(token)) return flights.get(token);
-      const operation = Promise.resolve().then(prepareAssets).then(Boolean, () => false);
+      const operation = Promise.resolve()
+        .then(() => prepareAssets(() => token === generation))
+        .then(Boolean, () => false);
       flights.set(token, operation);
       const result = await operation;
       if (flights.get(token) === operation) flights.delete(token);
