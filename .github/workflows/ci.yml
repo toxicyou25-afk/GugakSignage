@@ -133,6 +133,8 @@ jobs:
         run: npm ci --prefix prototype
       - name: Verify dependency license inventory
         run: npm run verify:licenses
+      - name: Build Windows package and verify payload licenses
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -SkipCompile
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow

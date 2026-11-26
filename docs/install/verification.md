@@ -136,3 +136,14 @@ PowerShell 이식용 ZIP SHA-256:
 - 프로세스는 살아 있으나 CDP renderer가 실제로 멈춘 상태의 재현: NOT_RUN
 
 이 결과는 구현·설치·복구 기능의 로컬 증거이며 현장 무인 운영 승인을 대신하지 않습니다.
+
+## 현재 main 배포물 저작권·라이선스 점검 (2026-11-27)
+
+- 기준 소스: `ed8e5ad05be158d1c50e1740c042b30774500b05` (#23 병합 후). 실행: `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File installer\build-installer.ps1 -SkipInstall`.
+- Inno Setup 6.7.3 EXE 컴파일 성공. 이식용 ZIP 3,721,144 bytes, SHA-256 `ef7853d1dcee3ecf46e692cae5702a300e5cd61b5e790d9a0ce50a66db49c49b`; EXE 5,194,121 bytes, SHA-256 `8b31fe36db33f7764e2eebff27631cfa864e78d0e2b5d194d06578ea9bae5d66`.
+- 빌드 중 payload 검증은 Windows production 패키지 75개 모두의 버전과 원본 LICENSE/NOTICE 해시를 감사표와 대조했습니다. payload에는 프로젝트 `LICENSE`, `NOTICE`, `docs/legal/dependency-licenses.md`도 들어 있습니다. 앱 파일 867개 중 별도 폰트 0, `.ico` 파일 0, Node/Edge/Chrome 실행 파일 0이며, seed의 포스터 PNG/SVG와 샘플 MP4는 포함됩니다.
+- Node.js 24 이상과 Edge/Chrome은 시스템 설치 prerequisite이며 앱 payload에 번들되지 않습니다. 이번 테스트는 Node.js 24.22.2, Edge 158.0.4370.33을 사용했습니다.
+- Inno Setup 6.7.3 공식 릴리스의 `license.txt`는 상업용 애플리케이션 생성과 binary 재배포를 허용하며, binary 내 기존 저작권·웹 주소 고지를 유지하도록 합니다. 설치 프로그램은 payload의 `NOTICE`를 `{app}`에 포함합니다. upstream은 상업 사용자의 구매를 권장하지만 license text는 이를 조건으로 요구하지 않습니다. 실제 조직의 상업 사용자 분류·구매 여부는 확인되지 않았습니다. [6.7.3 공식 license](https://github.com/jrsoftware/issrc/blob/is-6_7_3/license.txt), [commercial-use guidance](https://jrsoftware.org/inno-setup/purchase).
+- `sample-video.mp4`는 991,017 bytes, SHA-256 `77145c94c11f3754207499158df22406e1fe7635553c1c86dc5e881dfeb32016`. [Test Videos](https://test-videos.co.uk/)는 이 Big Buck Bunny H.264 640×360/10초 자료를 FFmpeg transcode로 제공하고 원작과 같은 이용 조건이라고 하며 Blender 원작으로 연결합니다. [Blender 공식 라이선스/발췌물 귀속](https://peach.blender.org/about/)과 [CC BY 3.0 전문](https://creativecommons.org/licenses/by/3.0/legalcode.en)을 NOTICE와 seed/README에 연결했습니다. 원 배포자가 체크섬을 제공하지 않아 파일의 upstream bytes 일치는 검증되지 않았습니다.
+- 실제 Inno `/CURRENTUSER` 설치는 서버 health와 player render까지 수행됐습니다. 전체 35개 설치·업그레이드·재설치·제거·데이터 보존 assertion은 테스트 사본에서만 shortcut 이름 기대값을 #19의 `열린안내판*.lnk`로 맞춘 뒤 통과했습니다. canonical `test-inno.ps1` 및 `test-install.ps1`의 stale shortcut 기대값 수정과 공식 harness 재실행은 #25에 남아 있습니다.
+- Docker CLI가 이 실행 환경에 없어 이미지 빌드와 Debian base-image digest/고지 점검은 `NOT_RUN`입니다. 기관 공식 로고·표장 사용 승인, 저장소 자체 저작권 귀속 권한, 제품명 상표 검색은 이 저장소만으로 확인되지 않았습니다.
