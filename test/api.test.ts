@@ -361,6 +361,8 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const dashboard = await admin('/api/dashboard');
     assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.body.counts.onlineDevices, 1);
+    assert.equal(dashboard.body.counts.healthyDevices, 1);
     const dashboardDevice = dashboard.body.devices[0];
     assert.equal(dashboardDevice.broadcast.source, 'published');
     assert.equal(dashboardDevice.broadcast.playlistName, '검증 재생목록');
