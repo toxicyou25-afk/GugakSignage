@@ -1,6 +1,6 @@
 # Windows 설치·무인 운영 안내
 
-이 문서는 현장 Windows PC에서 GugakSignage 서버를 설치하고, 로그인 후 관리자 페이지를 기본으로 열며, 관리자 버튼으로 재생기를 실행·중지하고 장애 시 복구하는 절차를 설명합니다.
+이 문서는 현장 Windows PC에서 열린안내판 서버를 설치하고, 로그인 후 관리자 페이지를 기본으로 열며, 관리자 버튼으로 재생기를 실행·중지하고 장애 시 복구하는 절차를 설명합니다.
 
 ## 준비 사항
 
@@ -77,16 +77,16 @@ Inno Setup 화면에서 설치 폴더, 데이터 폴더, 포트를 선택할 수
 - SQLite 데이터베이스: 데이터 폴더의 signage.sqlite
 - 업로드 파일: 데이터 폴더의 uploads
 - 환경 파일: 데이터 폴더의 .env
-- 바탕화면: GugakSignage.lnk
-- 시작 메뉴: GugakSignage\GugakSignage.lnk
-- 바탕화면·시작 메뉴: GugakSignage 관리자.lnk
+- 바탕화면: 열린안내판.lnk
+- 시작 메뉴: 열린안내판\열린안내판.lnk (기존 설치의 그룹 경로는 유지될 수 있음)
+- 바탕화면·시작 메뉴: 열린안내판 관리자.lnk
 - 관리자 실행 도구: 설치 폴더의 ops\open-admin.ps1, ops\admin-launch.vbs
 
 신규 설치만 SEED_SAMPLES=true로 시작합니다. 기존 데이터베이스나 설치 정보가 감지되면 SEED_SAMPLES=false로 생성하거나 기존 .env의 해당 값을 비활성화합니다.
 
 서버는 0.0.0.0에서 수신합니다. 같은 PC 관리자 화면은 http://127.0.0.1:<포트>/admin/, 재생기 미리보기·직접 URL은 http://127.0.0.1:<포트>/player/입니다. 샘플 기기의 직접 재생 URL은 GUGAK1과 reconnect=1을 사용합니다. reconnect=1은 전용 재생기 프로필의 저장 정보가 브라우저 강제 종료 중 유실되면 15초 간격으로 같은 코드의 연결을 자동 복구하라는 플레이어 기본값입니다. 설치본의 일반 실행은 관리자 화면의 **재생기 실행** 버튼을 사용합니다.
 
-**GugakSignage 관리자** 바로가기는 기본 브라우저로 관리자 페이지를 엽니다. 포트는 설치 폴더의 `install.json`에서 읽고, 파일이 없거나 포트가 잘못되었으면 3000을 사용합니다. 바로가기 아이콘은 설치 시 찾은 Edge/Chrome 아이콘을 사용합니다. 바로가기는 `wscript.exe`로 `ops\admin-launch.vbs`를 실행하고, 그 스크립트가 `ops\open-admin.ps1`에 URL 열기를 맡깁니다. 관리자 권한 상승은 요청하지 않습니다. `install.json`에는 기존 재생기용 `shortcuts`와 별도로 `adminShortcuts`가 기록되며, 업그레이드와 제거도 이 경로를 보존·정리합니다.
+**열린안내판 관리자** 바로가기는 기본 브라우저로 관리자 페이지를 엽니다. 포트는 설치 폴더의 `install.json`에서 읽고, 파일이 없거나 포트가 잘못되었으면 3000을 사용합니다. 바로가기 아이콘은 설치 시 찾은 Edge/Chrome 아이콘을 사용합니다. 바로가기는 `wscript.exe`로 `ops\admin-launch.vbs`를 실행하고, 그 스크립트가 `ops\open-admin.ps1`에 URL 열기를 맡깁니다. 관리자 권한 상승은 요청하지 않습니다. `install.json`에는 기존 재생기용 `shortcuts`와 별도로 `adminShortcuts`가 기록되며, 업그레이드와 제거도 이 경로를 보존·정리합니다.
 
 ## 관리자 기본 창과 재생기 실행
 
