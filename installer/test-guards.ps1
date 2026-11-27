@@ -360,6 +360,7 @@ try {
         ExecutablePath = ""
         CommandLine = ""
         CreationDate = $nativeProcess.StartTime
+        Name = [IO.Path]::GetFileName([string]$nativeProcess.Path)
     }
     $verifiedFromInstallState = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir
     if (-not $verifiedFromInstallState) { throw "CIM 실행 파일 경로와 명령행이 비어 있어도 설치 상태, PID, 시작 시각으로 프로세스 신원을 확인해야 합니다." }
@@ -371,6 +372,12 @@ try {
         throw "이전 watchdog 상태에 serverInstanceId가 없어도 서버 인스턴스 파일의 PID·시작 시각을 확인하면 소유 프로세스로 판정해야 합니다."
     }
     $results.legacyInstallStateProcessIdentityVerified = $true
+    $currentProcess.Name = "notepad.exe"
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir) {
+        throw "설치 상태가 일치해도 Windows 실행 프로세스 이름이 다르면 종료 대상이 아닙니다."
+    }
+    $currentProcess.Name = [IO.Path]::GetFileName([string]$nativeProcess.Path)
+    $results.foreignProcessNameBlocked = $true
     $currentState.serverInstanceId = $ownedInstanceId
     $currentState.serverPid = $PID + 1
     [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))

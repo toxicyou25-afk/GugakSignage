@@ -220,12 +220,13 @@ function Test-ProcessStartTimeMatch {
     if (-not $ExpectedStartTime) { return $true }
     $expected = [DateTimeOffset]::Parse($ExpectedStartTime).UtcDateTime
     $actual = $ActualStartTime.ToUniversalTime()
-    return [Math]::Abs(($actual - $expected).TotalSeconds) -le 20
+    return [Math]::Abs(($actual - $expected).TotalSeconds) -le 5
 }
 
 function Get-VerifiedInstalledProcessFromState {
     param(
         [int]$ProcessId,
+        $CimProcess,
         [string]$ExpectedExecutable,
         [string]$ExpectedStartTime,
         [string[]]$CommandLineContains = @(),
@@ -241,8 +242,12 @@ function Get-VerifiedInstalledProcessFromState {
             -not (Test-PathEqual -Left ([string]$config.installDir) -Right $installRoot)) { return $null }
 
         $nativeProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-        if (-not $nativeProcess -or -not $nativeProcess.Path -or
-            -not (Test-PathEqual -Left ([string]$nativeProcess.Path) -Right $ExpectedExecutable) -or
+        if (-not $nativeProcess) { return $null }
+        $nativePath = [string]$nativeProcess.Path
+        if ($nativePath -and -not (Test-PathEqual -Left $nativePath -Right $ExpectedExecutable)) { return $null }
+        $reportedName = [string]$CimProcess.Name
+        if (-not $reportedName) { $reportedName = [string]$nativeProcess.ProcessName }
+        if ([IO.Path]::GetFileNameWithoutExtension($reportedName) -ne [IO.Path]::GetFileNameWithoutExtension($ExpectedExecutable) -or
             -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$nativeProcess.StartTime) -ExpectedStartTime $ExpectedStartTime)) { return $null }
 
         $statePath = Join-Path ([string]$config.logDir) "watchdog-state.json"
@@ -298,7 +303,7 @@ function Get-VerifiedOwnedProcess {
     if (-not $actualExecutable) {
         $actualExecutable = Get-ProcessExecutableFromCommandLine -CommandLine ([string]$process.CommandLine)
         if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) {
-            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -CimProcess $process -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         }
     }
     if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) { return $null }
@@ -310,7 +315,7 @@ function Get-VerifiedOwnedProcess {
     $commandLine = [string]$process.CommandLine
     foreach ($marker in $CommandLineContains) {
         if ($marker -and $commandLine.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -CimProcess $process -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         }
     }
     return $process
@@ -342,10 +347,12 @@ function Stop-VerifiedOwnedProcess {
             $_ -and $commandLine.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -lt 0
         }) -join ","
         $nativePath = "<unavailable>"
+        $nativeName = "<unavailable>"
         $stateSummary = "<not-read>"
         try {
             $nativeProcess = Get-Process -Id $ProcessId -ErrorAction Stop
             $nativePath = [string]$nativeProcess.Path
+            $nativeName = [string]$nativeProcess.ProcessName
             if ($InstallDir) {
                 $installRoot = Get-NormalizedPath -Path $InstallDir
                 $installConfig = Read-JsonFile -Path (Join-Path $installRoot "install.json")
@@ -355,7 +362,7 @@ function Stop-VerifiedOwnedProcess {
                 $stateSummary = "serverPid=$($watchdogState.serverPid),serverStartedAt=$($watchdogState.serverStartedAt),instancePid=$($instance.pid),instanceStartedAt=$($instance.startedAt),instanceIdMatches=$([bool]($watchdogState.serverInstanceId -and $watchdogState.serverInstanceId -eq $instance.id))"
             }
         } catch { $stateSummary = "diagnostic-error=$($_.Exception.Message)" }
-        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, installState=$stateSummary"
+        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, nativeName=$nativeName, installState=$stateSummary"
     }
     $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
     $exitCode = $LASTEXITCODE
