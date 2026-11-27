@@ -73,12 +73,17 @@ begin
     Result := ExpandConstant('{localappdata}\GugakSignage');
 end;
 
+function ExistingInstallConfigPath(): String;
+begin
+  Result := AddBackslash(WizardDirValue) + 'install.json';
+end;
+
 function ExistingRoleIndex(): Integer;
 var
   Content: AnsiString;
 begin
   Result := 0;
-  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+  if LoadStringFromFile(ExistingInstallConfigPath, Content) then
   begin
     if Pos('"player-host"', String(Content)) > 0 then Result := 2
     else if Pos('"manager"', String(Content)) > 0 then Result := 1;
@@ -90,7 +95,7 @@ var
   Content: AnsiString;
 begin
   Result := False;
-  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+  if LoadStringFromFile(ExistingInstallConfigPath, Content) then
     Result := (Pos('"mode"', String(Content)) > 0) and (Pos('"lan"', String(Content)) > 0);
 end;
 
@@ -101,7 +106,7 @@ var
   StartAt, EndAt: Integer;
 begin
   Result := '';
-  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+  if LoadStringFromFile(ExistingInstallConfigPath, Content) then
   begin
     JsonText := String(Content);
     Marker := '"managerBaseUrl"';
