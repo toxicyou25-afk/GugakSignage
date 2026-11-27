@@ -386,7 +386,9 @@ try {
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
     if (@($task.Triggers).Count -ne 1) { throw "자동 실행 트리거 수가 예상과 다릅니다." }
     if (-not ([string]$task.Triggers[0].CimClass.CimClassName).Contains("LogonTrigger")) { throw "At log on 트리거가 아닙니다." }
-    if ($task.Principal.LogonType -ne "Interactive") { throw "Interactive 사용자 작업이 아닙니다." }
+    $taskLogonType = [string]$task.Principal.LogonType
+    if ($taskLogonType -notin @("Interactive", "InteractiveToken")) { throw "Interactive 사용자 작업이 아닙니다: $taskLogonType" }
+    $report.checks.scheduledTaskLogonType = $taskLogonType
     $report.checks.scheduledTask = $true
 
     $initialState = Read-WatchdogState -StatePath $statePath
