@@ -574,7 +574,7 @@ try {
 
     $serverPidBefore = [int]$initialState.serverPid
     $serverKillAt = [DateTime]::UtcNow
-    Stop-Process -Id $serverPidBefore -Force
+    Stop-VerifiedOwnedProcess -ProcessId $serverPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$initialState.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js") | Out-Null
     Wait-Until -TimeoutSeconds 40 -Description "서버 자동 재시작" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
         return ($current.serverPid -and [int]$current.serverPid -ne $serverPidBefore -and (Test-OwnedProcess -ProcessId ([int]$current.serverPid)) -and (Test-ServerHealth -PortNumber $port))
@@ -587,7 +587,7 @@ try {
 
     $browserPidBefore = [int]$serverRestartState.browserPid
     $browserKillAt = [DateTime]::UtcNow
-    Stop-Process -Id $browserPidBefore -Force
+    Stop-VerifiedOwnedProcess -ProcessId $browserPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.browserPath) -ExpectedStartTime ([string]$serverRestartState.browserStartedAt) -CommandLineContains @([string]$configAfterUpgrade.profileDir) | Out-Null
     Wait-Until -TimeoutSeconds 45 -Description "브라우저 자동 재시작" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
         return ($current.browserPid -and [int]$current.browserPid -ne $browserPidBefore -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
