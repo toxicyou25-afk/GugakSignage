@@ -247,8 +247,9 @@ function Get-VerifiedInstalledProcessFromState {
         if ($nativePath -and -not (Test-PathEqual -Left $nativePath -Right $ExpectedExecutable)) { return $null }
         $reportedName = [string]$CimProcess.Name
         if (-not $reportedName) { $reportedName = [string]$nativeProcess.ProcessName }
+        $reportedStart = if ($CimProcess.CreationDate) { [DateTime]$CimProcess.CreationDate } else { [DateTime]$nativeProcess.StartTime }
         if ([IO.Path]::GetFileNameWithoutExtension($reportedName) -ne [IO.Path]::GetFileNameWithoutExtension($ExpectedExecutable) -or
-            -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$nativeProcess.StartTime) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            -not (Test-ProcessStartTimeMatch -ActualStartTime $reportedStart -ExpectedStartTime $ExpectedStartTime)) { return $null }
 
         $statePath = Join-Path ([string]$config.logDir) "watchdog-state.json"
         if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { return $null }
@@ -353,13 +354,14 @@ function Stop-VerifiedOwnedProcess {
             $nativeProcess = Get-Process -Id $ProcessId -ErrorAction Stop
             $nativePath = [string]$nativeProcess.Path
             $nativeName = [string]$nativeProcess.ProcessName
+            $nativeProcessStart = $nativeProcess.StartTime.ToUniversalTime().ToString("o")
             if ($InstallDir) {
                 $installRoot = Get-NormalizedPath -Path $InstallDir
                 $installConfig = Read-JsonFile -Path (Join-Path $installRoot "install.json")
                 $watchdogState = Read-JsonFile -Path (Join-Path ([string]$installConfig.logDir) "watchdog-state.json")
                 $instancePath = Join-Path (Join-Path ([string]$installConfig.dataDir) "control") "server-instance.json"
                 $instance = if (Test-Path -LiteralPath $instancePath -PathType Leaf) { Read-JsonFile -Path $instancePath } else { $null }
-                $stateSummary = "serverPid=$($watchdogState.serverPid),serverStartedAt=$($watchdogState.serverStartedAt),instancePid=$($instance.pid),instanceStartedAt=$($instance.startedAt),instanceIdMatches=$([bool]($watchdogState.serverInstanceId -and $watchdogState.serverInstanceId -eq $instance.id))"
+                $stateSummary = "serverPid=$($watchdogState.serverPid),serverStartedAt=$($watchdogState.serverStartedAt),instancePid=$($instance.pid),instanceStartedAt=$($instance.startedAt),instanceIdMatches=$([bool]($watchdogState.serverInstanceId -and $watchdogState.serverInstanceId -eq $instance.id)),nativeProcessStart=$nativeProcessStart,processNameMatches=$([IO.Path]::GetFileNameWithoutExtension($nativeName) -eq [IO.Path]::GetFileNameWithoutExtension($ExpectedExecutable))"
             }
         } catch { $stateSummary = "diagnostic-error=$($_.Exception.Message)" }
         throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, nativeName=$nativeName, installState=$stateSummary"
