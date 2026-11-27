@@ -65,6 +65,38 @@ public static class GugakShortcutNative
             if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
         }
     }
+
+    public static string GetTargetPath(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var path = new StringBuilder(32768);
+            link.GetPath(path, path.Capacity, IntPtr.Zero, 0);
+            return path.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    public static string GetArguments(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var arguments = new StringBuilder(32768);
+            link.GetArguments(arguments, arguments.Capacity);
+            return arguments.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
 }
 "@
 }
