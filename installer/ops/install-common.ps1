@@ -199,6 +199,22 @@ function Assert-SafeDataRemovalTarget {
     }
 }
 
+function Get-ProcessExecutableFromCommandLine {
+    param([string]$CommandLine)
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) { return "" }
+
+    $value = $CommandLine.TrimStart()
+    if ($value.StartsWith('"', [StringComparison]::Ordinal)) {
+        $endQuote = $value.IndexOf('"', 1)
+        if ($endQuote -le 1) { return "" }
+        return $value.Substring(1, $endQuote - 1)
+    }
+
+    $match = [Regex]::Match($value, '^(?<executable>[^\s]+)(?:\s|$)')
+    if (-not $match.Success) { return "" }
+    return $match.Groups["executable"].Value
+}
+
 function Get-VerifiedOwnedProcess {
     param(
         [int]$ProcessId,
@@ -208,8 +224,12 @@ function Get-VerifiedOwnedProcess {
     )
     if ($ProcessId -le 0) { return $null }
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-    if (-not $process -or -not $process.ExecutablePath) { return $null }
-    if (-not (Test-PathEqual -Left ([string]$process.ExecutablePath) -Right $ExpectedExecutable)) { return $null }
+    if (-not $process) { return $null }
+    $actualExecutable = [string]$process.ExecutablePath
+    if (-not $actualExecutable) {
+        $actualExecutable = Get-ProcessExecutableFromCommandLine -CommandLine ([string]$process.CommandLine)
+    }
+    if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) { return $null }
     if ($ExpectedStartTime) {
         $expected = [DateTimeOffset]::Parse($ExpectedStartTime).UtcDateTime
         $actual = ([DateTime]$process.CreationDate).ToUniversalTime()

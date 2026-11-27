@@ -318,6 +318,26 @@ try {
     $actualStart = ([DateTime]$currentProcess.CreationDate).ToUniversalTime().ToString("o")
     $verified = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
     if (-not $verified) { throw "현재 프로세스 메타데이터의 정상 소유권 검증이 실패했습니다." }
+    $processWithPath = $currentProcess
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = '"' + $processWithPath.ExecutablePath + '" -NoLogo -NoProfile -File C:\GugakSignage\dist\server.js'
+        CreationDate = $processWithPath.CreationDate
+    }
+    $verifiedFromCommandLine = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$processWithPath.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("C:\GugakSignage", "dist\server.js")
+    $currentProcess = $processWithPath
+    if (-not $verifiedFromCommandLine) { throw "실행 파일 경로가 비어 있는 프로세스의 정확한 명령행 신원 검증이 실패했습니다." }
+    $results.processIdentityFromCommandLineWhenExecutablePathUnavailable = $true
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = '"' + (Join-Path $env:SystemRoot "System32\notepad.exe") + '" -NoLogo -NoProfile -File C:\GugakSignage\dist\server.js'
+        CreationDate = $processWithPath.CreationDate
+    }
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$processWithPath.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("C:\GugakSignage", "dist\server.js")) {
+        throw "실행 파일 경로가 비어 있어도 다른 첫 실행 파일을 소유 프로세스로 판정했습니다."
+    }
+    $currentProcess = $processWithPath
+    $results.foreignCommandLineExecutableBlocked = $true
     $wrongTime = ([DateTime]$currentProcess.CreationDate).AddHours(-2).ToUniversalTime().ToString("o")
     if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
         throw "잘못된 시작 시각을 가진 PID를 소유 프로세스로 판정했습니다."
