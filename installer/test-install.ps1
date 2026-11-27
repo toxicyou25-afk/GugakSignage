@@ -235,7 +235,11 @@ try {
     $legacyPsDataEnvBytesBefore = [IO.File]::ReadAllBytes($legacyPsDataEnv)
     $legacyPsDataEnvHashBefore = (Get-FileHash -LiteralPath $legacyPsDataEnv -Algorithm SHA256).Hash
     $legacyPsDataEnvAclBefore = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
-    & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -DataDir $legacyPsData -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Out-Host
+    $legacyPsTask = "GugakSignage-LegacyPowerShell-$suffix"
+    $legacyPsDesktop = Join-Path $legacyPsRoot "desktop"
+    $legacyPsStartMenu = Join-Path $legacyPsRoot "start-menu"
+    $legacyPsProfile = Join-Path $legacyPsRoot "profile"
+    & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -DataDir $legacyPsData -TaskName $legacyPsTask -DesktopDir $legacyPsDesktop -StartMenuDir $legacyPsStartMenu -ProfileDir $legacyPsProfile -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "기존 데이터 .env 업그레이드가 실패했습니다." }
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsDataEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
         throw "업그레이드가 기존 .env 바이트를 변경했습니다."
@@ -251,8 +255,7 @@ try {
     Remove-Item -LiteralPath $legacyPsDataEnv -Force
 
     $legacyPsPort = Get-FreePort
-    $legacyPsTask = "GugakSignage-LegacyPowerShell-$suffix"
-    $legacyPsOutput = & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -Port $legacyPsPort -TaskName $legacyPsTask -DesktopDir (Join-Path $legacyPsRoot "desktop") -StartMenuDir (Join-Path $legacyPsRoot "start-menu") -ProfileDir (Join-Path $legacyPsRoot "profile") -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Tee-Object -Variable legacyPsLines
+    $legacyPsOutput = & $installScript -SourceDir $repoRoot -InstallDir $legacyPsApp -Port $legacyPsPort -TaskName $legacyPsTask -DesktopDir $legacyPsDesktop -StartMenuDir $legacyPsStartMenu -ProfileDir $legacyPsProfile -ConfigureOnly -NoStart -NoAutoStart 2>&1 | Tee-Object -Variable legacyPsLines
     $legacyPsLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "PowerShell legacy 업그레이드가 실패했습니다." }
     $legacyPsConfig = Read-JsonFile -Path (Join-Path $legacyPsApp "install.json")
