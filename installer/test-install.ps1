@@ -206,9 +206,10 @@ if (env.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("Windows certif
             $probeHandler = [System.Net.Http.HttpClientHandler]::new()
             try {
                 $trustedCertificates = @($trustedCert)
+                $certificateValidator = (Get-Command Test-ManagerTlsCertificate -CommandType Function -ErrorAction Stop).ScriptBlock
                 $probeHandler.ServerCertificateCustomValidationCallback = {
                     param($request, $certificate, $chain, $sslPolicyErrors)
-                    return (Test-ManagerTlsCertificate -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
+                    return (& $certificateValidator -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
                 }.GetNewClosure()
                 $validationCallback = $probeHandler.ServerCertificateCustomValidationCallback
                 if (-not $validationCallback.Invoke($null, $trustedCert, $null, [System.Net.Security.SslPolicyErrors]::None)) {
@@ -534,12 +535,11 @@ try {
     $legacyPsLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "PowerShell legacy 업그레이드가 실패했습니다." }
     $legacyPsConfig = Read-JsonFile -Path (Join-Path $legacyPsApp "install.json")
-    $legacyPsDataEnvText = [IO.File]::ReadAllText($legacyPsDataEnv)
     if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.dataDir) -Right $legacyPsData)) { throw "PowerShell legacy 업그레이드가 .env DATA_DIR를 기본 경로로 대체했습니다." }
     if (-not (Test-PathEqual -Left ([string]$legacyPsConfig.envFile) -Right $legacyPsDataEnv)) { throw "PowerShell legacy .env를 데이터 폴더로 복사하지 않았습니다." }
-    if ($legacyPsDataEnvText -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$" -or
-        $legacyPsDataEnvText -notmatch "(?m)^SESSION_SECRET=legacy-session-secret-preserve-this-value\s*$" -or
-        $legacyPsDataEnvText -notmatch "(?m)^SEED_SAMPLES=true\s*$") {
+    if ((Get-EnvValue -EnvFile $legacyPsDataEnv -Name "ADMIN_PASSWORD") -ne "0000" -or
+        (Get-EnvValue -EnvFile $legacyPsDataEnv -Name "SESSION_SECRET") -ne "legacy-session-secret-preserve-this-value" -or
+        (Get-EnvValue -EnvFile $legacyPsDataEnv -Name "SEED_SAMPLES") -ne "true") {
         throw "PowerShell legacy 업그레이드가 .env 값을 보존하지 않았습니다."
     }
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
@@ -766,9 +766,14 @@ if (parsed.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("GUGAK_TLS_C
             $roleConfig.adminAutoOpen.enabled -ne $false -or
             [string]$roleConfig.playerUrl -ne "http://127.0.0.1:43127/player/") { throw "Player Host role/CA/URL/auto-start configuration is incorrect." }
         if (@($roleConfig.adminShortcuts).Count -ne 0 -or @($roleConfig.shortcuts).Count -ne 2) { throw "Player Host shortcuts are incorrect." }
-        $modeEnv = [IO.File]::ReadAllText((Join-Path $dataDir ".env"))
-        if ($modeEnv -notmatch '(?m)^HOST="127\.0\.0\.1"\r?$' -or $modeEnv -notmatch '(?m)^GUGAK_PLAYER_HOST_PORT="43127"\r?$' -or
-            $modeEnv -notmatch '(?m)^GUGAK_TLS_CA_FILE="[^"\r\n]+"\r?$' -or $modeEnv -notmatch '(?m)^GUGAK_MANAGER_URL="https://manager\.example"\r?$') { throw "Player Host did not keep loopback binding/port or HTTPS Manager CA configuration." }
+        $modeEnvFile = Join-Path $dataDir ".env"
+        $modeHost = Get-EnvValue -EnvFile $modeEnvFile -Name "HOST"
+        $modePlayerPort = Get-EnvValue -EnvFile $modeEnvFile -Name "GUGAK_PLAYER_HOST_PORT"
+        $modeCaFile = Get-EnvValue -EnvFile $modeEnvFile -Name "GUGAK_TLS_CA_FILE"
+        $modeManagerUrl = Get-EnvValue -EnvFile $modeEnvFile -Name "GUGAK_MANAGER_URL"
+        if ($modeHost -ne "127.0.0.1" -or $modePlayerPort -ne "43127" -or
+            -not (Test-PathEqual -Left $modeCaFile -Right $caFixture) -or
+            $modeManagerUrl -ne "https://manager.example") { throw "Player Host did not keep loopback binding/port or HTTPS Manager CA configuration." }
         $report.checks.playerHostRoleContractAndLoopback = $true
     } finally {
         & $installScript @roleCommon -Role all -Mode standalone *> $null

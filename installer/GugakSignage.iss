@@ -171,7 +171,8 @@ begin
   TlsPage.Values[0] := ExpandConstant('{param:TLSCERT|}');
   TlsPage.Values[1] := ExpandConstant('{param:TLSKEY|}');
   TlsPage.Add('Manager HTTPS base URL:', False);
-  TlsPage.Values[2] := ExistingManagerBaseUrl;
+  TlsPage.Values[2] := ExpandConstant('{param:MANAGERBASEURL|}');
+  if TlsPage.Values[2] = '' then TlsPage.Values[2] := ExistingManagerBaseUrl;
   TlsPage.Add('Manager administrator password (not 0000):', True);
   TlsPage.Values[3] := ExpandConstant('{param:ADMINPASSWORD|}');
   PlayerLanPage := CreateInputQueryPage(ModePage.ID, 'Player Host connection', 'Connect to HTTPS Manager', 'The CA file path is recorded for Player Host TLS trust.');
@@ -411,9 +412,26 @@ begin
     Result := 0;
 end;
 
+function CreateAdminSecretFile(const Password: String): String;
+var
+  SecretPath: String;
+begin
+  SecretPath := ExpandConstant('{tmp}\gugak-admin-' + GetDateTimeString('yyyymmddhhnnsszzz', '', '') + '.txt');
+  if not SaveStringToUTF8File(SecretPath, Password, False) then
+    RaiseException('Could not prepare the administrator password for setup.');
+  { Inno's per-setup temp directory inherits the current user's restricted ACL. }
+  Result := SecretPath;
+end;
+
+procedure DeleteAdminSecretFile(SecretPath: String);
+begin
+  if SecretPath <> '' then
+    DeleteFile(SecretPath);
+end;
+
 procedure RunInstallScript;
 var
-  Parameters: String;
+  Parameters, AdminSecretFile: String;
   ResultCode: Integer;
 begin
   Parameters := '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install.ps1') +
@@ -427,17 +445,25 @@ begin
     GetDataDirChangeFlag('') + GetNoStartFlag('') + GetHeadlessFlag('');
   if RoleSelectionChanged or ModeSelectionChanged then
     Parameters := Parameters + ' -Role "' + GetRoleArg('') + '" -Mode "' + GetModeArg('') + '"';
-  if (GetRoleArg('') = 'manager') and (GetModeArg('') = 'lan') then
-    Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '" -AdminPassword "' + TlsPage.Values[3] + '"';
-  if (GetRoleArg('') = 'player') and (GetModeArg('') = 'lan') then
-    Parameters := Parameters + ' -ManagerUrl "' + PlayerLanPage.Values[0] + '" -ManagerCaFile "' + PlayerLanPage.Values[1] + '"';
-  if WizardIsTaskSelected('firewall') then
-    Parameters := Parameters + ' -OpenFirewall';
-  if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
-      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
-  begin
-    SetupFailed := True;
-    Abort;
+  AdminSecretFile := '';
+  try
+    if (GetRoleArg('') = 'manager') and (GetModeArg('') = 'lan') then
+    begin
+      AdminSecretFile := CreateAdminSecretFile(TlsPage.Values[3]);
+      Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '" -AdminPasswordFile "' + AdminSecretFile + '"';
+    end;
+    if (GetRoleArg('') = 'player') and (GetModeArg('') = 'lan') then
+      Parameters := Parameters + ' -ManagerUrl "' + PlayerLanPage.Values[0] + '" -ManagerCaFile "' + PlayerLanPage.Values[1] + '"';
+    if WizardIsTaskSelected('firewall') then
+      Parameters := Parameters + ' -OpenFirewall';
+    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
+        ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+    begin
+      SetupFailed := True;
+      Abort;
+    end;
+  finally
+    DeleteAdminSecretFile(AdminSecretFile);
   end;
 end;
 

@@ -10,7 +10,7 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
 
   router.get('/state', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ player: readPlayerState(config.dataDir) });
+    res.json({ player: { ...readPlayerState(config.dataDir), launchSupported: config.role !== 'manager' } });
   });
 
   router.post('/launch', (req, res) => {
@@ -45,6 +45,10 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
   });
 
   router.post('/stop', (_req, res) => {
+    if (config.role === 'manager') {
+      res.status(403).json({ error: 'Manager 서버에서는 로컬 재생기를 제어할 수 없습니다.' });
+      return;
+    }
     const result = requestPlayerStop(config);
     res.status(202).json({
       ok: true,

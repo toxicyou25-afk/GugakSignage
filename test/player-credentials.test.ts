@@ -69,6 +69,39 @@ test('persists only protected registration retry identity and conditionally clea
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('serializes concurrent active token and pending registration identity mutations', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'player-credentials-serial-'));
+  const filePath = path.join(directory, 'player-token');
+  const activeToken = '0123456789abcdef'.repeat(4);
+  const pendingIdentity = `${'a'.repeat(64)}.${'fedcba9876543210'.repeat(4)}`;
+  try {
+    const store = createPlayerCredentialStore({ filePath });
+    await Promise.all([
+      store.writeToken(activeToken),
+      store.writeRegistrationRetry?.(pendingIdentity),
+    ]);
+    const restarted = createPlayerCredentialStore({ filePath });
+    assert.equal(await restarted.readToken(), activeToken);
+    assert.equal(await restarted.readRegistrationRetry?.(), pendingIdentity);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('conditionally clearing an active token preserves the pending registration identity', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'player-credentials-clear-pending-'));
+  const filePath = path.join(directory, 'player-token');
+  const activeToken = '0123456789abcdef'.repeat(4);
+  const pendingIdentity = `${'a'.repeat(64)}.${'fedcba9876543210'.repeat(4)}`;
+  try {
+    const store = createPlayerCredentialStore({ filePath });
+    await store.writeToken(activeToken);
+    await store.writeRegistrationRetry?.(pendingIdentity);
+    await store.clearIfToken?.(activeToken);
+    const restarted = createPlayerCredentialStore({ filePath });
+    assert.equal(await restarted.readToken(), null);
+    assert.equal(await restarted.readRegistrationRetry?.(), pendingIdentity);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('rejects a malformed credential file instead of treating it as a missing token', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'player-credentials-corrupt-'));
   const filePath = path.join(directory, 'player-token');

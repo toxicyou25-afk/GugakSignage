@@ -40,6 +40,9 @@ test('serves only Player UI and engine assets with safe headers', async (t) => {
   const engine = await fetch(`${base}/engine/index.js`);
   assert.equal(engine.status, 200);
   assert.ok((await engine.text()).length > 0);
+  const sampleNotice = await fetch(`${base}/sample/notice.html`);
+  assert.equal(sampleNotice.status, 200);
+  assert.match(await sampleNotice.text(), /notice|안내/i);
   assert.equal((await fetch(`${base}/admin/`)).status, 404);
   assert.equal((await fetch(`${base}/admin/index.html`)).status, 404);
 });

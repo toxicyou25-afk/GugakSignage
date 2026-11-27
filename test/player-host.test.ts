@@ -45,45 +45,66 @@ function credentials(initial: string | null = null) {
     async readRegistrationRetry() { return retry; },
     async writeRegistrationRetry(next) { retry = next; },
   };
-  return { store, current: () => value };
+  return { store, current: () => value, pending: () => retry };
 }
 
-test('registration persists the Player token before Manager commit and never returns it to the renderer', async (t) => {
+test('registration keeps pending identity separate from active credentials until Manager commit', async (t) => {
   let managerAuthorization: string | null = null;
   let managerBody: Record<string, unknown> = {};
-  let tokenPersistedBeforeManagerRequest: string | null = null;
-  const creds = credentials();
-  const manager = createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-    req.on('end', () => {
-      managerAuthorization = req.headers.authorization ?? null;
-      assert.equal(req.url, '/api/player/register');
-      managerBody = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
-      tokenPersistedBeforeManagerRequest = creds.current();
+  let activeAtManagerRequest: string | null = null;
+  let pendingAtManagerRequest: string | null = null;
+  let manifestAuthorization: string | null = null;
+  let releaseManager!: () => void;
+  const managerGate = new Promise<void>((resolve) => { releaseManager = resolve; });
+  let managerRequestSeen!: () => void;
+  const managerRequest = new Promise<void>((resolve) => { managerRequestSeen = resolve; });
+  const creds = credentials(token);
+  const manager = createServer(async (req, res) => {
+    if (req.url === '/api/player/manifest') {
+      manifestAuthorization = req.headers.authorization ?? null;
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ token: managerBody.playerToken, device: { id: 'device-1' } }));
-    });
+      res.end('{}');
+      return;
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    managerAuthorization = req.headers.authorization ?? null;
+    assert.equal(req.url, '/api/player/register');
+    managerBody = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+    activeAtManagerRequest = creds.current();
+    pendingAtManagerRequest = creds.pending();
+    managerRequestSeen();
+    await managerGate;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ token: managerBody.playerToken, device: { id: 'device-1' } }));
   });
   const managerUrl = await listen(manager);
   const host = createPlayerHostApp({ managerUrl, credentialStore: creds.store, identityStore });
   const hostServer = host.listen(0, '127.0.0.1');
-  t.after(async () => { await close(hostServer); await close(manager); });
+  t.after(async () => { releaseManager(); await close(hostServer); await close(manager); });
   const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
     const address = hostServer.address();
     assert.ok(address && typeof address !== 'string');
     resolve(`http://127.0.0.1:${address.port}`);
   }));
 
-  const response = await fetch(`${hostUrl}/api/player/register`, {
+  const registration = fetch(`${hostUrl}/api/player/register`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: 'GUGAK1', hardwareId: 'hardware-123', screen: { width: 1920, height: 1080 } }),
   });
+  await managerRequest;
+  assert.match(String(managerBody.playerToken), /^[a-f0-9]{64}$/);
+  const identity = createHash('sha256').update('GUGAK1').digest('hex');
+  assert.equal(activeAtManagerRequest, token);
+  assert.equal(pendingAtManagerRequest, `${identity}.${managerBody.playerToken}`);
+  assert.equal(creds.current(), token);
+  assert.equal((await fetch(`${hostUrl}/api/player/manifest`)).status, 200);
+  assert.equal(manifestAuthorization, `Bearer ${token}`);
+  releaseManager();
+  const response = await registration;
   const body = await response.json() as Record<string, unknown>;
   assert.equal(response.status, 200);
   assert.equal(creds.current(), managerBody.playerToken);
-  assert.equal(managerBody.playerToken, tokenPersistedBeforeManagerRequest);
-  assert.match(String(managerBody.playerToken), /^[a-f0-9]{64}$/);
   assert.equal(managerAuthorization, null);
   assert.equal(managerBody.hardwareId, 'stable-host-id');
   assert.notEqual(managerBody.hardwareId, 'hardware-123');
@@ -392,8 +413,9 @@ test('a delayed 401 cannot clear a replacement credential after re-pair', async 
   assert.equal(creds.current(), replacement);
 });
 
-test('a consumed pairing code retries with its accepted token after Host restart', async (t) => {
-  const state: { token: string | null; retry: string | null } = { token: null, retry: null };
+test('a lost registration response preserves active credentials and retries pending identity after Host restart', async (t) => {
+  const previousToken = 'b'.repeat(64);
+  const state: { token: string | null; retry: string | null } = { token: previousToken, retry: null };
   const store = {
     async readToken() { return state.token; },
     async writeToken(value: string) { state.token = value; },
@@ -423,12 +445,16 @@ test('a consumed pairing code retries with its accepted token after Host restart
   assert.ok(lost === 0 || lost === 502);
   const consumedToken = managerTokens[0];
   assert.match(consumedToken ?? '', /^[a-f0-9]{64}$/);
+  const identity = createHash('sha256').update('ONE-TIME-CODE').digest('hex');
+  assert.equal(state.token, previousToken);
+  assert.equal(state.retry, `${identity}.${consumedToken}`);
   assert.equal(JSON.stringify(state).includes('ONE-TIME-CODE'), false);
   await close(hostServer);
   hostServer = startHost();
   hostUrl = await hostUrlFor(hostServer);
   assert.equal((await request(hostUrl)).status, 200);
   assert.equal(managerTokens[1], consumedToken);
+  assert.equal(state.token, consumedToken);
 });
 
 test('requests without a stored token fail closed while config is unauthenticated and host-managed', async (t) => {

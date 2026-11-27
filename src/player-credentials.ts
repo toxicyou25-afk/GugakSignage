@@ -9,6 +9,7 @@ export interface PlayerCredentialStore {
   writeToken(token: string): Promise<void>;
   clear(): Promise<void>;
   clearIfToken?(expected: string): Promise<void>;
+  // Pending or last-confirmed registration identity, kept apart from the active token used by proxy requests.
   readRegistrationRetry?(): Promise<string | null>;
   writeRegistrationRetry?(value: string | null): Promise<void>;
 }
@@ -122,7 +123,13 @@ export function createPlayerCredentialStore(options: { filePath: string; platfor
     }); },
     async clearIfToken(expected: string) { return serialized(async () => {
       const state = await readState();
-      if (state.token === expected) { try { await rm(options.filePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+      if (state.token === expected) {
+        if (state.registrationRetry === null) {
+          try { await rm(options.filePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        } else {
+          await writeState({ ...state, token: null });
+        }
+      }
     }); },
     async readRegistrationRetry() { return serialized(async () => (await readState()).registrationRetry); },
     async writeRegistrationRetry(value: string | null) { return serialized(async () => {

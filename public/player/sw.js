@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 'use strict';
 
-const CACHE = 'gugak-signage-shell-v4';
+const CACHE = 'gugak-signage-shell-v5';
 const SHELL = [
   './', './index.html', './styles.css', './player.js', './player-runtime.js',
   '/engine/index.js',

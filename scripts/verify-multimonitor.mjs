@@ -415,9 +415,10 @@ try {
   }, null, { timeout: 20_000 });
   report.offlineReload = await player.evaluate(async () => {
     const shared = await import('/engine/index.js');
-    const manifest = JSON.parse(localStorage.getItem('signage.player.manifest.v1'));
+    const snapshot = JSON.parse(localStorage.getItem('signage.player.manifestSnapshot.v2'));
+    const manifest = snapshot.manifest;
     const state = window.__signagePlayer.getState();
-    const storedOffset = Number(localStorage.getItem('signage.player.manifestOffsetMs'));
+    const storedOffset = Number(snapshot.serverOffsetMs);
     const expected = Object.fromEntries(manifest.wall.displays
       .filter((display) => display.deviceId === state.deviceId)
       .map((display) => {
@@ -433,7 +434,7 @@ try {
       offsetNow: state.serverOffsetMs,
       storedOffset,
       offsetDriftMs: Math.abs(state.serverOffsetMs - storedOffset),
-      cacheAgeMs: Date.now() - Number(localStorage.getItem('signage.player.manifestCachedAt')),
+      cacheAgeMs: Date.now() - Number(snapshot.cachedAt),
       screenCount: document.querySelectorAll('.wall-screen').length,
       urlFallbackCount: document.querySelectorAll('.wall-screen .wall-url-offline').length,
       urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,

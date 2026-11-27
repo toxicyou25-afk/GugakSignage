@@ -82,8 +82,12 @@ test('LAN pairing codes expire, are single-use, and rate-limit failures without 
   });
 
   await t.test('Manager HTTPS mode rejects local Player launch commands', async () => {
+    const state = await call('/api/player/state', { cookie });
+    assert.equal(state.body.player.launchSupported, false);
     const response = await call('/api/player/launch', { method: 'POST', cookie, body: { deviceId } });
     assert.equal(response.response.status, 403);
+    const stop = await call('/api/player/stop', { method: 'POST', cookie });
+    assert.equal(stop.response.status, 403);
   });
 
   await t.test('regeneration starts a fresh lifetime; conflicts preserve the code; success consumes it once', async () => {

@@ -13,6 +13,7 @@ param(
     [string]$ManagerCaFile = "",
     [string]$ManagerBaseUrl = "",
     [string]$AdminPassword = "",
+    [string]$AdminPasswordFile = "",
     [string]$PlayerUrl = "",
     [string]$BrowserPath = "",
     [string]$NodePath = "",
@@ -40,6 +41,26 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
     $commonPath = Join-Path $PSScriptRoot "..\ops\install-common.ps1"
 }
 . $commonPath
+
+if ($AdminPasswordFile) {
+    $passwordTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $passwordFilePath = [IO.Path]::GetFullPath($AdminPasswordFile)
+    if (-not $passwordFilePath.StartsWith($passwordTempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $passwordFilePath -PathType Leaf)) {
+        throw "관리자 비밀번호 임시 파일 경로가 유효하지 않습니다."
+    }
+    try {
+        $filePassword = [IO.File]::ReadAllText($passwordFilePath, [Text.UTF8Encoding]::new($false, $true))
+        $filePassword = $filePassword.TrimEnd([char]13, [char]10)
+        if ([string]::IsNullOrWhiteSpace($filePassword) -or $filePassword -eq "0000" -or $filePassword -match "[\r\n]") {
+            throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+        }
+        $AdminPassword = $filePassword
+    } finally {
+        Remove-Item -LiteralPath $passwordFilePath -Force -ErrorAction SilentlyContinue
+        $filePassword = $null
+    }
+}
 
 $script:TranscriptStarted = $false
 $script:InstallLogPath = $null
@@ -337,9 +358,10 @@ function Wait-ServerHealth {
             $handler.Dispose()
             throw "Manager HTTPS 인증서 파일에서 신뢰할 인증서를 읽지 못했습니다: $TlsCertFile"
         }
+        $certificateValidator = (Get-Command Test-ManagerTlsCertificate -CommandType Function -ErrorAction Stop).ScriptBlock
         $handler.ServerCertificateCustomValidationCallback = {
             param($request, $certificate, $chain, $sslPolicyErrors)
-            return (Test-ManagerTlsCertificate -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
+            return (& $certificateValidator -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
         }.GetNewClosure()
     }
     $client = [System.Net.Http.HttpClient]::new($handler)
@@ -620,6 +642,54 @@ try {
     }
     $SourceDir = Get-NormalizedPath -Path $SourceDir
 
+    if ($serviceRestartRequired) {
+        $stopScript = Join-Path $InstallDir "ops\stop.ps1"
+        $stopScriptSource = @(
+            (Join-Path $PSScriptRoot "ops\stop.ps1"),
+            (Join-Path $PSScriptRoot "..\ops\stop.ps1"),
+            (Join-Path $InstallDir "ops\stop.ps1")
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $stopScriptSource) {
+            throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다."
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $stopScript) -Force | Out-Null
+        if (-not (Test-PathEqual -Left $stopScriptSource -Right $stopScript)) {
+            Copy-Item -LiteralPath $stopScriptSource -Destination $stopScript -Force
+        }
+        Write-Step "서비스 역할/모드 전환: 기존 watchdog과 소유 프로세스를 중지 (service restart)"
+        & $stopScript -Quiet
+        if (-not $NoAutoStart) {
+            $staleTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            if ($staleTask -and (Test-ScheduledTaskOwnedByInstall -Task $staleTask -InstallDir $InstallDir)) {
+                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+            }
+        }
+    }
+
+    if ($ConfigureOnly -and $serviceRestartRequired) {
+        $stopScript = Join-Path $InstallDir "ops\stop.ps1"
+        $stopScriptSource = @(
+            (Join-Path $PSScriptRoot "ops\stop.ps1"),
+            (Join-Path $PSScriptRoot "..\ops\stop.ps1"),
+            (Join-Path $InstallDir "ops\stop.ps1")
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $stopScriptSource) { throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다." }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $stopScript) -Force | Out-Null
+        if (-not (Test-PathEqual -Left $stopScriptSource -Right $stopScript)) {
+            Copy-Item -LiteralPath $stopScriptSource -Destination $stopScript -Force
+        }
+        Write-Step "ConfigureOnly 역할/모드 전환: 기존 watchdog과 소유 프로세스를 중지"
+        & $stopScript -Quiet
+        if (-not $NoAutoStart) {
+            $staleTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            if ($staleTask -and (Test-ScheduledTaskOwnedByInstall -Task $staleTask -InstallDir $InstallDir)) {
+                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+            }
+        }
+    }
+
     if (-not $ConfigureOnly) {
         $required = @(
             (Join-Path $SourceDir "dist\server.js"),
@@ -636,17 +706,6 @@ try {
         }
         if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
             throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
-        }
-        if ($serviceRestartRequired) {
-            $stopScript = Join-Path $InstallDir "ops\stop.ps1"
-            $currentStopScript = Join-Path $PSScriptRoot "ops\stop.ps1"
-            if (-not (Test-Path -LiteralPath $currentStopScript -PathType Leaf) -or
-                -not (Test-Path -LiteralPath $stopScript -PathType Leaf)) {
-                throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다."
-            }
-            Copy-Item -LiteralPath $currentStopScript -Destination $stopScript -Force
-            Write-Step "설치 역할 또는 Manager 네트워크 모드 변경을 위해 기존 watchdog과 소유 프로세스를 중지"
-            & $stopScript -Quiet
         }
         Write-Step "서버 파일 복사"
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
@@ -738,9 +797,10 @@ try {
             Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
         }
     } else {
-        $existingEnv = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
-        if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
-            $existingEnv -match "(?m)^SESSION_SECRET=change-this-to-a-long-random-string\s*$") {
+        $existingDevAdminPassword = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+        $existingDevSessionSecret = Get-EnvValue -EnvFile $envFile -Name "SESSION_SECRET"
+        if ($existingDevAdminPassword -eq "gugak1234" -or
+            $existingDevSessionSecret -eq "change-this-to-a-long-random-string") {
             throw "기존 .env에 개발용 기본 비밀값이 있습니다. 파일을 보존한 상태로 관리자 비밀번호와 세션 시크릿을 교체한 뒤 다시 설치하세요."
         }
         $existingPort = Get-EnvValue -EnvFile $envFile -Name "PORT"

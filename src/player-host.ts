@@ -217,9 +217,6 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     }
   }
 
-  let lastRegistrationCode: string | null = null;
-  let lastRegistrationToken: string | null = null;
-  let lastRegistrationIdentity: string | null = null;
   type RegistrationResult = { status: number; body: string; json: boolean };
   const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
   let registrationQueue: Promise<void> = Promise.resolve();
@@ -230,23 +227,23 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     let registration = registrationsInFlight.get(key);
     if (!registration) {
       registration = registrationQueue.then(async (): Promise<RegistrationResult> => {
-        const [hardwareId, existingToken, persistedRetry] = await Promise.all([
-          options.identityStore.getOrCreateHardwareId(), options.credentialStore.readToken(),
+        const [hardwareId, persistedRetry] = await Promise.all([
+          options.identityStore.getOrCreateHardwareId(),
           options.credentialStore.readRegistrationRetry?.() ?? Promise.resolve(null),
         ]);
         const code = rawCode || null;
         const identity = code === null ? null : createHash('sha256').update(code.toUpperCase()).digest('hex');
-        const canRetry = code !== null && existingToken !== null && (
-          (code === lastRegistrationCode && existingToken === lastRegistrationToken) ||
-          (persistedRetry === `${identity}.${existingToken}`) ||
-          (lastRegistrationIdentity === identity && existingToken === lastRegistrationToken)
-        );
-        const playerToken = canRetry && existingToken ? existingToken : randomBytes(32).toString('hex');
-        if (playerToken !== existingToken) await options.credentialStore.writeToken(playerToken);
-        if (identity && options.credentialStore.writeRegistrationRetry) await options.credentialStore.writeRegistrationRetry(`${identity}.${playerToken}`);
-        lastRegistrationCode = code;
-        lastRegistrationToken = playerToken;
-        lastRegistrationIdentity = identity;
+        const retryPrefix = identity === null ? null : `${identity}.`;
+        const retryToken = retryPrefix && persistedRetry?.startsWith(retryPrefix)
+          ? persistedRetry.slice(retryPrefix.length) : '';
+        const playerToken = /^[a-f0-9]{64}$/.test(retryToken)
+          ? retryToken : randomBytes(32).toString('hex');
+        if (identity !== null && !options.credentialStore.writeRegistrationRetry) {
+          return { status: 503, body: JSON.stringify({ error: 'Player credential storage is unavailable' }), json: true };
+        }
+        if (identity !== null && playerToken !== retryToken) {
+          await options.credentialStore.writeRegistrationRetry!(`${identity}.${playerToken}`);
+        }
 
         let upstream: globalThis.Response;
         try {
@@ -261,10 +258,6 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         }
         const text = await upstream.text();
         if (!upstream.ok) {
-          if (upstream.status >= 400 && upstream.status < 500 && existingToken && playerToken !== existingToken) {
-            await options.credentialStore.writeToken(existingToken);
-            if (options.credentialStore.writeRegistrationRetry) await options.credentialStore.writeRegistrationRetry(null);
-          }
           return { status: upstream.status, body: text, json: false };
         }
         let data: Record<string, unknown>;
@@ -274,11 +267,14 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         if (typeof acceptedToken !== 'string' || !/^[a-f0-9]{64}$/.test(acceptedToken)) {
           return { status: 502, body: JSON.stringify({ error: 'Invalid Manager registration response' }), json: true };
         }
-        if (acceptedToken !== playerToken) {
-          try { await options.credentialStore.writeToken(acceptedToken); }
-          catch { return { status: 503, body: JSON.stringify({ error: 'Player credential storage is unavailable' }), json: true }; }
+        try {
+          await options.credentialStore.writeToken(acceptedToken);
+          if (identity !== null && acceptedToken !== playerToken) {
+            await options.credentialStore.writeRegistrationRetry!(`${identity}.${acceptedToken}`);
+          }
+        } catch {
+          return { status: 503, body: JSON.stringify({ error: 'Player credential storage is unavailable' }), json: true };
         }
-        lastRegistrationToken = acceptedToken;
         await reportNativeMonitors();
         await refreshScreenTargets(acceptedToken);
         const { token: _secret, ...rendererBody } = data;

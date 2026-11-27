@@ -10,6 +10,41 @@ export function restoreHostManagedMode(runtime, cached) {
   );
 }
 
+export async function promotePreparedManifest({ isCurrent, prepareAssets, persistManifest, activateManifest }) {
+  if (!isCurrent()) return false;
+  const prepared = await prepareAssets();
+  if (!prepared || !isCurrent()) return false;
+  if (!persistManifest()) return false;
+  activateManifest();
+  return true;
+}
+
+export async function prepareAssetBatch(contents, {
+  isCurrent,
+  hasCachedContent,
+  fetchAsset,
+  stageAsset,
+  promoteStagedAssets,
+  discardStagedAssets,
+}) {
+  const stagedItems = [];
+  try {
+    for (const content of contents) {
+      if (!isCurrent()) return false;
+      if (await hasCachedContent(content.id)) continue;
+      const blob = await fetchAsset(content);
+      if (!blob || blob.size <= 0 || !isCurrent()) return false;
+      stagedItems.push(await stageAsset(content, blob));
+    }
+    if (!isCurrent()) return false;
+    await promoteStagedAssets(stagedItems);
+    stagedItems.length = 0;
+    return true;
+  } finally {
+    if (stagedItems.length) await discardStagedAssets(stagedItems);
+  }
+}
+
 export function createCacheReadiness() {
   let generation = 0;
   const flights = new Map();

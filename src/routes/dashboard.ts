@@ -97,7 +97,7 @@ export function dashboardRoutes(db: DB, config: AppConfig): Router {
     const healthNow = Date.now();
     const health = summarizePlayerHealth(devices.map((device) => playerHealth(device, config.heartbeatOnlineMs, healthNow)));
     const now = new Date();
-    const playerControl = readPlayerState(config.dataDir);
+    const playerControl = { ...readPlayerState(config.dataDir), launchSupported: config.role !== 'manager' };
     const deviceSummary: DashboardDevice[] = devices.map((device) => {
       const summary = deviceDto(db, config, device);
       const broadcast = withCurrentContent(

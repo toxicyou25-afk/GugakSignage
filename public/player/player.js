@@ -1,20 +1,23 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { createCacheReadiness, restoreHostManagedMode } from './player-runtime.js';
+import { createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode } from './player-runtime.js';
 
-const PLAYER_SHELL_VERSION = 'v4';
+const PLAYER_SHELL_VERSION = 'v5';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
 const STORAGE = {
   token: 'signage.player.token',
   hardwareId: 'signage.player.hardwareId',
   deviceId: 'signage.player.deviceId',
   manifest: 'signage.player.manifest.v1',
+  manifestSnapshot: 'signage.player.manifestSnapshot.v2',
   manifestOffsetMs: 'signage.player.manifestOffsetMs',
   manifestCachedAt: 'signage.player.manifestCachedAt',
   lastCode: 'signage.player.lastCode',
 };
 const POLL_MS = 15_000;
 const HEARTBEAT_MS = 15_000;
+const STAGED_MEDIA_PREFIX = '__gugak_signage_stage__:';
+const STAGED_MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
 
 const $ = (selector) => document.querySelector(selector);
 const el = {
@@ -94,11 +97,15 @@ function safeGet(key) {
 }
 
 function safeSet(key, value) {
-  try { localStorage.setItem(key, value); } catch { /* storage may be blocked */ }
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
 }
 
 function safeRemove(key) {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+function persistManifestSnapshot(manifest, serverOffsetMs, cachedAt) {
+  return safeSet(STORAGE.manifestSnapshot, JSON.stringify({ manifest, serverOffsetMs, cachedAt }));
 }
 
 function isConnected() {
@@ -216,6 +223,7 @@ async function pair(code, auto = false, options = {}) {
     safeSet(STORAGE.lastCode, normalized);
     if (previousDevice && previousDevice !== runtime.deviceId) {
       safeRemove(STORAGE.manifest);
+      safeRemove(STORAGE.manifestSnapshot);
       safeRemove(STORAGE.manifestOffsetMs);
       safeRemove(STORAGE.manifestCachedAt);
       runtime.manifest = null;
@@ -346,20 +354,34 @@ async function fetchManifest(options = {}) {
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
     if (!isCurrentConnection(connection)) return;
     setOffline(false);
-    if (runtime.lastError) runtime.lastError = null;
     const serverMs = Date.parse(manifest.serverTime);
-    if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
-    safeSet(STORAGE.manifest, JSON.stringify(manifest));
-    safeSet(STORAGE.manifestOffsetMs, String(runtime.serverOffsetMs));
-    safeSet(STORAGE.manifestCachedAt, String(Date.now()));
-    el.error.hidden = true;
-    acceptManifest(manifest, Boolean(options.initial));
+    const manifestCachedAt = Date.now();
+    const manifestServerOffsetMs = Number.isFinite(serverMs) ? serverMs - manifestCachedAt : runtime.serverOffsetMs;
     const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
-      (isCurrent) => prefetchAssets(manifest, connection, isCurrent),
+      (isCurrent) => promotePreparedManifest({
+        isCurrent: () => isCurrent() && isCurrentConnection(connection),
+        prepareAssets: () => prefetchAssets(manifest, connection, isCurrent),
+        persistManifest: () => persistManifestSnapshot(manifest, manifestServerOffsetMs, manifestCachedAt),
+        activateManifest: () => {
+          runtime.serverOffsetMs = manifestServerOffsetMs;
+          runtime.lastError = null;
+          el.error.hidden = true;
+          acceptManifest(manifest, Boolean(options.initial));
+        },
+      }),
     );
     if (!isCurrentConnection(connection) || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.cacheReady = prepared;
+    if (!prepared) {
+      runtime.lastError = '새 재생 콘텐츠를 완전히 준비하지 못했습니다.';
+      if (!runtime.manifest) {
+        showError('재생 콘텐츠를 준비하지 못했습니다', '이전 캐시가 없으므로 네트워크와 콘텐츠 상태를 확인한 뒤 다시 시도해 주세요.');
+      }
+      return;
+    }
+    void pruneStaleCachedAssets(manifest, connection, () => runtime.cacheReadiness.isCurrent(manifestGeneration))
+      .catch((error) => console.warn('[signage] 이전 콘텐츠 캐시 정리를 미뤘습니다.', error));
   } catch (error) {
     if (!isCurrentConnection(connection)) return;
     if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
@@ -1050,6 +1072,16 @@ function handleUnauthorized(requestToken = runtime.token, connection = null) {
 }
 
 function loadCachedManifest() {
+  const snapshotRaw = safeGet(STORAGE.manifestSnapshot);
+  if (snapshotRaw) {
+    try {
+      const snapshot = JSON.parse(snapshotRaw);
+      if (snapshot?.manifest && Array.isArray(snapshot.manifest.schedules)) {
+        const serverOffsetMs = Number(snapshot.serverOffsetMs);
+        if (Number.isFinite(serverOffsetMs)) return { manifest: snapshot.manifest, serverOffsetMs };
+      }
+    } catch { /* fall back to the pre-snapshot cache format */ }
+  }
   const raw = safeGet(STORAGE.manifest);
   if (!raw) return null;
   try {
@@ -1113,6 +1145,44 @@ async function putCachedBlob(id, blob, content) {
   await transactionPromise(tx);
 }
 
+function stagedMediaId(batchId, contentId) {
+  return `${STAGED_MEDIA_PREFIX}${batchId}:${contentId}`;
+}
+
+function hasExpiredStagingTimestamp(id, now = Date.now()) {
+  if (!id.startsWith(STAGED_MEDIA_PREFIX)) return false;
+  const timestamp = Number(id.slice(STAGED_MEDIA_PREFIX.length).split(':', 1)[0]);
+  return !Number.isSafeInteger(timestamp) || now - timestamp > STAGED_MEDIA_TTL_MS;
+}
+
+async function deleteCachedIds(db, ids) {
+  if (!ids.length) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  for (const id of ids) store.delete(id);
+  await transactionPromise(tx);
+}
+
+async function promoteStagedBlobs(db, stagedItems) {
+  if (!stagedItems.length) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  const completed = transactionPromise(tx);
+  for (const item of stagedItems) {
+    const request = store.get(item.stageId);
+    request.onerror = () => { try { tx.abort(); } catch { /* transaction already finished */ } };
+    request.onsuccess = () => {
+      if (!request.result) {
+        try { tx.abort(); } catch { /* transaction already finished */ }
+        return;
+      }
+      store.put({ ...request.result, id: item.contentId, cachedAt: new Date().toISOString() });
+      store.delete(item.stageId);
+    };
+  }
+  await completed;
+}
+
 async function resolveMediaUrl(content) {
   if (content.kind === 'url') return content.url;
   if (runtime.objectUrls.has(content.id)) return runtime.objectUrls.get(content.id);
@@ -1151,8 +1221,6 @@ function collectContents(manifest) {
 async function prefetchAssets(manifest, connection, isCurrent) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
-  const activeIds = new Set(contents.map((content) => content.id));
-  let ready = true;
   try {
     const db = await openCacheDb();
     const existing = await new Promise((resolve, reject) => {
@@ -1161,50 +1229,66 @@ async function prefetchAssets(manifest, connection, isCurrent) {
       request.onsuccess = () => resolve(new Set(request.result.map(String)));
       request.onerror = () => reject(request.error);
     });
-    for (const content of contents) {
-      if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) {
-        ready = false;
-        break;
-      }
-      if (existing.has(content.id)) continue;
-      try {
+    const expiredStagingIds = [...existing].filter((id) => hasExpiredStagingTimestamp(id));
+    if (expiredStagingIds.length) {
+      await deleteCachedIds(db, expiredStagingIds);
+      for (const id of expiredStagingIds) existing.delete(id);
+    }
+    const batchId = `${Date.now()}:${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+    return await prepareAssetBatch(contents, {
+      isCurrent: () => isConnected() && isCurrentConnection(connection) && isCurrent(),
+      hasCachedContent: (contentId) => existing.has(contentId),
+      fetchAsset: async (content) => {
         const response = await fetch(mediaRouteUrl(content.url), { cache: 'default' });
         if (response.status === 401) {
           handleUnauthorized(runtime.token, connection);
-          ready = false;
-          break;
+          return null;
         }
-        if (!response.ok) { ready = false; continue; }
+        if (!response.ok) return null;
         const blob = await response.blob();
-        if (blob.size === 0) { ready = false; continue; }
-        if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) {
-          ready = false;
-          break;
-        }
-        await putCachedBlob(content.id, blob, content);
-        existing.add(content.id);
-      } catch {
-        // A single asset failure must not stop the playlist.
-        ready = false;
-      }
-    }
-    if (!isCurrent()) return false;
-    const stale = [...existing].filter((id) => !activeIds.has(id));
-    if (stale.length) {
-      const tx = db.transaction('media', 'readwrite');
-      const store = tx.objectStore('media');
-      for (const id of stale) store.delete(id);
-      await transactionPromise(tx);
-    }
-    if (!isCurrent()) return false;
-    revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
+        const contentLength = response.headers.get('content-length');
+        const expectedSize = contentLength === null ? Number.NaN : Number(contentLength);
+        if (Number.isSafeInteger(expectedSize) && expectedSize >= 0 && blob.size !== expectedSize) return null;
+        return blob;
+      },
+      stageAsset: async (content, blob) => {
+        const stageId = stagedMediaId(batchId, content.id);
+        await putCachedBlob(stageId, blob, content);
+        return { stageId, contentId: content.id };
+      },
+      promoteStagedAssets: (stagedItems) => promoteStagedBlobs(db, stagedItems),
+      discardStagedAssets: async (stagedItems) => {
+        try { await deleteCachedIds(db, stagedItems.map((item) => item.stageId)); }
+        catch (error) { console.warn('[signage] 임시 콘텐츠 캐시를 정리하지 못했습니다.', error); throw error; }
+      },
+    });
   } catch (error) {
     console.warn('[signage] 콘텐츠 캐시를 준비하지 못했습니다.', error);
-    ready = false;
+    return false;
   } finally {
     runtime.prefetching = false;
   }
-  return ready;
+}
+
+async function pruneStaleCachedAssets(manifest, connection, isCurrent) {
+  const activeIds = new Set(collectContents(manifest).map((content) => content.id));
+  const db = await openCacheDb();
+  if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  const request = store.getAllKeys();
+  request.onsuccess = () => {
+    if (!isCurrent()) {
+      try { tx.abort(); } catch { /* transaction already finished */ }
+      return;
+    }
+    for (const rawId of request.result) {
+      const id = String(rawId);
+      if (!id.startsWith(STAGED_MEDIA_PREFIX) && !activeIds.has(id)) store.delete(rawId);
+    }
+  };
+  await transactionPromise(tx);
+  if (isCurrent()) revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
 }
 
 function revokeUnusedObjectUrls(activeIds, keepContentId) {
@@ -1279,6 +1363,7 @@ el.disconnect.addEventListener('click', async () => {
   }
   safeRemove(STORAGE.token);
   safeRemove(STORAGE.manifest);
+  safeRemove(STORAGE.manifestSnapshot);
   safeRemove(STORAGE.manifestOffsetMs);
   safeRemove(STORAGE.manifestCachedAt);
   safeRemove(STORAGE.deviceId);
