@@ -661,11 +661,9 @@ try {
 
     $envFile = Join-Path $dataDir ".env"
     $envText = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
-    $adminMatch = [regex]::Match($envText, "(?m)^ADMIN_PASSWORD=(.+)$")
-    $sessionMatch = [regex]::Match($envText, "(?m)^SESSION_SECRET=(.+)$")
-    if (-not $adminMatch.Success -or -not $sessionMatch.Success) { throw "환경 비밀값이 없습니다." }
-    $adminPasswordValue = $adminMatch.Groups[1].Value.Trim()
-    $sessionSecretValue = $sessionMatch.Groups[1].Value.Trim()
+    $adminPasswordValue = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+    $sessionSecretValue = Get-EnvValue -EnvFile $envFile -Name "SESSION_SECRET"
+    if ([string]::IsNullOrWhiteSpace($adminPasswordValue) -or [string]::IsNullOrWhiteSpace($sessionSecretValue)) { throw "환경 비밀값이 없습니다." }
     if ($adminPasswordValue -eq "gugak1234" -or $sessionSecretValue -eq "change-this-to-a-long-random-string") {
         throw "개발용 기본 비밀값이 설치되었습니다."
     }
