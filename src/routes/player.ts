@@ -60,6 +60,14 @@ function playerView(device: DeviceRow) {
 export function playerRoutes(db: DB, config: AppConfig): Router {
   const router = Router();
 
+  router.post('/launch', (_req, res, next) => {
+    if (config.role === 'manager') {
+      res.status(403).json({ error: 'Manager 서버에서는 로컬 재생기를 실행할 수 없습니다.' });
+      return;
+    }
+    next();
+  });
+
   router.put('/native-monitors', (req, res) => {
     const device = playerDevice(db, req);
     if (!device) { res.status(401).json({ error: '재생기 연결이 만료되었습니다.' }); return; }
@@ -123,7 +131,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     }
     const networkMode = config.mode !== 'standalone';
     const attemptKey = networkMode
-      ? crypto.createHmac('sha256', config.sessionSecret).update(clientIp(req), 'utf8').digest('hex')
+      ? crypto.createHmac('sha256', config.sessionSecret).update(req.socket.remoteAddress ?? '', 'utf8').digest('hex')
       : '';
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { createCacheReadiness } from './player-runtime.js';
+import { createCacheReadiness, restoreHostManagedMode } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v4';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -257,7 +257,7 @@ function startAutoReconnect() {
 async function loadPlayerConfig() {
   try {
     const response = await fetch('/api/player/config', { cache: 'no-store' });
-    if (!response.ok) return;
+    if (!response.ok) throw new Error(`config ${response.status}`);
     const config = await response.json();
     runtime.hostManaged = config.hostManaged === true;
     if (runtime.hostManaged) {
@@ -281,7 +281,8 @@ async function loadPlayerConfig() {
       el.sampleConnect.textContent = `샘플 코드 ${runtime.sampleCode}로 연결`;
     }
   } catch {
-    // The pairing screen still works without the demo hint.
+    const cached = loadCachedManifest();
+    runtime.hostManaged = restoreHostManagedMode(runtime, cached);
   }
 }
 
@@ -290,7 +291,7 @@ function startLoops() {
   runtime.started = true;
   runtime.pollTimer = setInterval(() => {
     reevaluateCachedSchedule();
-    fetchManifest();
+    void loadPlayerConfig().then(() => fetchManifest());
   }, POLL_MS);
   runtime.heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
   runtime.clockTimer = setInterval(() => { syncServerClock().catch(() => {}); }, 30_000);

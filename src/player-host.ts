@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { isIP } from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -87,7 +87,10 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     try {
       const target = new URL(upstreamPath, base);
       const upstream = await fetcher(target, { method: req.method, headers, body, redirect: 'error', ...(abortController ? { signal: abortController.signal } : {}) });
-      if (upstream.status === 401 && authenticated) await options.credentialStore.clear();
+      if (upstream.status === 401 && authenticated && token) {
+        if (options.credentialStore.clearIfToken) await options.credentialStore.clearIfToken(token);
+        else if (await options.credentialStore.readToken() === token) await options.credentialStore.clear();
+      }
       for (const name of passthroughHeaders) {
         const value = upstream.headers.get(name);
         if (value) res.setHeader(name, value);
@@ -161,7 +164,10 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         body: JSON.stringify({ monitors: snapshot.monitors }),
         redirect: 'error',
       });
-      if (response.status === 401) await options.credentialStore.clear();
+      if (response.status === 401) {
+        if (options.credentialStore.clearIfToken) await options.credentialStore.clearIfToken(token);
+        else if (await options.credentialStore.readToken() === token) await options.credentialStore.clear();
+      }
       await response.text();
       if (response.ok) lastMonitorReportAt = Date.now();
     })().catch(() => {}).finally(() => { monitorReportInFlight = null; });
@@ -177,7 +183,11 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         headers: { authorization: `Bearer ${credential}` },
         redirect: 'error',
       });
-      if (response.status === 401) { await options.credentialStore.clear(); return; }
+      if (response.status === 401) {
+        if (options.credentialStore.clearIfToken) await options.credentialStore.clearIfToken(credential);
+        else if (await options.credentialStore.readToken() === credential) await options.credentialStore.clear();
+        return;
+      }
       if (!response.ok) return;
       const value: unknown = await response.json();
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
@@ -209,6 +219,7 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
 
   let lastRegistrationCode: string | null = null;
   let lastRegistrationToken: string | null = null;
+  let lastRegistrationIdentity: string | null = null;
   type RegistrationResult = { status: number; body: string; json: boolean };
   const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
   let registrationQueue: Promise<void> = Promise.resolve();
@@ -219,15 +230,23 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     let registration = registrationsInFlight.get(key);
     if (!registration) {
       registration = registrationQueue.then(async (): Promise<RegistrationResult> => {
-        const [hardwareId, existingToken] = await Promise.all([
+        const [hardwareId, existingToken, persistedRetry] = await Promise.all([
           options.identityStore.getOrCreateHardwareId(), options.credentialStore.readToken(),
+          options.credentialStore.readRegistrationRetry?.() ?? Promise.resolve(null),
         ]);
         const code = rawCode || null;
-        const canRetry = code !== null && code === lastRegistrationCode && existingToken === lastRegistrationToken;
+        const identity = code === null ? null : createHash('sha256').update(code.toUpperCase()).digest('hex');
+        const canRetry = code !== null && existingToken !== null && (
+          (code === lastRegistrationCode && existingToken === lastRegistrationToken) ||
+          (persistedRetry === `${identity}.${existingToken}`) ||
+          (lastRegistrationIdentity === identity && existingToken === lastRegistrationToken)
+        );
         const playerToken = canRetry && existingToken ? existingToken : randomBytes(32).toString('hex');
         if (playerToken !== existingToken) await options.credentialStore.writeToken(playerToken);
+        if (identity && options.credentialStore.writeRegistrationRetry) await options.credentialStore.writeRegistrationRetry(`${identity}.${playerToken}`);
         lastRegistrationCode = code;
         lastRegistrationToken = playerToken;
+        lastRegistrationIdentity = identity;
 
         let upstream: globalThis.Response;
         try {
@@ -244,6 +263,7 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         if (!upstream.ok) {
           if (upstream.status >= 400 && upstream.status < 500 && existingToken && playerToken !== existingToken) {
             await options.credentialStore.writeToken(existingToken);
+            if (options.credentialStore.writeRegistrationRetry) await options.credentialStore.writeRegistrationRetry(null);
           }
           return { status: upstream.status, body: text, json: false };
         }

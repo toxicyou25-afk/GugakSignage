@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [switch]$KeepTestArtifacts,
+    [switch]$RegressionOnly,
     [string]$EvidenceDir = ""
 )
 
@@ -16,6 +17,50 @@ $watchdogTestScript = Join-Path $PSScriptRoot "test-watchdog.mjs"
 $watchdogHealthTest = Join-Path $PSScriptRoot "test-watchdog-health.mjs"
 $setupModeValidationRoot = Join-Path ([IO.Path]::GetTempPath()) ("GugakSignage-mode-validation-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $setupModeValidationRoot -Force | Out-Null
+$legacyRoleFixture = Join-Path $setupModeValidationRoot "legacy-role"
+$legacyInstall = Join-Path $legacyRoleFixture "app"
+$legacyRoleOps = Join-Path $legacyInstall "ops"
+New-Item -ItemType Directory -Path $legacyRoleOps -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ops\install-common.ps1") -Destination $legacyRoleOps
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ops\stop.ps1") -Destination $legacyRoleOps
+$legacyData = Join-Path $legacyRoleFixture "data"
+$legacyLogs = Join-Path $legacyData "logs"
+$legacyProfile = Join-Path $legacyRoleFixture "profile"
+New-Item -ItemType Directory -Path $legacyInstall,$legacyLogs,$legacyData,$legacyProfile,(Join-Path $legacyInstall "tools") -Force | Out-Null
+$legacyConfigPath = Join-Path $legacyInstall "install.json"
+$legacyConfig = @{
+    product = "GugakSignage"; installDir = $legacyInstall; dataDir = $legacyData
+    logDir = $legacyLogs; profileDir = $legacyProfile; nodePath = (Get-Command node.exe).Source
+    browserPath = ""; shortcuts = @(); adminShortcuts = @()
+}
+[IO.File]::WriteAllText($legacyConfigPath, ($legacyConfig | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+$legacyStopError = $null
+try { & (Join-Path $legacyRoleOps "stop.ps1") -Quiet } catch { $legacyStopError = $_.Exception.Message }
+if ($legacyStopError) { throw "Legacy stop.ps1 rejected install.json with a missing role: $legacyStopError" }
+$legacyConfig.role = "unknown-role"
+[IO.File]::WriteAllText($legacyConfigPath, ($legacyConfig | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+$invalidLegacyStopError = $null
+try { & (Join-Path $legacyRoleOps "stop.ps1") -Quiet } catch { $invalidLegacyStopError = $_.Exception.Message }
+if (-not $invalidLegacyStopError -or $invalidLegacyStopError -notmatch "역할이 유효하지") { throw "stop.ps1 did not fail closed for an explicit invalid legacy role." }
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall.ps1") -Destination (Join-Path $legacyInstall "tools\uninstall.ps1")
+$invalidLegacyUninstallError = $null
+try { & (Join-Path $legacyInstall "tools\uninstall.ps1") -KeepInstallFiles -Quiet } catch { $invalidLegacyUninstallError = $_.Exception.Message }
+if (-not $invalidLegacyUninstallError -or $invalidLegacyUninstallError -notmatch "역할이 유효하지") { throw "uninstall.ps1 did not fail closed for an explicit invalid legacy role." }
+$legacyConfig.Remove("role")
+$playerShortcutDir = Join-Path $legacyRoleFixture "shortcuts"
+New-Item -ItemType Directory -Path $playerShortcutDir -Force | Out-Null
+$playerShortcutPath = Join-Path $playerShortcutDir "열린안내판 재생기.lnk"
+$shortcutShell = New-Object -ComObject WScript.Shell
+$ownedPlayerShortcut = $shortcutShell.CreateShortcut($playerShortcutPath)
+$ownedPlayerShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
+$ownedPlayerShortcut.Arguments = '//B //NoLogo "' + (Join-Path $legacyInstall "ops\watchdog-launch.vbs") + '"'
+$ownedPlayerShortcut.WorkingDirectory = $legacyInstall
+$ownedPlayerShortcut.Save()
+$legacyConfig.shortcuts = @($playerShortcutPath)
+[IO.File]::WriteAllText($legacyConfigPath, ($legacyConfig | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+$legacyUninstallError = $null
+try { & (Join-Path $legacyInstall "tools\uninstall.ps1") -KeepInstallFiles -Quiet } catch { $legacyUninstallError = $_.Exception.Message }
+if ($legacyUninstallError -or (Test-Path -LiteralPath $playerShortcutPath)) { throw "Uninstall did not accept and remove its owned Player shortcut: $legacyUninstallError" }
 $openAdminScript = Join-Path $PSScriptRoot "ops\open-admin.ps1"
 $openAdminFixture = Join-Path $setupModeValidationRoot "admin-opener"
 New-Item -ItemType Directory -Path $openAdminFixture -Force | Out-Null
@@ -89,6 +134,102 @@ foreach ($case in $invalidModeCases) {
         Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
         throw "Invalid setup mode was not rejected before mutation: $($case.name)"
     }
+}
+if ($RegressionOnly) {
+    $regressionRoot = Join-Path ([IO.Path]::GetTempPath()) ("GugakSignage-pr35-regression-" + [guid]::NewGuid().ToString("N"))
+    $regressionInstall = Join-Path $regressionRoot "app"
+    $regressionData = Join-Path $regressionRoot "new-certs-data"
+    New-Item -ItemType Directory -Path (Join-Path $regressionInstall "ops") -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ops\watchdog.mjs") -Destination (Join-Path $regressionInstall "ops\watchdog.mjs")
+    $regressionPassword = 'Fixture-#"''-Password'
+    $regressionListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $regressionListener.Start()
+    try { $regressionPort = ([Net.IPEndPoint]$regressionListener.LocalEndpoint).Port } finally { $regressionListener.Stop() }
+    try {
+        $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+        $regressionArgs = @{
+            InstallDir = $regressionInstall; DataDir = $regressionData; Port = $regressionPort; NodePath = (Get-Command node.exe).Source
+            BrowserPath = (Join-Path $programFilesX86 "Microsoft\Edge\Application\msedge.exe")
+            DesktopDir = (Join-Path $regressionRoot "desktop"); StartMenuDir = (Join-Path $regressionRoot "start-menu")
+            ProfileDir = (Join-Path $regressionRoot "profile")
+            Role = "manager"; Mode = "lan"; TlsCertFile = $PSCommandPath; TlsKeyFile = $PSCommandPath
+            ManagerBaseUrl = "https://localhost:$regressionPort"; AdminPassword = $regressionPassword
+            ConfigureOnly = $true; NoStart = $true; NoAutoStart = $true
+        }
+        $regressionInstallOutput = @(& $installScript @regressionArgs 2>&1)
+        if (($regressionInstallOutput -join " ") -match "경고: 테스트 기본 비밀번호 0000") {
+            throw "Fresh LAN Manager with a nondefault bootstrap password emitted the default-password warning."
+        }
+        $regressionEnv = Join-Path $regressionData ".env"
+        $parseProbe = Join-Path $regressionRoot "parse-env.cjs"
+        [IO.File]::WriteAllText($parseProbe, @'
+const fs = require("node:fs");
+const { parseEnv } = require("node:util");
+const env = parseEnv(fs.readFileSync(process.argv[2], "utf8"));
+if (env.ADMIN_PASSWORD !== Buffer.from(process.argv[3], "base64").toString("utf8")) throw new Error("fresh Manager ADMIN_PASSWORD did not round-trip");
+if (env.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("Windows certificate path did not round-trip");
+'@, [Text.UTF8Encoding]::new($false))
+        $encodedRegressionPassword = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($regressionPassword))
+        & (Get-Command node.exe).Source $parseProbe $regressionEnv $encodedRegressionPassword $PSCommandPath
+        if ($LASTEXITCODE -ne 0) { throw "Node 24 parseEnv rejected fresh Manager .env values." }
+
+        $tokens = $null
+        $parseErrors = $null
+        $installAst = [Management.Automation.Language.Parser]::ParseFile($installScript, [ref]$tokens, [ref]$parseErrors)
+        if ($parseErrors.Count) { throw "Could not parse installer for restart predicate test." }
+        $restartFunction = $installAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Test-ServiceRestartRequired" }, $true)
+        if (-not $restartFunction) { throw "Manager restart predicate is missing." }
+        . ([scriptblock]::Create($restartFunction.Extent.Text))
+        $previousManager = [pscustomobject]@{ role = "manager"; mode = "lan" }
+        if (-not (Test-ServiceRestartRequired $previousManager $true "manager" "standalone") -or
+            (Test-ServiceRestartRequired $previousManager $true "manager" "lan") -or
+            -not (Test-ServiceRestartRequired $previousManager $true "player-host" "lan")) {
+            throw "Service restart predicate did not distinguish Manager mode changes, unchanged mode, and role changes."
+        }
+        $certificateFunction = $installAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Test-ManagerTlsCertificate" }, $true)
+        if (-not $certificateFunction) { throw "Manager TLS certificate validation function is missing." }
+        . ([scriptblock]::Create($certificateFunction.Extent.Text))
+        $trustedRsa = [Security.Cryptography.RSACryptoServiceProvider]::new(2048)
+        $rogueRsa = [Security.Cryptography.RSACryptoServiceProvider]::new(2048)
+        $trustedCert = $null
+        $rogueCert = $null
+        try {
+            $trustedRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new("CN=manager.local", $trustedRsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $rogueRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new("CN=rogue.local", $rogueRsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $trustedCert = $trustedRequest.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(1))
+            $rogueCert = $rogueRequest.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(1))
+            if (-not (Test-ManagerTlsCertificate -Certificate $trustedCert -SslPolicyErrors ([System.Net.Security.SslPolicyErrors]::None) -TrustedCertificates @()) -or
+                -not (Test-ManagerTlsCertificate -Certificate $trustedCert -SslPolicyErrors ([System.Net.Security.SslPolicyErrors]::RemoteCertificateChainErrors) -TrustedCertificates @($trustedCert)) -or
+                (Test-ManagerTlsCertificate -Certificate $rogueCert -SslPolicyErrors ([System.Net.Security.SslPolicyErrors]::RemoteCertificateChainErrors) -TrustedCertificates @($trustedCert)) -or
+                (Test-ManagerTlsCertificate -Certificate $trustedCert -SslPolicyErrors ([System.Net.Security.SslPolicyErrors]::RemoteCertificateNameMismatch) -TrustedCertificates @($trustedCert))) {
+                throw "Manager TLS validation did not honor the configured trust certificate and hostname validation."
+            }
+            $probeHandler = [System.Net.Http.HttpClientHandler]::new()
+            try {
+                $trustedCertificates = @($trustedCert)
+                $probeHandler.ServerCertificateCustomValidationCallback = {
+                    param($request, $certificate, $chain, $sslPolicyErrors)
+                    return (Test-ManagerTlsCertificate -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
+                }.GetNewClosure()
+                $validationCallback = $probeHandler.ServerCertificateCustomValidationCallback
+                if (-not $validationCallback.Invoke($null, $trustedCert, $null, [System.Net.Security.SslPolicyErrors]::None)) {
+                    throw "Configured Manager CA was not honored by the HttpClient handler callback."
+                }
+            } finally {
+                $probeHandler.Dispose()
+            }
+        } finally {
+            if ($trustedCert) { $trustedCert.Dispose() }
+            if ($rogueCert) { $rogueCert.Dispose() }
+            $trustedRsa.Dispose()
+            $rogueRsa.Dispose()
+        }
+        Write-Output "PR #35 focused installer regression checks passed."
+    } finally {
+        Remove-Item -LiteralPath $regressionRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    exit 0
 }
 Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
 $evidenceDir = if ($EvidenceDir) { [IO.Path]::GetFullPath($EvidenceDir) } else { Join-Path $repoRoot "docs\install\evidence" }
@@ -494,8 +635,10 @@ try {
     $managerRoleCommon = @{} + $roleCommon
     $managerRoleCommon.HeadlessBrowser = $false
     $managerRoleCommon.OpenAdminOnStartup = $true
-    $managerRoleCommon.AdminPassword = "Fixture-Manager-Password-31415!"
-    $tlsCertFixture = Join-Path $testRoot "manager-test-cert.pem"
+    $managerRoleCommon.AdminPassword = 'Fixture-Manager-#"''-Password-31415!'
+    $tlsCertDir = Join-Path $testRoot "new-certs"
+    New-Item -ItemType Directory -Path $tlsCertDir -Force | Out-Null
+    $tlsCertFixture = Join-Path $tlsCertDir "manager-test-cert.pem"
     $tlsKeyFixture = Join-Path $testRoot "manager-test-key.pem"
     $caFixture = Join-Path $testRoot "manager-test-ca.pem"
     foreach ($fixture in @($tlsCertFixture, $tlsKeyFixture)) { [IO.File]::WriteAllText($fixture, "configure-only TLS fixture") }
@@ -537,6 +680,19 @@ try {
             $roleConfig.adminAutoOpen.enabled -ne $true) { throw "Manager LAN role mapping/TLS paths/admin URL/autostart are incorrect." }
         if (@($roleConfig.shortcuts).Count -ne 0 -or @($roleConfig.adminShortcuts).Count -ne 2) { throw "Manager role shortcuts are incorrect." }
         $report.checks.managerLanRoleContract = $true
+        $managerEnvPath = Join-Path $dataDir ".env"
+        $parseEnvProbe = Join-Path $testRoot "parse-manager-env.cjs"
+        [IO.File]::WriteAllText($parseEnvProbe, @'
+const fs = require("node:fs");
+const { parseEnv } = require("node:util");
+const parsed = parseEnv(fs.readFileSync(process.argv[2], "utf8"));
+if (parsed.ADMIN_PASSWORD !== Buffer.from(process.argv[3], "base64").toString("utf8")) throw new Error("ADMIN_PASSWORD did not round-trip through Node 24 parseEnv");
+if (parsed.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("GUGAK_TLS_CERT_FILE did not round-trip through Node 24 parseEnv");
+'@, [Text.UTF8Encoding]::new($false))
+        $encodedManagerPassword = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($managerRoleCommon.AdminPassword))
+        $envRoundTrip = & $nodePath $parseEnvProbe $managerEnvPath $encodedManagerPassword $tlsCertFixture 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Fresh LAN Manager .env failed Node parseEnv round-trip: $($envRoundTrip -join ' ')" }
+        $report.checks.managerEnvNodeParseEnvRoundTrip = $true
 
         $savedPortConfigPath = Join-Path $installDir "install.json"
         $savedPortEnvPath = Join-Path $dataDir ".env"

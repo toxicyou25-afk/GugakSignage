@@ -1,13 +1,23 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCacheReadiness } from '../public/player/player-runtime.js';
+import { createCacheReadiness, restoreHostManagedMode } from '../public/player/player-runtime.js';
 
 function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+test('cached Host identity restores managed mode when local config is unavailable', () => {
+  const cached = { manifest: { device: { id: 'device-123' } } };
+  assert.equal(restoreHostManagedMode({ token: null, deviceId: 'device-123', hostManaged: false }, cached), true);
+});
+
+test('a cached manifest for another device does not restore Host-managed mode', () => {
+  const cached = { manifest: { device: { id: 'device-123' } } };
+  assert.equal(restoreHostManagedMode({ token: null, deviceId: 'different-device', hostManaged: false }, cached), false);
+});
 
 test('concurrent prefetch callers share one result instead of replacing cacheReady with undefined', async () => {
   const cache = createCacheReadiness();

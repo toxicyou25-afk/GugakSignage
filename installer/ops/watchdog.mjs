@@ -148,6 +148,7 @@ fs.writeFileSync(lockPath, String(process.pid), 'utf8');
 const stopRequestPath = path.join(controlDir, 'stop.request');
 const statePath = path.join(logDir, 'watchdog-state.json');
 const persistedPlayerState = readPlayerState(config.dataDir);
+const hasPersistedPlayerHostState = persistedPlayerState.playerUrl === 'http://127.0.0.1:43127/player/';
 let previousState = null;
 try {
   previousState = JSON.parse(fs.readFileSync(statePath, 'utf8').replace(/^\uFEFF/, ''));
@@ -183,10 +184,11 @@ let previousServerChecked = false;
 const adminStartupState = { attempted: false };
 const playerStartupState = { attempted: false };
 let playerDesired = persistedPlayerState.desired === 'running' ? 'running' : 'stopped';
-const persistedAssignment = readScreenTargetAssignment(config.dataDir);
+const persistedAssignment = role === 'player-host' ? readScreenTargetAssignment(config.dataDir) : null;
 let playerDeviceId = persistedAssignment?.deviceId || persistedPlayerState.deviceId;
 let playerUrl = role === 'player-host' ? configuredPlayerUrl : (persistedPlayerState.playerUrl || configuredPlayerUrl);
-let playerScreenTargets = persistedAssignment?.screenTargets || persistedPlayerState.screenTargets || [];
+let playerScreenTargets = persistedAssignment?.screenTargets ||
+  (role !== 'player-host' && hasPersistedPlayerHostState ? [] : persistedPlayerState.screenTargets) || [];
 let playerWindowSetupPending = playerScreenTargets.length > 0;
 let playerWindowConfiguredTargets = null;
 let lastScreenWindowCheckAt = 0;
@@ -506,6 +508,7 @@ async function ensurePlayerWindows(existingTargets) {
 }
 
 function refreshPersistedScreenTargets() {
+  if (role !== 'player-host') return;
   const assignment = readScreenTargetAssignment(config.dataDir);
   if (!assignment) return;
   const next = JSON.stringify(assignment.screenTargets);

@@ -22,7 +22,9 @@ $config = Read-JsonFile -Path $configPath
 if ([string]$config.product -ne "GugakSignage") {
     throw "GugakSignage 설치 정보가 아닙니다: $configPath"
 }
-$serverEntry = switch ([string]$config.role) {
+$roleProperty = $config.PSObject.Properties["role"]
+$configuredRole = if ($null -eq $roleProperty) { "integrated" } else { [string]$roleProperty.Value }
+$serverEntry = switch ($configuredRole) {
     { $_ -in @("integrated", "manager") } { "server.js" }
     "player-host" { "player-host-main.js" }
     default { throw "install.json의 역할이 유효하지 않아 서버 프로세스를 안전하게 확인할 수 없습니다." }
@@ -81,7 +83,7 @@ function Remove-ExactShortcut {
     $fullPath = [IO.Path]::GetFullPath($ShortcutPath)
     $fileName = [IO.Path]::GetFileName($fullPath)
     $isAdminShortcut = $fileName -in @("GugakSignage 관리자.lnk", "열린안내판 관리자.lnk")
-    if ($fileName -notin @("GugakSignage.lnk", "열린안내판.lnk") -and -not $isAdminShortcut) { return }
+    if ($fileName -notin @("GugakSignage.lnk", "열린안내판.lnk", "열린안내판 재생기.lnk") -and -not $isAdminShortcut) { return }
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
     $owned = if ($isAdminShortcut) {
         Test-AdminShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir

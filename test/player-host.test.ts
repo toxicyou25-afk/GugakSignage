@@ -36,10 +36,14 @@ async function statusWithHeaders(url: string, headers: Record<string, string>): 
 
 function credentials(initial: string | null = null) {
   let value = initial;
+  let retry: string | null = null;
   const store: PlayerCredentialStore = {
     async readToken() { return value; },
     async writeToken(next) { value = next; },
     async clear() { value = null; },
+    async clearIfToken(expected) { if (value === expected) value = null; },
+    async readRegistrationRetry() { return retry; },
+    async writeRegistrationRetry(next) { retry = next; },
   };
   return { store, current: () => value };
 }
@@ -154,12 +158,12 @@ test('simultaneous registration requests for one pairing code share one Manager 
     assert.ok(address && typeof address !== 'string');
     resolve(`http://127.0.0.1:${address.port}`);
   }));
-  const register = () => fetch(`${hostUrl}/api/player/register`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'SAME-CODE' }),
+  const register = (windowId: string) => fetch(`${hostUrl}/api/player/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'SAME-CODE', displayWindow: windowId }),
   });
-  const first = register();
+  const first = register('left');
   while (managerRequests === 0) await new Promise((resolve) => setTimeout(resolve, 1));
-  const second = register();
+  const second = register('right');
   await new Promise((resolve) => setTimeout(resolve, 20));
   release();
   const responses = await Promise.all([first, second]);
@@ -353,6 +357,78 @@ test('authenticated player routes load the token from the credential store and c
   }
   assert.equal(creds.current(), null);
   assert.ok(seen.every((entry) => entry.endsWith(`Bearer ${token}`)));
+});
+
+test('a delayed 401 cannot clear a replacement credential after re-pair', async (t) => {
+  let releaseManifest!: () => void;
+  const waiting = new Promise<void>((resolve) => { releaseManifest = resolve; });
+  const creds = credentials(token);
+  const manager = createServer(async (req, res) => {
+    if (req.url === '/api/player/manifest') { await waiting; res.statusCode = 401; res.end('unauthorized'); return; }
+    if (req.url === '/api/player/register') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { playerToken: string };
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ token: body.playerToken, device: { id: 'replacement' } }));
+      return;
+    }
+    res.end('{}');
+  });
+  const managerUrl = await listen(manager);
+  const hostServer = createPlayerHostApp({ managerUrl, credentialStore: creds.store, identityStore }).listen(0, '127.0.0.1');
+  t.after(async () => { releaseManifest(); await close(hostServer); await close(manager); });
+  const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
+    const address = hostServer.address(); assert.ok(address && typeof address !== 'string'); resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  const stale401 = fetch(`${hostUrl}/api/player/manifest`);
+  while (creds.current() !== token) await new Promise((resolve) => setTimeout(resolve, 1));
+  const registration = await fetch(`${hostUrl}/api/player/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'REPAIR' }) });
+  assert.equal(registration.status, 200);
+  const replacement = creds.current();
+  assert.notEqual(replacement, token);
+  releaseManifest();
+  assert.equal((await stale401).status, 401);
+  assert.equal(creds.current(), replacement);
+});
+
+test('a consumed pairing code retries with its accepted token after Host restart', async (t) => {
+  const state: { token: string | null; retry: string | null } = { token: null, retry: null };
+  const store = {
+    async readToken() { return state.token; },
+    async writeToken(value: string) { state.token = value; },
+    async clear() { state.token = null; state.retry = null; },
+    async readRegistrationRetry() { return state.retry; },
+    async writeRegistrationRetry(value: string | null) { state.retry = value; },
+    async clearIfToken(expected: string) { if (state.token === expected) state.token = null; },
+  };
+  const managerTokens: string[] = [];
+  const manager = createServer(async (req, res) => {
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { code: string; playerToken: string };
+    managerTokens.push(body.playerToken);
+    if (managerTokens.length === 1) { res.destroy(); return; }
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ token: body.playerToken, device: { id: 'paired' } }));
+  });
+  const managerUrl = await listen(manager);
+  const startHost = () => createPlayerHostApp({ managerUrl, credentialStore: store, identityStore }).listen(0, '127.0.0.1');
+  let hostServer = startHost();
+  const hostUrlFor = async (server: Server) => new Promise<string>((resolve) => server.once('listening', () => {
+    const address = server.address(); assert.ok(address && typeof address !== 'string'); resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  let hostUrl = await hostUrlFor(hostServer);
+  t.after(async () => { await close(hostServer); await close(manager); });
+  const request = (url: string) => fetch(`${url}/api/player/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'ONE-TIME-CODE' }) });
+  const lost = await request(hostUrl).then((response) => response.status, () => 0);
+  assert.ok(lost === 0 || lost === 502);
+  const consumedToken = managerTokens[0];
+  assert.match(consumedToken ?? '', /^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(state).includes('ONE-TIME-CODE'), false);
+  await close(hostServer);
+  hostServer = startHost();
+  hostUrl = await hostUrlFor(hostServer);
+  assert.equal((await request(hostUrl)).status, 200);
+  assert.equal(managerTokens[1], consumedToken);
 });
 
 test('requests without a stored token fail closed while config is unauthenticated and host-managed', async (t) => {

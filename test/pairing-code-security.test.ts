@@ -65,23 +65,31 @@ test('LAN pairing codes expire, are single-use, and rate-limit failures without 
   });
 
   await t.test('blocks repeated failures by keyed address hash and stores no raw address', async () => {
-    const ip = '198.51.100.44';
+    db.prepare('DELETE FROM player_pairing_attempts').run();
     for (let i = 0; i < 5; i += 1) {
-      const failed = await call('/api/player/register', { method: 'POST', ip, body: { code: `BAD${i}XX`, hardwareId: 'hardware-pair-002' } });
+      const failed = await call('/api/player/register', { method: 'POST', ip: `198.51.100.${i + 1}`, body: { code: `BAD${i}XX`, hardwareId: 'hardware-pair-002' } });
       assert.equal(failed.response.status, 404);
     }
-    const blocked = await call('/api/player/register', { method: 'POST', ip, body: { code: 'BADBAD', hardwareId: 'hardware-pair-003' } });
+    const blocked = await call('/api/player/register', { method: 'POST', ip: '203.0.113.99', body: { code: 'BADBAD', hardwareId: 'hardware-pair-003' } });
     assert.equal(blocked.response.status, 429);
+    const ip = '127.0.0.1';
     const key = crypto.createHmac('sha256', sessionSecret).update(ip).digest('hex');
     const row = db.prepare('SELECT client_key_hash, failed_count, blocked_until FROM player_pairing_attempts WHERE client_key_hash = ?').get(key) as any;
     assert.equal(row.failed_count, 5); assert.ok(row.blocked_until);
     assert.equal(JSON.stringify(row).includes(ip), false);
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM player_pairing_attempts WHERE client_key_hash = ?').get(ip) as any).n, 0);
+    db.prepare('DELETE FROM player_pairing_attempts').run();
+  });
+
+  await t.test('Manager HTTPS mode rejects local Player launch commands', async () => {
+    const response = await call('/api/player/launch', { method: 'POST', cookie, body: { deviceId } });
+    assert.equal(response.response.status, 403);
   });
 
   await t.test('regeneration starts a fresh lifetime; conflicts preserve the code; success consumes it once', async () => {
     const regenerated = await call(`/api/devices/${encodeURIComponent(deviceId)}/regenerate-code`, { method: 'POST', cookie });
     assert.equal(regenerated.response.status, 200);
+    assert.equal(regenerated.body.device.pairingCodeConsumedAt, null);
     code = regenerated.body.device.pairingCode;
     const expiry = Date.parse(regenerated.body.device.pairingCodeExpiresAt);
     assert.ok(expiry > Date.now() && expiry <= Date.now() + 10 * 60_000 + 5_000);
@@ -89,6 +97,8 @@ test('LAN pairing codes expire, are single-use, and rate-limit failures without 
     assert.equal(paired.response.status, 200);
     const consumed = db.prepare('SELECT pairing_code_consumed_at FROM devices WHERE id = ?').get(deviceId) as any;
     assert.ok(consumed.pairing_code_consumed_at);
+    const consumedDto = await call('/api/devices', { cookie });
+    assert.equal(consumedDto.body.devices.find((device: any) => device.id === deviceId).pairingCodeConsumedAt, consumed.pairing_code_consumed_at);
     const repeat = await call('/api/player/register', { method: 'POST', body: { code, hardwareId: 'hardware-pair-010' } });
     assert.equal(repeat.response.status, 404);
     assert.equal('sampleCode' in repeat.body, false);

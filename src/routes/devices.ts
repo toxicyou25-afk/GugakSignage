@@ -60,6 +60,7 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     height: device.height,
     pairingCode: device.pairing_code,
     pairingCodeExpiresAt: device.pairing_code_expires_at,
+    pairingCodeConsumedAt: device.pairing_code_consumed_at,
     paired: Boolean(device.hardware_id),
     playlistId: device.playlist_id,
     playlistName: playlist?.name ?? null,

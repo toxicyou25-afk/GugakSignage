@@ -42,6 +42,7 @@ export function createPlayerHostServer(options: PlayerHostServerOptions): Player
   const playerRoot = path.join(rootDir, 'public', 'player');
   app.get('/', (_req, res) => res.redirect(302, '/player/'));
   app.use('/player', express.static(playerRoot, { index: 'index.html', fallthrough: false }));
+  app.use('/sample', express.static(path.join(rootDir, 'public', 'sample'), { index: 'notice.html', fallthrough: false }));
   app.use('/engine', express.static(path.join(rootDir, 'poc', 'packages', 'engine'), { index: false, fallthrough: false }));
   const server = app.listen(options.port ?? 0, host);
   let listening = false;

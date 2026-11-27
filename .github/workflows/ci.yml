@@ -277,6 +277,9 @@ jobs:
       - name: Verify taskkill failure handling
         shell: powershell
         run: .\installer\test-taskkill-native.ps1
+      - name: 'Verify installer PR #35 regressions'
+        shell: powershell
+        run: .\installer\test-install.ps1 -RegressionOnly
       - name: Verify PowerShell install, upgrade, removal, and data preservation
         shell: powershell
         run: .\installer\test-install.ps1 -EvidenceDir .\installer\build\ci-install-evidence

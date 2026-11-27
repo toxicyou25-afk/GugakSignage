@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveWatchdogHealthTarget, resolveWatchdogRole } from './ops/watchdog-role.mjs';
-import { readScreenTargetAssignment, writeScreenTargetAssignment } from './ops/player-state.mjs';
+import { readScreenTargetAssignment, writePlayerState, writeScreenTargetAssignment } from './ops/player-state.mjs';
 
 test('remote screen assignments persist atomically and an empty Manager result clears them', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-screen-assignment-'));
@@ -23,6 +24,80 @@ test('remote screen assignments persist atomically and an empty Manager result c
     assert.deepEqual(readScreenTargetAssignment(dataDir), { deviceId: 'device-remote', screenTargets: [] });
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('non-Player Host watchdog roles ignore stale persisted remote screen assignments', async (t) => {
+  const repoRoot = path.resolve(import.meta.dirname, '..');
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'watchdog-role-assignment-'));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+  const installDir = path.join(tempRoot, 'install');
+  const dataDir = path.join(tempRoot, 'data');
+  const opsDir = path.join(installDir, 'ops');
+  fs.mkdirSync(opsDir, { recursive: true });
+  for (const file of [
+    'watchdog.mjs', 'watchdog-role.mjs', 'watchdog-health.mjs', 'admin-startup.mjs',
+    'player-state.mjs', 'player-adoption.mjs', 'player-windows.mjs', 'cdp-websocket.mjs',
+  ]) {
+    fs.copyFileSync(path.join(repoRoot, 'installer', 'ops', file), path.join(opsDir, file));
+  }
+  const assignment = {
+    deviceId: 'remote-player-host',
+    screenTargets: [{ displayId: 'remote-display', nativeMonitorId: 'MONITOR\\REMOTE-1' }],
+  };
+  writeScreenTargetAssignment(dataDir, assignment);
+
+  const roleCases = [
+    { name: 'integrated', role: 'integrated', persistedPlayerUrl: 'http://127.0.0.1:43127/player/', expectedTargets: 0 },
+    { name: 'manager', role: 'manager', persistedPlayerUrl: 'http://127.0.0.1:43127/player/', expectedTargets: 0 },
+    { name: 'integrated-local-recovery', role: 'integrated', persistedPlayerUrl: 'http://127.0.0.1:1/player/', expectedTargets: 1 },
+  ];
+  for (const { name, role, persistedPlayerUrl, expectedTargets } of roleCases) {
+    const roleInstallDir = path.join(tempRoot, name);
+    fs.mkdirSync(path.join(roleInstallDir, 'ops'), { recursive: true });
+    for (const file of fs.readdirSync(opsDir)) {
+      fs.copyFileSync(path.join(opsDir, file), path.join(roleInstallDir, 'ops', file));
+    }
+    const roleDataDir = path.join(tempRoot, `${name}-data`);
+    fs.mkdirSync(path.join(roleDataDir, 'control'), { recursive: true });
+    fs.copyFileSync(path.join(dataDir, 'control', 'screen-targets.json'), path.join(roleDataDir, 'control', 'screen-targets.json'));
+    writePlayerState(roleDataDir, {
+      schemaVersion: 1, desired: 'stopped', running: false, pid: null, startedAt: null,
+      deviceId: assignment.deviceId, playerUrl: persistedPlayerUrl,
+      screenTargets: assignment.screenTargets, lastError: null, updatedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(path.join(roleInstallDir, 'install.json'), JSON.stringify({
+      role, installDir: roleInstallDir, dataDir: roleDataDir, logDir: path.join(roleDataDir, 'logs'),
+      nodePath: path.join(tempRoot, 'missing-node.exe'), browserPath: path.join(tempRoot, 'missing-browser.exe'),
+      profileDir: path.join(tempRoot, 'profile'), playerUrl: 'http://127.0.0.1:1/player/',
+      port: 1, debugPort: 2,
+      watchdog: {
+        healthIntervalMs: 20, browserCheckIntervalMs: 20, serverStartupGraceMs: 0,
+        serverHealthFailureThreshold: 1, serverBackoffInitialMs: 10, serverBackoffMaxMs: 10,
+        maxConsecutiveFailures: 1, logMaxBytes: 4096,
+      },
+    }));
+    const child = spawn(process.execPath, [path.join(roleInstallDir, 'ops', 'watchdog.mjs')], {
+      cwd: roleInstallDir, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    let timeout;
+    const exitCode = await Promise.race([
+      new Promise((resolve) => child.once('exit', resolve)),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          child.kill();
+          reject(new Error(`${role} watchdog did not stop: ${stderr}`));
+        }, 5000);
+      }),
+    ]).finally(() => clearTimeout(timeout));
+    assert.notEqual(exitCode, 0, `${role} watchdog should halt when its server cannot start`);
+    const state = JSON.parse(fs.readFileSync(path.join(roleDataDir, 'logs', 'watchdog-state.json'), 'utf8'));
+    assert.equal(state.screenTargetCount, expectedTargets, `${name} must retain only its role-appropriate targets`);
+    const persistedPlayerState = JSON.parse(fs.readFileSync(path.join(roleDataDir, 'control', 'player-state.json'), 'utf8'));
+    assert.deepEqual(persistedPlayerState.screenTargets, expectedTargets ? assignment.screenTargets : [],
+      `${name} must preserve local recovery or retire copied Player Host targets`);
   }
 });
 

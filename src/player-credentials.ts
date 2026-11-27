@@ -8,6 +8,9 @@ export interface PlayerCredentialStore {
   readToken(): Promise<string | null>;
   writeToken(token: string): Promise<void>;
   clear(): Promise<void>;
+  clearIfToken?(expected: string): Promise<void>;
+  readRegistrationRetry?(): Promise<string | null>;
+  writeRegistrationRetry?(value: string | null): Promise<void>;
 }
 
 export interface PlayerIdentityStore {
@@ -59,56 +62,81 @@ export function createPlayerCredentialStore(options: { filePath: string; platfor
     if (platform !== 'win32') throw new Error('Player credential storage requires Windows DPAPI');
   };
 
-  return {
-    async readToken() {
+  type StoredState = { token: string | null; registrationRetry: string | null };
+  let queue: Promise<void> = Promise.resolve();
+  const serialized = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = queue.then(operation, operation);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  };
+  async function readState(): Promise<StoredState> {
       ensureWindows();
       let ciphertext: string;
       try {
         ciphertext = await readFile(options.filePath, 'utf8');
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { token: null, registrationRetry: null };
         throw error;
       }
       if (!ciphertext.trim() || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(ciphertext.trim())) {
         throw new Error('Player credential file is corrupt');
       }
       const plaintext = await runDpapi(UNPROTECT_SCRIPT, ciphertext.trim());
-      let token: string;
+      let decoded: string;
+      try { decoded = Buffer.from(plaintext, 'base64').toString('utf8'); }
+      catch { throw new Error('Player credential file is corrupt'); }
+      let state: StoredState;
       try {
-        token = Buffer.from(plaintext, 'base64').toString('utf8');
+        const parsed: unknown = JSON.parse(decoded);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+        const value = parsed as Record<string, unknown>;
+        if (value.version !== 1 || (value.token !== null && typeof value.token !== 'string') ||
+            (value.registrationRetry !== null && typeof value.registrationRetry !== 'string')) throw new Error();
+        state = { token: value.token as string | null, registrationRetry: value.registrationRetry as string | null };
       } catch {
+        state = { token: decoded, registrationRetry: null };
+      }
+      if ((state.token !== null && !/^[a-f0-9]{64}$/.test(state.token)) || Buffer.from(decoded, 'utf8').toString('base64') !== plaintext) {
         throw new Error('Player credential file is corrupt');
       }
-      if (!/^[a-f0-9]{64}$/.test(token) || Buffer.from(token, 'utf8').toString('base64') !== plaintext) {
-        throw new Error('Player credential file is corrupt');
-      }
-      return token;
-    },
-    async writeToken(token: string) {
-      if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new Error('Invalid player token format');
+      if (state.registrationRetry !== null && !/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(state.registrationRetry)) throw new Error('Player credential file is corrupt');
+      return state;
+  }
+  async function writeState(state: StoredState): Promise<void> {
       ensureWindows();
-      const ciphertext = await runDpapi(PROTECT_SCRIPT, Buffer.from(token, 'utf8').toString('base64'));
-      if (!ciphertext || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(ciphertext)) {
-        throw new Error('Windows DPAPI operation failed');
-      }
+      const serializedState = JSON.stringify({ version: 1, ...state });
+      const ciphertext = await runDpapi(PROTECT_SCRIPT, Buffer.from(serializedState, 'utf8').toString('base64'));
+      if (!ciphertext || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(ciphertext)) throw new Error('Windows DPAPI operation failed');
       const directory = path.dirname(options.filePath);
       await mkdir(directory, { recursive: true });
       const temporaryPath = path.join(directory, `.${path.basename(options.filePath)}.${randomUUID()}.tmp`);
-      try {
-        await writeFile(temporaryPath, ciphertext, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-        await rename(temporaryPath, options.filePath);
-      } finally {
-        await rm(temporaryPath, { force: true });
-      }
-    },
-    async clear() {
+      try { await writeFile(temporaryPath, ciphertext, { encoding: 'utf8', flag: 'wx', mode: 0o600 }); await rename(temporaryPath, options.filePath); }
+      finally { await rm(temporaryPath, { force: true }); }
+  }
+
+  return {
+    async readToken() { return serialized(async () => (await readState()).token); },
+    async writeToken(token: string) { return serialized(async () => {
+      if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new Error('Invalid player token format');
+      const state = await readState(); await writeState({ ...state, token });
+    }); },
+    async clearIfToken(expected: string) { return serialized(async () => {
+      const state = await readState();
+      if (state.token === expected) { try { await rm(options.filePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+    }); },
+    async readRegistrationRetry() { return serialized(async () => (await readState()).registrationRetry); },
+    async writeRegistrationRetry(value: string | null) { return serialized(async () => {
+      if (value !== null && !/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(value)) throw new Error('Invalid registration retry identity');
+      const state = await readState(); await writeState({ ...state, registrationRetry: value });
+    }); },
+    async clear() { return serialized(async () => {
       ensureWindows();
       try {
         await rm(options.filePath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
-    },
+    }); },
   };
 }
 

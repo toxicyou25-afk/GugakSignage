@@ -49,6 +49,26 @@ test('rotating a protected token replaces the prior ciphertext atomically', { sk
   }
 });
 
+test('persists only protected registration retry identity and conditionally clears the matching token', { skip: process.platform !== 'win32' }, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'player-credentials-retry-'));
+  const filePath = path.join(directory, 'player-token');
+  const token = '0123456789abcdef'.repeat(4);
+  const retryIdentity = `${'a'.repeat(64)}.${token}`;
+  try {
+    const first = createPlayerCredentialStore({ filePath });
+    await first.writeToken(token);
+    await first.writeRegistrationRetry?.(retryIdentity);
+    const ciphertext = await readFile(filePath, 'utf8');
+    assert.equal(ciphertext.includes(token), false);
+    assert.equal(ciphertext.includes(retryIdentity), false);
+    const restarted = createPlayerCredentialStore({ filePath });
+    assert.equal(await restarted.readRegistrationRetry?.(), retryIdentity);
+    await restarted.writeToken('fedcba9876543210'.repeat(4));
+    await restarted.clearIfToken?.(token);
+    assert.equal(await restarted.readToken(), 'fedcba9876543210'.repeat(4));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('rejects a malformed credential file instead of treating it as a missing token', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'player-credentials-corrupt-'));
   const filePath = path.join(directory, 'player-token');

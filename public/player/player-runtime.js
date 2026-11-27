@@ -3,6 +3,13 @@
  * A single-flight, generation-aware cache readiness coordinator. Kept free of
  * DOM and IndexedDB dependencies so request races can be regression-tested.
  */
+export function restoreHostManagedMode(runtime, cached) {
+  return runtime.hostManaged || (
+    !runtime.token
+    && Boolean(runtime.deviceId && cached?.manifest?.device?.id === runtime.deviceId)
+  );
+}
+
 export function createCacheReadiness() {
   let generation = 0;
   const flights = new Map();

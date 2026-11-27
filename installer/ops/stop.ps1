@@ -10,7 +10,9 @@ if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
 $config = Read-JsonFile -Path $configPath
-$serverEntry = switch ([string]$config.role) {
+$roleProperty = $config.PSObject.Properties["role"]
+$configuredRole = if ($null -eq $roleProperty) { "integrated" } else { [string]$roleProperty.Value }
+$serverEntry = switch ($configuredRole) {
     { $_ -in @("integrated", "manager") } { "server.js" }
     "player-host" { "player-host-main.js" }
     default { throw "install.json의 역할이 유효하지 않아 서버 프로세스를 안전하게 확인할 수 없습니다." }

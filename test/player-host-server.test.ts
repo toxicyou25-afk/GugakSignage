@@ -32,6 +32,11 @@ test('serves only Player UI and engine assets with safe headers', async (t) => {
   assert.match(player.headers.get('content-security-policy') ?? '', /script-src 'self'/);
   assert.equal(player.headers.get('x-content-type-options'), 'nosniff');
 
+  const notice = await fetch(`${base}/sample/notice.html`);
+  assert.equal(notice.status, 200);
+  assert.match(await notice.text(), /오늘의 안내/);
+  assert.equal(notice.headers.get('x-content-type-options'), 'nosniff');
+
   const engine = await fetch(`${base}/engine/index.js`);
   assert.equal(engine.status, 200);
   assert.ok((await engine.text()).length > 0);

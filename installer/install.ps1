@@ -93,11 +93,62 @@ function Copy-EnvironmentFilePreservingAcl {
     Set-Acl -LiteralPath $Destination -AclObject $sourceAcl
 }
 
+function ConvertTo-EnvSetting {
+    param([string]$Name, [string]$Value)
+    if ($Value.Contains([char]13) -or $Value.Contains([char]10)) {
+        throw "환경 변수 값에 줄바꿈이 있습니다: $Name"
+    }
+    $delimiter = if (-not $Value.Contains("'")) { "'" } elseif (-not $Value.Contains([char]96)) { [string][char]96 } else {
+        throw "환경 변수 값에 지원되지 않는 인용 문자가 있습니다: $Name"
+    }
+    return $Name + "=" + $delimiter + $Value + $delimiter
+}
+
+function Test-ServiceRestartRequired {
+    param(
+        $PreviousConfig,
+        [bool]$RoleWasExplicit,
+        [string]$RequestedRole,
+        [string]$RequestedMode
+    )
+    if (-not $PreviousConfig -or -not $RoleWasExplicit) { return $false }
+    if ([string]$PreviousConfig.role -ne $RequestedRole) { return $true }
+    return ($RequestedRole -eq "manager" -and [string]$PreviousConfig.mode -ne $RequestedMode)
+}
+
+function Test-ManagerTlsCertificate {
+    param(
+        [Security.Cryptography.X509Certificates.X509Certificate]$Certificate,
+        [System.Net.Security.SslPolicyErrors]$SslPolicyErrors,
+        [Security.Cryptography.X509Certificates.X509Certificate2[]]$TrustedCertificates
+    )
+    if (($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateNameMismatch) -ne 0 -or
+        ($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateNotAvailable) -ne 0) { return $false }
+    if ($SslPolicyErrors -eq [System.Net.Security.SslPolicyErrors]::None) { return $true }
+    if (($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateChainErrors) -eq 0) { return $false }
+    $customChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $customChain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $customChain.ChainPolicy.VerificationFlags = [Security.Cryptography.X509Certificates.X509VerificationFlags]::AllowUnknownCertificateAuthority
+        foreach ($trustedCertificate in $TrustedCertificates) { [void]$customChain.ChainPolicy.ExtraStore.Add($trustedCertificate) }
+        $built = $customChain.Build([Security.Cryptography.X509Certificates.X509Certificate2]::new($Certificate))
+        $hasOnlyConfiguredTrustBoundaryErrors = @($customChain.ChainStatus | Where-Object {
+            $_.Status -notin @(
+                [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::UntrustedRoot,
+                [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::PartialChain
+            )
+        }).Count -eq 0
+        $chainRootThumbprint = if ($customChain.ChainElements.Count -gt 0) { $customChain.ChainElements[$customChain.ChainElements.Count - 1].Certificate.Thumbprint } else { "" }
+        return (($built -or $hasOnlyConfiguredTrustBoundaryErrors) -and $TrustedCertificates.Thumbprint -contains $chainRootThumbprint)
+    } finally {
+        $customChain.Dispose()
+    }
+}
+
 function Set-EnvSetting {
     param([string]$Path, [string]$Name, [string]$Value)
     $text = [IO.File]::ReadAllText($Path)
-    $escapedValue = $Value.Replace('\', '\\').Replace('"', '\\"')
-    $line = $Name + '="' + $escapedValue + '"'
+    $line = ConvertTo-EnvSetting -Name $Name -Value $Value
     if ($text -match "(?m)^$([regex]::Escape($Name))=.*$") {
         $text = [regex]::Replace($text, "(?m)^$([regex]::Escape($Name))=.*$", [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $line })
     } else {
@@ -274,7 +325,24 @@ function Register-WatchdogTask {
 function Wait-ServerHealth {
     param([int]$TimeoutSeconds = 150)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    $client = [System.Net.Http.HttpClient]::new()
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $trustedCertificates = @()
+    if ($watchdogRole -eq "manager" -and $Mode -eq "lan" -and $TlsCertFile -and (Test-Path -LiteralPath $TlsCertFile -PathType Leaf)) {
+        $pemText = [IO.File]::ReadAllText($TlsCertFile)
+        foreach ($certificateMatch in [regex]::Matches($pemText, '(?s)-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----')) {
+            $certificateBytes = [Convert]::FromBase64String(($certificateMatch.Groups[1].Value -replace '\s', ''))
+            $trustedCertificates += [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificateBytes)
+        }
+        if ($trustedCertificates.Count -eq 0) {
+            $handler.Dispose()
+            throw "Manager HTTPS 인증서 파일에서 신뢰할 인증서를 읽지 못했습니다: $TlsCertFile"
+        }
+        $handler.ServerCertificateCustomValidationCallback = {
+            param($request, $certificate, $chain, $sslPolicyErrors)
+            return (Test-ManagerTlsCertificate -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
+        }.GetNewClosure()
+    }
+    $client = [System.Net.Http.HttpClient]::new($handler)
     $client.Timeout = [TimeSpan]::FromSeconds(2)
     $healthPort = if ($watchdogRole -eq "player-host") { 43127 } else { $Port }
     $healthService = if ($watchdogRole -eq "player-host") { "gugak-player-host" } else { "gugak-signage" }
@@ -291,6 +359,7 @@ function Wait-ServerHealth {
         }
     } finally {
         $client.Dispose()
+        foreach ($trustedCertificate in $trustedCertificates) { $trustedCertificate.Dispose() }
     }
     return $false
 }
@@ -472,6 +541,7 @@ if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
 }
 
 $roleChanged = $previousConfig -and $roleExplicit -and ([string]$previousConfig.role -ne $watchdogRole)
+$serviceRestartRequired = Test-ServiceRestartRequired -PreviousConfig $previousConfig -RoleWasExplicit $roleExplicit -RequestedRole $watchdogRole -RequestedMode $Mode
 if ($roleChanged -and $dataDirChanged) { throw "Role changes cannot be combined with a data-folder change." }
 if ($Role -eq "manager") { $shortcutPaths = @(); $adminShortcutPaths = @($adminShortcutPaths) }
 if ($Role -eq "player") {
@@ -567,7 +637,7 @@ try {
         if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
             throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
         }
-        if ($roleChanged) {
+        if ($serviceRestartRequired) {
             $stopScript = Join-Path $InstallDir "ops\stop.ps1"
             $currentStopScript = Join-Path $PSScriptRoot "ops\stop.ps1"
             if (-not (Test-Path -LiteralPath $currentStopScript -PathType Leaf) -or
@@ -575,7 +645,7 @@ try {
                 throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다."
             }
             Copy-Item -LiteralPath $currentStopScript -Destination $stopScript -Force
-            Write-Step "설치 역할 변경을 위해 기존 watchdog과 소유 프로세스를 중지"
+            Write-Step "설치 역할 또는 Manager 네트워크 모드 변경을 위해 기존 watchdog과 소유 프로세스를 중지"
             & $stopScript -Quiet
         }
         Write-Step "서버 파일 복사"
@@ -636,7 +706,7 @@ try {
     }
     if (-not (Test-Path -LiteralPath $envFile)) {
         Write-Step "환경 설정과 임의 비밀번호 생성"
-        $adminPassword = "0000"
+        $newEnvAdminPassword = "0000"
         if ($Role -eq "manager" -and $Mode -eq "lan") {
             if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
                 $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
@@ -644,28 +714,29 @@ try {
             if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
                 throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
             }
-            $adminPassword = $AdminPassword
+            $newEnvAdminPassword = $AdminPassword
         }
         $sessionSecret = New-RandomSecret -ByteCount 48
-        $dataDirEnv = $DataDir.Replace('"', '\"')
         $seedSamples = if ($existingDataDetected) { "false" } else { "true" }
         $lines = @(
             "# Generated by GugakSignage installer. Do not commit this file.",
-            [string]::Concat("ADMIN_PASSWORD=", $adminPassword),
+            (ConvertTo-EnvSetting -Name "ADMIN_PASSWORD" -Value $newEnvAdminPassword),
             [string]::Concat("SESSION_SECRET=", $sessionSecret),
             [string]::Concat("PORT=", $Port),
             $(if ($Role -eq "player" -or ($Role -eq "manager" -and $Mode -eq "standalone")) { "HOST=127.0.0.1" } else { "HOST=0.0.0.0" }),
             "GUGAK_ROLE=$Role",
             "GUGAK_MODE=$Mode",
-            [string]::Concat('DATA_DIR="', $dataDirEnv, '"'),
-            [string]::Concat('DB_PATH="', (Join-Path $DataDir "signage.sqlite").Replace('"', '\"'), '"'),
-            [string]::Concat('UPLOAD_DIR="', (Join-Path $DataDir "uploads").Replace('"', '\"'), '"'),
+            (ConvertTo-EnvSetting -Name "DATA_DIR" -Value $DataDir),
+            (ConvertTo-EnvSetting -Name "DB_PATH" -Value (Join-Path $DataDir "signage.sqlite")),
+            (ConvertTo-EnvSetting -Name "UPLOAD_DIR" -Value (Join-Path $DataDir "uploads")),
             "MAX_UPLOAD_MB=300",
             [string]::Concat("SEED_SAMPLES=", $seedSamples)
         )
         [IO.File]::WriteAllLines($envFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
         Protect-EnvironmentFile -Path $envFile
-        Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+        if ($newEnvAdminPassword -eq "0000") {
+            Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+        }
     } else {
         $existingEnv = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
         if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
@@ -840,7 +911,14 @@ try {
     }
 
     Write-Step "설치 완료"
-    Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+    $effectiveAdminPassword = if ($null -ne $newEnvAdminPassword) {
+        $newEnvAdminPassword
+    } else {
+        Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+    }
+    if ($effectiveAdminPassword -eq "0000") {
+        Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+    }
     if ($Role -eq "player") {
         Write-Step "재생기 화면: $PlayerUrl"
         Write-Step "중앙 Manager: $ManagerUrl"
