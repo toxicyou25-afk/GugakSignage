@@ -140,8 +140,13 @@ jobs:
           $expectedHash = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
           $innoRoot = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'
           $isccPath = Join-Path $innoRoot 'ISCC.exe'
-          $needsInstall = -not (Test-Path -LiteralPath $isccPath -PathType Leaf)
-          if (-not $needsInstall) { $needsInstall = (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion -notlike "$version*" }
+          $markerPath = Join-Path $innoRoot ".gugaksignage-inno-$version.sha256"
+          $needsInstall = $true
+          if ((Test-Path -LiteralPath $isccPath -PathType Leaf) -and (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+            $isccHash = (Get-FileHash -LiteralPath $isccPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expectedMarker = @($version, $expectedHash, $isccHash) -join "`n"
+            $needsInstall = ([IO.File]::ReadAllText($markerPath).Trim() -ne $expectedMarker)
+          }
           if ($needsInstall) {
             $setupPath = Join-Path $env:RUNNER_TEMP "innosetup-$version.exe"
             Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setupPath
@@ -155,10 +160,12 @@ jobs:
             $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /DIR="' + $innoRoot + '"'
             $process = Start-Process -FilePath $setupPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
             if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+            if (-not (Test-Path -LiteralPath $isccPath -PathType Leaf)) { throw "ISCC.exe is missing: $isccPath" }
+            $isccHash = (Get-FileHash -LiteralPath $isccPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $markerText = @($version, $expectedHash, $isccHash) -join "`n"
+            [IO.File]::WriteAllText($markerPath, $markerText, [Text.UTF8Encoding]::new($false))
           }
           if (-not (Test-Path -LiteralPath $isccPath -PathType Leaf)) { throw "ISCC.exe is missing: $isccPath" }
-          $installedVersion = (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion
-          if ($installedVersion -notlike "$version*") { throw "Unexpected Inno Setup version: $installedVersion" }
           [IO.File]::AppendAllText($env:GITHUB_PATH, "$innoRoot`r`n", [Text.UTF8Encoding]::new($false))
       - name: Validate Windows install script syntax
         shell: powershell
