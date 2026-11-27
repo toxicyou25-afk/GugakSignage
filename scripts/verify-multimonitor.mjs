@@ -253,17 +253,27 @@ try {
   if (localMonitor) await refreshedFourth.locator('[data-screen-native-monitor]').selectOption(localMonitor);
   await refreshedFourth.locator('[data-screen-fit]').selectOption('cover');
   await refreshedFourth.locator('[data-screen-playlist]').selectOption(playlist.urlPlaylistId);
+  const selectedPlaylistBeforeSave = await refreshedFourth.locator('[data-screen-playlist]').inputValue();
+  if (selectedPlaylistBeforeSave !== playlist.urlPlaylistId) {
+    throw new Error(`4번 화면 재생목록 선택이 유지되지 않았습니다. expected=${playlist.urlPlaylistId}, actual=${selectedPlaylistBeforeSave}`);
+  }
   const screenDisplayId = await refreshedFourth.getAttribute('data-display-id');
   if (!screenDisplayId) throw new Error('4번 화면의 ID를 확인할 수 없습니다.');
+  const screenSaveRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(screenDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
   const screenSaveResponsePromise = admin.waitForResponse((response) =>
     response.url().includes(`/api/displays/${encodeURIComponent(screenDisplayId)}`) &&
     response.request().method() === 'PUT',
   );
   await refreshedFourth.locator('[data-topology-action=save-screen]').click();
+  const screenSaveRequest = await screenSaveRequestPromise;
   const screenSaveResponse = await screenSaveResponsePromise;
   let screenSaveBody;
   try { screenSaveBody = await screenSaveResponse.json(); } catch { screenSaveBody = null; }
-  report.screenSave = { status: screenSaveResponse.status(), body: screenSaveBody };
+  const screenSaveRequestBody = screenSaveRequest.postDataJSON();
+  report.screenSave = { status: screenSaveResponse.status(), requestBody: screenSaveRequestBody, body: screenSaveBody };
   if (!screenSaveResponse.ok()) {
     throw new Error(`화면 배정 저장 API가 실패했습니다: ${screenSaveResponse.status()} ${JSON.stringify(screenSaveBody)}`);
   }
@@ -283,6 +293,9 @@ try {
         toast: document.querySelector('.toast:not([hidden])')?.textContent || null,
       };
     });
+    report.screenSaveFailureState.expectedPlaylistId = playlist.urlPlaylistId;
+    report.screenSaveFailureState.selectedPlaylistBeforeSave = selectedPlaylistBeforeSave;
+    report.screenSaveFailureState.requestBody = screenSaveRequestBody;
     throw new Error(`${error.message}; screen save state=${JSON.stringify(report.screenSaveFailureState)}`);
   }
   await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
