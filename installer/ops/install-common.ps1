@@ -545,6 +545,7 @@ function Stop-VerifiedOwnedProcess {
     if ($stillRunning) {
         $reverified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         if (-not $reverified) {
+            if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { return $true }
             throw "프로세스 트리 종료 실패 뒤 PID 신원이 변해 추가 종료를 중단했습니다. IDENTITY_CHANGED PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
         }
 
