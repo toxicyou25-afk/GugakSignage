@@ -150,9 +150,6 @@ export function topologyRoutes(db: DB, config: AppConfig): Router {
       if (normalized && !/^MONITOR\\/iu.test(normalized)) {
         throw new Error('연결 단자 이름이 아닌 Windows 모니터 장치 ID를 선택해 주세요.');
       }
-      if (normalized && !/^MONITOR\\/iu.test(normalized)) {
-        throw new Error('연결 단자 이름이 아닌 Windows 모니터 장치 ID를 선택해 주세요.');
-      }
       nativeMonitorId = normalized || null;
     }
     updateDisplay(db, req.params.id, config.heartbeatOnlineMs, {
