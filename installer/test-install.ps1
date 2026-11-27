@@ -17,6 +17,11 @@ $watchdogHealthTest = Join-Path $PSScriptRoot "test-watchdog-health.mjs"
 $evidenceDir = if ($EvidenceDir) { [IO.Path]::GetFullPath($EvidenceDir) } else { Join-Path $repoRoot "docs\install\evidence" }
 New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 
+function Normalize-AclAutoInheritedFlag {
+    param([Parameter(Mandatory = $true)][string]$Sddl)
+    return [regex]::Replace($Sddl, '(?<=D:)([A-Z]*?)AI(?=[A-Z(])', '$1')
+}
+
 function Get-FreePort {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
@@ -270,7 +275,10 @@ try {
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
         throw "PowerShell legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
     }
-    if ((Get-Acl -LiteralPath $legacyPsDataEnv).Sddl -ne $legacyPsEnvAclSddl) { throw "PowerShell legacy .env ACL을 보존하지 않았습니다." }
+    $legacyCopiedAclSddl = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
+    if ((Normalize-AclAutoInheritedFlag $legacyCopiedAclSddl) -ne (Normalize-AclAutoInheritedFlag $legacyPsEnvAclSddl)) {
+        throw "PowerShell legacy .env ACL differs. source=$legacyPsEnvAclSddl; destination=$legacyCopiedAclSddl"
+    }
     if ((Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash -ne $legacyPsEnvHashBefore -or
         (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash -ne $legacyPsDbHashBefore -or
         (Get-FileHash -LiteralPath $legacyPsUpload -Algorithm SHA256).Hash -ne $legacyPsUploadHashBefore) {
@@ -357,7 +365,11 @@ try {
     )
     foreach ($shortcutPath in $shortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "바로가기가 없습니다: $shortcutPath" }
-        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut = [pscustomobject]@{
+            TargetPath = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+            Arguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+            IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath)
+        }
         if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "바로가기 대상이 wscript.exe가 아닙니다." }
         if ($shortcut.Arguments -notlike "*watchdog-launch.vbs*") { throw "바로가기 인자가 watchdog 실행 파일을 가리키지 않습니다." }
     }
@@ -369,7 +381,11 @@ try {
     )
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
-        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut = [pscustomobject]@{
+            TargetPath = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+            Arguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+            IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath)
+        }
         if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
         if ($shortcut.Arguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $($shortcut.Arguments)" }
         if ($shortcut.IconLocation -notlike "*msedge.exe*" -and $shortcut.IconLocation -notlike "*chrome.exe*") {

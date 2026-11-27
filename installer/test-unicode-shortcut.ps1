@@ -11,13 +11,14 @@ $targetPath = Join-Path $env:SystemRoot "System32\cmd.exe"
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 
 try {
-    Save-WindowsShortcut -ShortcutPath $shortcutPath -TargetPath $targetPath -Arguments "--unicode-shortcut-test" -WorkingDirectory $testRoot -Description "Unicode shortcut test"
+    Save-WindowsShortcut -ShortcutPath $shortcutPath -TargetPath $targetPath -Arguments "--unicode-shortcut-test" -WorkingDirectory $testRoot -Description "Unicode shortcut test" -IconPath $targetPath
     if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "Unicode shortcut was not created: $shortcutPath" }
     $savedTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
     $savedArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
     $savedWorkingDirectory = [GugakShortcutNative]::GetWorkingDirectory($shortcutPath)
     if ($savedTarget -ne $targetPath) { throw "Unicode shortcut target differs: $savedTarget" }
     if ($savedArguments -ne "--unicode-shortcut-test") { throw "Unicode shortcut arguments differ: $savedArguments" }
+    if ([GugakShortcutNative]::GetIconLocation($shortcutPath) -ne $targetPath) { throw "Unicode shortcut icon path differs." }
     if ($savedWorkingDirectory -ne $testRoot) { throw "Unicode shortcut working directory differs: $savedWorkingDirectory" }
     [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true; argumentsPreserved = $true; workingDirectoryPreserved = $true } | ConvertTo-Json -Compress
 } finally {
