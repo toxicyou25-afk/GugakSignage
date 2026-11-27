@@ -263,7 +263,12 @@ function Stop-VerifiedOwnedProcess {
     }
     if (-not $verified) {
         $actualStart = if ($process.CreationDate) { ([DateTime]$process.CreationDate).ToUniversalTime().ToString("o") } else { "<unknown>" }
-        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart"
+        $commandLine = [string]$process.CommandLine
+        $commandLineExecutable = Get-ProcessExecutableFromCommandLine -CommandLine $commandLine
+        $missingMarkers = @($CommandLineContains | Where-Object {
+            $_ -and $commandLine.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -lt 0
+        }) -join ","
+        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers"
     }
     $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
     $exitCode = $LASTEXITCODE
