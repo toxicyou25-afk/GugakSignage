@@ -323,7 +323,10 @@ function Get-VerifiedOwnedProcess {
 }
 
 function Invoke-TaskkillProcessTree {
-    param([Parameter(Mandatory = $true)][ValidateRange(0, 2147483647)][int]$ProcessId)
+    param(
+        [Parameter(Mandatory = $true)][ValidateRange(0, 2147483647)][int]$ProcessId,
+        [switch]$RootOnly
+    )
 
     $taskkillPath = Join-Path $env:SystemRoot "System32\taskkill.exe"
     if (-not (Test-Path -LiteralPath $taskkillPath -PathType Leaf)) {
@@ -332,7 +335,9 @@ function Invoke-TaskkillProcessTree {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $taskkillPath
-    $startInfo.Arguments = "/PID $ProcessId /T /F"
+    $arguments = "/PID $ProcessId"
+    if (-not $RootOnly) { $arguments += " /T" }
+    $startInfo.Arguments = $arguments + " /F"
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -398,10 +403,27 @@ function Stop-VerifiedOwnedProcess {
         throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, nativeName=$nativeName, installState=$stateSummary"
     }
     $taskkillResult = Invoke-TaskkillProcessTree -ProcessId $ProcessId
-    $exitCode = [int]$taskkillResult.ExitCode
     $stillRunning = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if ($exitCode -ne 0 -and $stillRunning) {
-        throw "프로세스 종료에 실패했습니다. PID=$ProcessId, exit=$exitCode, output=$($taskkillResult.Output)"
+    if ($stillRunning) {
+        $reverified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+        if (-not $reverified) {
+            throw "프로세스 트리 종료 실패 뒤 PID 신원이 변해 추가 종료를 중단했습니다. IDENTITY_CHANGED PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
+        }
+
+        $rootResult = Invoke-TaskkillProcessTree -ProcessId $ProcessId -RootOnly
+        $rootDeadline = [DateTime]::UtcNow.AddSeconds(3)
+        do {
+            $stillRunning = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+            if (-not $stillRunning) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $rootDeadline)
+
+        if ($stillRunning) {
+            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
+        }
+        Write-Warning "프로세스 트리 일부를 종료하지 못해 신원을 재확인한 루트 프로세스만 종료했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
+    } elseif ($taskkillResult.ExitCode -ne 0) {
+        Write-Warning "프로세스 루트는 종료됐지만 taskkill 트리 정리 결과가 비정상입니다. PID=$ProcessId, exit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
     }
     return $true
 }

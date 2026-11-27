@@ -157,7 +157,7 @@ jobs:
           }
       - name: Build Windows package and verify payload licenses
         shell: powershell
-        run: .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -SkipCompile
+        run: .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -RequireCompile
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow
@@ -179,6 +179,10 @@ jobs:
         if: ${{ success() }}
         shell: powershell
         run: .\installer\test-install.ps1 -EvidenceDir .\installer\build\ci-install-evidence
+      - name: Verify Inno Setup install, upgrade, uninstall, and data preservation
+        if: ${{ success() }}
+        shell: powershell
+        run: .\installer\test-inno.ps1 -EvidenceDir .\installer\build\ci-inno-evidence
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
@@ -190,5 +194,8 @@ jobs:
             docs/verification/evidence/*.png
             installer/build/ci-install-evidence/*.json
             installer/build/ci-install-evidence/*.txt
+            installer/build/ci-inno-evidence/*.json
+            installer/build/ci-inno-evidence/*.txt
+            installer/build/inno/*.exe
           if-no-files-found: warn
           retention-days: 14

@@ -675,9 +675,9 @@ try {
     $enabledState = Read-WatchdogState -StatePath $statePath
     $watchdogProcess = Get-VerifiedOwnedProcess -ProcessId ([int]$enabledState.watchdogPid) -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$enabledState.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
     if (-not $watchdogProcess) { throw "강제 종료 대상 watchdog의 소유권을 확인하지 못했습니다." }
-    & taskkill.exe /PID ([int]$enabledState.watchdogPid) /F *> $null
-    if ($LASTEXITCODE -ne 0 -and (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))) {
-        throw "watchdog 강제 종료에 실패했습니다."
+    $watchdogKill = Invoke-TaskkillProcessTree -ProcessId ([int]$enabledState.watchdogPid) -RootOnly
+    if ($watchdogKill.ExitCode -ne 0 -and (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))) {
+        throw "watchdog 강제 종료에 실패했습니다: $($watchdogKill.Output)"
     }
     Wait-Until -TimeoutSeconds 15 -Description "watchdog 프로세스 종료" -Condition {
         return -not (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))
