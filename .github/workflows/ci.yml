@@ -157,7 +157,12 @@ jobs:
           }
       - name: Build Windows package and verify payload licenses
         shell: powershell
-        run: .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -RequireCompile
+        run: |
+          .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall
+          $setupExe = Join-Path $env:GITHUB_WORKSPACE 'installer\build\inno\GugakSignage-Setup-0.1.0.exe'
+          if (-not (Test-Path -LiteralPath $setupExe -PathType Leaf)) {
+            throw "Inno Setup 6 did not produce the required setup EXE: $setupExe"
+          }
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow
