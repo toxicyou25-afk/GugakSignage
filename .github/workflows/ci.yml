@@ -271,6 +271,9 @@ jobs:
       - name: Build installer and verify package licenses
         shell: powershell
         run: .\installer\build-installer.ps1 -SkipInstall
+      - name: Verify Unicode shortcut creation
+        shell: powershell
+        run: .\\installer\\test-unicode-shortcut.ps1
       - name: Verify taskkill failure handling
         shell: powershell
         run: .\installer\test-taskkill-native.ps1
