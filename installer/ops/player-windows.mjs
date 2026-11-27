@@ -245,6 +245,12 @@ export async function createFullscreenPlayerWindows({
       if (existing && skipExistingDisplaySetup) continue;
       const window = await cdp.call('Browser.getWindowForTarget', { targetId });
       if (!Number.isInteger(window.windowId)) throw new Error('CDP returned no window ID.');
+      if (existing) {
+        await cdp.call('Browser.setWindowBounds', {
+          windowId: window.windowId,
+          bounds: { windowState: 'normal' },
+        });
+      }
       await cdp.call('Browser.setWindowBounds', {
         windowId: window.windowId,
         bounds: {
@@ -252,7 +258,6 @@ export async function createFullscreenPlayerWindows({
           top: target.bounds.y,
           width: target.bounds.width,
           height: target.bounds.height,
-          windowState: 'normal',
         },
       });
       await cdp.call('Browser.setWindowBounds', {
