@@ -169,6 +169,10 @@ if (env.ADMIN_PASSWORD !== Buffer.from(process.argv[3], "base64").toString("utf8
 if (env.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("Windows certificate path did not round-trip");
 '@, [Text.UTF8Encoding]::new($false))
         $encodedRegressionPassword = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($regressionPassword))
+        $serializedRegressionPassword = [string]::Concat([char]96, $regressionPassword, [char]96)
+        if ((ConvertFrom-EnvScalarValue -Value $serializedRegressionPassword) -cne $regressionPassword) {
+            throw "PowerShell .env parser did not round-trip a backtick-quoted administrator password."
+        }
         & (Get-Command node.exe).Source $parseProbe $regressionEnv $encodedRegressionPassword $PSCommandPath
         if ($LASTEXITCODE -ne 0) { throw "Node 24 parseEnv rejected fresh Manager .env values." }
 

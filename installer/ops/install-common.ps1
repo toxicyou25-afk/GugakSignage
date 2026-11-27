@@ -667,7 +667,7 @@ function ConvertFrom-EnvScalarValue {
     $raw = $Value.Trim()
     if (-not $raw) { return "" }
     $quote = [char]0
-    if ($raw[0] -eq [char]34 -or $raw[0] -eq [char]39) { $quote = $raw[0] }
+    if ($raw[0] -eq [char]34 -or $raw[0] -eq [char]39 -or $raw[0] -eq [char]96) { $quote = $raw[0] }
     if ($quote -ne [char]0) {
         $builder = [Text.StringBuilder]::new()
         $closed = $false
