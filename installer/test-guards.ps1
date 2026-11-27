@@ -165,10 +165,29 @@ try {
     if (-not (Test-PathEqual -Left $fallbackDocuments -Right $expectedDocuments)) {
         throw "제한 계정의 Documents 경로 fallback이 잘못되었습니다: $fallbackDocuments"
     }
-    $null = Assert-Throws -Description "fallback Documents data removal blocked" -Action {
+    $message = Assert-Throws -Description "fallback Documents data removal blocked" -Action {
         Assert-SafeDataRemovalTarget -DataDir (Join-Path $fallbackDocuments "GugakSignage\data") -ProtectedPaths @($fallbackDocuments)
     }
+    if ($message -notmatch "데이터 폴더가 보호 대상과 겹칩니다") {
+        throw "fallback Documents가 지정된 보호 경로로 거부되지 않았습니다: $message"
+    }
     $results.restrictedProfileDocumentsPathBlocked = $true
+
+    $protectedInstallPath = Join-Path $env:PUBLIC "GugakSignage-InstallGuard-$suffix"
+    $protectedProfilePath = Join-Path $env:PUBLIC "GugakSignage-ProfileGuard-$suffix"
+    $safeRemovalPath = Join-Path $env:PUBLIC "GugakSignage-DataGuard-$suffix"
+    Assert-SafeDataRemovalTarget -DataDir $safeRemovalPath -ProtectedPaths @($protectedInstallPath, $protectedProfilePath)
+    $results.multipleProtectedPathsValidated = $true
+    foreach ($protectedPath in @($protectedInstallPath, $protectedProfilePath)) {
+        $overlappingDataPath = Join-Path $protectedPath "uploads"
+        $message = Assert-Throws -Description "protected install/profile subtree blocked" -Action {
+            Assert-SafeDataRemovalTarget -DataDir $overlappingDataPath -ProtectedPaths @($protectedInstallPath, $protectedProfilePath)
+        }
+        if ($message -notmatch "데이터 폴더가 보호 대상과 겹칩니다") {
+            throw "보호 경로 하위 데이터가 보호 경로로 거부되지 않았습니다: $message"
+        }
+    }
+    $results.protectedInstallAndProfilePathsBlocked = $true
 
     $equalDir = Join-Path $tempRoot "equal"
     $message = Assert-Throws -Description "설치 폴더와 같은 데이터 폴더" -Action {

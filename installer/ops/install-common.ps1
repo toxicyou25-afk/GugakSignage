@@ -298,8 +298,7 @@ function Assert-SafeDataRemovalTarget {
         ([Environment]::GetFolderPath("Desktop")),
         (Get-UserDocumentsPath),
         ([Environment]::GetFolderPath("MyPictures")),
-        ([Environment]::GetFolderPath("MyVideos")),
-        $ProtectedPaths
+        ([Environment]::GetFolderPath("MyVideos"))
     ) | Where-Object { $_ } | ForEach-Object { Get-NormalizedPath -Path $_ }
 
     foreach ($protectedRoot in $protectedTrees) {
