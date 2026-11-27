@@ -440,6 +440,9 @@ try {
     $report.checks.serverHealthy = $true
     $report.checks.headlessTestBrowser = $true
     $report.checks.evidenceUrlsSanitized = $true
+    $freshInstallPassword = Get-EnvValue -EnvFile (Join-Path $dataDir ".env") -Name "ADMIN_PASSWORD"
+    if ($freshInstallPassword -ne "0000") { throw "Fresh integrated test install did not retain its documented local test password." }
+    $report.checks.testAdminPassword0000 = $true
 
     $preflightArgs = @(
         "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installScript,
@@ -666,8 +669,8 @@ try {
     if ($adminPasswordValue -eq "gugak1234" -or $sessionSecretValue -eq "change-this-to-a-long-random-string") {
         throw "개발용 기본 비밀값이 설치되었습니다."
     }
-    if ($adminPasswordValue -ne "0000") {
-        throw "신규 설치의 테스트 관리자 비밀번호가 0000이 아닙니다."
+    if ($adminPasswordValue -ne [string]$managerRoleCommon.AdminPassword) {
+        throw "Manager LAN role setup did not replace the test default with its configured administrator password."
     }
     if ($sessionSecretValue.Length -lt 48) {
         throw "생성된 세션 시크릿 길이가 충분하지 않습니다."
@@ -678,7 +681,7 @@ try {
     $acl = Get-Acl -LiteralPath $envFile
     if (-not $acl.AreAccessRulesProtected) { throw "환경 파일 ACL 상속이 차단되지 않았습니다." }
     $report.checks.sessionSecretRandom = $true
-    $report.checks.testAdminPassword0000 = $true
+    $report.checks.managerLanPasswordBootstrapped = $true
     $report.checks.environmentAclProtected = $true
     $report.checks.newInstallSeedSamples = $true
 
@@ -686,9 +689,14 @@ try {
     $httpHandler = [System.Net.Http.HttpClientHandler]::new()
     $httpHandler.CookieContainer = $cookieContainer
     $adminApiClient = [System.Net.Http.HttpClient]::new($httpHandler)
-    $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+    $defaultLoginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
+    $defaultLoginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $defaultLoginContent).GetAwaiter().GetResult()
+    if ($defaultLoginResponse.IsSuccessStatusCode) { throw "Manager LAN password bootstrap left the default password usable." }
+    $defaultLoginResponse.Dispose()
+    $defaultLoginContent.Dispose()
+    $loginContent = [System.Net.Http.StringContent]::new((@{ password = $adminPasswordValue } | ConvertTo-Json -Compress), [Text.Encoding]::UTF8, "application/json")
     $loginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
-    if (-not $loginResponse.IsSuccessStatusCode) { throw "테스트 관리자 비밀번호 0000 로그인이 실패했습니다: HTTP $([int]$loginResponse.StatusCode)" }
+    if (-not $loginResponse.IsSuccessStatusCode) { throw "Manager LAN administrator password login failed: HTTP $([int]$loginResponse.StatusCode)" }
     $baseUri = [Uri]::new("http://127.0.0.1:$port/")
     if ($cookieContainer.GetCookies($baseUri).Count -lt 1) {
         throw "관리자 로그인 세션 쿠키를 받지 못했습니다."
