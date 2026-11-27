@@ -495,8 +495,13 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "Upgrade rejected the saved Manager URL port when -Port was omitted." }
             $savedPortConfigAfterUpgrade = Read-JsonFile -Path $savedPortConfigPath
             $savedPortEnvAfterUpgrade = [IO.File]::ReadAllText($savedPortEnvPath, [Text.UTF8Encoding]::new($false, $true))
+            $savedManagerUri = [Uri]$savedPortConfigAfterUpgrade.managerBaseUrl
+            $savedAdminUrl = $savedManagerUri.GetLeftPart([UriPartial]::Authority).TrimEnd('/') + "/admin/"
+            $savedEnvManagerUri = [Uri](Get-EnvValue -EnvFile $savedPortEnvPath -Name "GUGAK_MANAGER_BASE_URL")
             if ($savedPortConfigAfterUpgrade.port -ne 443 -or
-                [string]$savedPortConfigAfterUpgrade.managerBaseUrl -ne "https://gugak.internal:443" -or
+                $savedManagerUri.Port -ne 443 -or
+                [string]$savedPortConfigAfterUpgrade.adminUrl -ne $savedAdminUrl -or
+                $savedEnvManagerUri.Port -ne 443 -or
                 $savedPortEnvAfterUpgrade -notmatch '(?m)^PORT=443\s*$') {
                 throw "Upgrade did not preserve the saved Manager listener port and HTTPS URL."
             }
