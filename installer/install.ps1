@@ -642,6 +642,27 @@ try {
     }
     $SourceDir = Get-NormalizedPath -Path $SourceDir
 
+    if (-not $ConfigureOnly) {
+        $required = @(
+            (Join-Path $SourceDir "dist\server.js"),
+            (Join-Path $SourceDir "package.json"),
+            (Join-Path $SourceDir "public"),
+            (Join-Path $SourceDir "poc\packages\engine\index.js"),
+            (Join-Path $SourceDir "seed"),
+            (Join-Path $SourceDir "node_modules")
+        )
+        foreach ($item in $required) {
+            if (-not (Test-Path -LiteralPath $item)) {
+                throw "설치 패키지가 불완전합니다: $item. build-installer.ps1로 패키지를 만든 뒤 실행하세요."
+            }
+        }
+        if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
+            throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
+        }
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\watchdog.mjs"))) {
+        throw "ConfigureOnly 실행에 필요한 ops\watchdog.mjs가 없습니다."
+    }
+
     if ($serviceRestartRequired) {
         $stopScript = Join-Path $InstallDir "ops\stop.ps1"
         $stopScriptSource = @(
@@ -667,46 +688,7 @@ try {
         }
     }
 
-    if ($ConfigureOnly -and $serviceRestartRequired) {
-        $stopScript = Join-Path $InstallDir "ops\stop.ps1"
-        $stopScriptSource = @(
-            (Join-Path $PSScriptRoot "ops\stop.ps1"),
-            (Join-Path $PSScriptRoot "..\ops\stop.ps1"),
-            (Join-Path $InstallDir "ops\stop.ps1")
-        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-        if (-not $stopScriptSource) { throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다." }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $stopScript) -Force | Out-Null
-        if (-not (Test-PathEqual -Left $stopScriptSource -Right $stopScript)) {
-            Copy-Item -LiteralPath $stopScriptSource -Destination $stopScript -Force
-        }
-        Write-Step "ConfigureOnly 역할/모드 전환: 기존 watchdog과 소유 프로세스를 중지"
-        & $stopScript -Quiet
-        if (-not $NoAutoStart) {
-            $staleTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-            if ($staleTask -and (Test-ScheduledTaskOwnedByInstall -Task $staleTask -InstallDir $InstallDir)) {
-                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-                Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-            }
-        }
-    }
-
     if (-not $ConfigureOnly) {
-        $required = @(
-            (Join-Path $SourceDir "dist\server.js"),
-            (Join-Path $SourceDir "package.json"),
-            (Join-Path $SourceDir "public"),
-            (Join-Path $SourceDir "poc\packages\engine\index.js"),
-            (Join-Path $SourceDir "seed"),
-            (Join-Path $SourceDir "node_modules")
-        )
-        foreach ($item in $required) {
-            if (-not (Test-Path -LiteralPath $item)) {
-                throw "설치 패키지가 불완전합니다: $item. build-installer.ps1로 패키지를 만든 뒤 실행하세요."
-            }
-        }
-        if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
-            throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
-        }
         Write-Step "서버 파일 복사"
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         foreach ($directory in @("dist", "public", "poc\packages\engine", "seed", "node_modules")) {
@@ -719,8 +701,6 @@ try {
             }
         }
         Copy-DirectoryContents -Source (Join-Path $PSScriptRoot "ops") -Destination (Join-Path $InstallDir "ops")
-    } elseif (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\watchdog.mjs"))) {
-        throw "ConfigureOnly 실행에 필요한 ops\watchdog.mjs가 없습니다."
     }
 
     $toolsDir = Join-Path $InstallDir "tools"
