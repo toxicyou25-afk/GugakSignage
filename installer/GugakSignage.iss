@@ -478,8 +478,8 @@ begin
   if (CurPageID = wpSelectDir) and (not WizardSilent) then
   begin
     if ExpandConstant('{param:ROLE|}') = 'manager' then RolePage.SelectedValueIndex := 1
-    else if ExpandConstant('{param:ROLE|}') = 'player' then RolePage.SelectedValueIndex := 2
-    if ExpandConstant('{param:MODE|}') = 'lan' then ModePage.SelectedValueIndex := 1
+    else if ExpandConstant('{param:ROLE|}') = 'player' then RolePage.SelectedValueIndex := 2;
+    if ExpandConstant('{param:MODE|}') = 'lan' then ModePage.SelectedValueIndex := 1;
   end;
   if CurPageID = PortPage.ID then
   begin
