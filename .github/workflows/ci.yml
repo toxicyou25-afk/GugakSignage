@@ -214,14 +214,6 @@ jobs:
         if: ${{ success() }}
         shell: powershell
         run: .\installer\test-taskkill-native.ps1
-      - name: Verify install, upgrade, uninstall, and data preservation
-        if: ${{ success() }}
-        shell: powershell
-        run: .\installer\test-install.ps1 -EvidenceDir .\installer\build\ci-install-evidence
-      - name: Verify Inno Setup install, upgrade, uninstall, and data preservation
-        if: ${{ success() }}
-        shell: powershell
-        run: .\installer\test-inno.ps1 -EvidenceDir .\installer\build\ci-inno-evidence
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
@@ -239,3 +231,65 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  installer:
+    name: Verify Windows installer lifecycle
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Microsoft Edge for Playwright
+        run: npx playwright install msedge
+      - name: Set up Inno Setup 6.7.3
+        shell: powershell
+        run: |
+          $setupPath = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setupPath
+          $actualHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') { throw "Inno Setup 6.7.3 SHA-256 mismatch: $actualHash" }
+          $signature = Get-AuthenticodeSignature -FilePath $setupPath
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup signature is invalid: $($signature.Status)"
+          }
+          $innoRoot = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'
+          New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+          $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /DIR="' + $innoRoot + '"'
+          $process = Start-Process -FilePath $setupPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          $iscc = Join-Path $innoRoot 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw "ISCC.exe is missing: $iscc" }
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$innoRoot`r`n", [Text.UTF8Encoding]::new($false))
+      - name: Build installer and verify package licenses
+        shell: powershell
+        run: .\installer\build-installer.ps1 -SkipInstall
+      - name: Verify taskkill failure handling
+        shell: powershell
+        run: .\installer\test-taskkill-native.ps1
+      - name: Verify PowerShell install, upgrade, removal, and data preservation
+        shell: powershell
+        run: .\installer\test-install.ps1 -EvidenceDir .\installer\build\ci-install-evidence
+      - name: Verify Inno Setup install, upgrade, removal, and data preservation
+        shell: powershell
+        run: .\installer\test-inno.ps1 -EvidenceDir .\installer\build\ci-inno-evidence
+      - name: Upload installer verification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-verification-${{ github.run_attempt }}
+          path: |
+            installer/build/ci-install-evidence/*.json
+            installer/build/ci-install-evidence/*.txt
+            installer/build/ci-inno-evidence/*.json
+            installer/build/ci-inno-evidence/*.txt
+            installer/build/inno/*.exe
+          if-no-files-found: warn
+          retention-days: 14
