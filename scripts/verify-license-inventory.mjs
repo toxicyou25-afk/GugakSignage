@@ -29,6 +29,16 @@ function assertRecordedText(row, relPath, bytes) {
   assert.ok(row.includes(expected), `Audit does not record the current license text hash: ${expected}`);
 }
 
+function extractMarkdownSection(text, title) {
+  const heading = new RegExp(`^## ${title}[ \\t]*\\r?\\n`, 'gmu').exec(text);
+  if (!heading) return null;
+  const start = heading.index + heading[0].length;
+  const nextHeading = /^## [^\r\n]*[ \t]*$/gmu;
+  nextHeading.lastIndex = start;
+  const next = nextHeading.exec(text);
+  return text.slice(start, next ? next.index : text.length).replace(/\r\n?/gu, '\n').trim() + '\n';
+}
+
 for (const lockFile of lockFiles) {
   const lock = JSON.parse(fs.readFileSync(path.join(rootDir, lockFile), 'utf8'));
   const baseDir = path.dirname(lockFile);
@@ -69,9 +79,9 @@ for (const lockFile of lockFiles) {
 
     if (name === 'cookie-signature' && entry.version === '1.0.7') {
       const readme = fs.readFileSync(path.join(packageDir, 'Readme.md'), 'utf8');
-      const section = readme.match(/^## License\s*\n([\s\S]*?)(?=^## |\s*$)/mu)?.[1];
+      const section = extractMarkdownSection(readme, 'License');
       assert.ok(section, 'cookie-signature full MIT license section is missing');
-      const bytes = Buffer.from(section.trimEnd() + '\n', 'utf8');
+      const bytes = Buffer.from(section, 'utf8');
       const rel = `${path.relative(rootDir, path.join(packageDir, 'Readme.md')).replaceAll('\\', '/')} § License`;
       assertRecordedText(row, rel, bytes);
       continue;

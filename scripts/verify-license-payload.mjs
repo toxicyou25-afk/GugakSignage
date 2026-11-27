@@ -42,9 +42,9 @@ for (const [lockPath, entry] of packages) {
   if (name === 'cookie-signature' && entry.version === '1.0.7') {
     const file = path.join(packageDir, 'Readme.md');
     const readme = fs.readFileSync(file, 'utf8');
-    const section = readme.match(/^## License\s*\n([\s\S]*?)(?=^## |\s*$)/mu)?.[1];
+    const section = readme.match(/^## License\s*\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/mu)?.[1];
     if (!section) { failures.push(`${key}: missing full MIT text in Readme.md`); continue; }
-    const bytes = Buffer.from(section.trimEnd() + '\n', 'utf8');
+    const bytes = Buffer.from(section.replaceAll('\r\n', '\n').trim() + '\n', 'utf8');
     const rel = `${path.relative(payload, file).replaceAll('\\', '/')} § License`;
     const digest = crypto.createHash('sha256').update(bytes).digest('hex');
     if (!row.includes(`${rel}=${digest}`)) failures.push(`${key}: packaged Readme license hash differs from audit`);
