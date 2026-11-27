@@ -283,7 +283,7 @@ try {
         toast: document.querySelector('.toast:not([hidden])')?.textContent || null,
       };
     });
-    throw error;
+    throw new Error(`${error.message}; screen save state=${JSON.stringify(report.screenSaveFailureState)}`);
   }
   await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
   const adminUrlHeading = await admin.frameLocator('.preview-screen iframe').locator('h1').innerText({ timeout: 10_000 });
