@@ -401,6 +401,9 @@ try {
         NoAutoStart = $true
         HeadlessBrowser = $true
     }
+    $managerRoleCommon = @{} + $roleCommon
+    $managerRoleCommon.HeadlessBrowser = $false
+    $managerRoleCommon.OpenAdminOnStartup = $true
     $tlsCertFixture = Join-Path $testRoot "manager-test-cert.pem"
     $tlsKeyFixture = Join-Path $testRoot "manager-test-key.pem"
     $caFixture = Join-Path $testRoot "manager-test-ca.pem"
@@ -412,7 +415,7 @@ try {
         if ($roleConfig.role -ne "integrated" -or $roleConfig.setupRole -ne "all" -or $roleConfig.mode -ne "standalone") { throw "Integrated role mapping is incorrect." }
         $report.checks.integratedRoleContract = $true
 
-        & $installScript @roleCommon -Role manager -Mode lan -TlsCertFile $tlsCertFixture -TlsKeyFile $tlsKeyFixture -ManagerBaseUrl "https://gugak.internal:$port" *> $null
+        & $installScript @managerRoleCommon -Role manager -Mode lan -TlsCertFile $tlsCertFixture -TlsKeyFile $tlsKeyFixture -ManagerBaseUrl "https://gugak.internal:$port" *> $null
         if ($LASTEXITCODE -ne 0) { throw "Manager LAN role configuration failed." }
         $roleConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
         if ($roleConfig.role -ne "manager" -or $roleConfig.setupRole -ne "manager" -or
