@@ -12,6 +12,8 @@ if ([string]::IsNullOrWhiteSpace([string]$result.Output)) {
 }
 
 $script:mockProcessAlive = $true
+$script:mockProcessChecks = 0
+$script:mockExitAfterFirstCheck = $false
 $script:mockVerifyCount = 0
 $script:mockVerifiedResults = @($true, $true)
 $script:mockTaskkillCalls = @()
@@ -44,6 +46,8 @@ function Get-VerifiedOwnedProcess {
 function Get-Process {
     [CmdletBinding()]
     param([int]$Id)
+    $script:mockProcessChecks++
+    if ($script:mockExitAfterFirstCheck -and $script:mockProcessChecks -gt 1) { return $null }
     if ($script:mockProcessAlive) { return [pscustomobject]@{ Id = $Id } }
     return $null
 }
@@ -75,10 +79,22 @@ if ($identityChangedError -notmatch "IDENTITY_CHANGED" -or $script:mockTaskkillC
     throw "Root-only retry must fail closed when the PID no longer matches the installed process."
 }
 
+$script:mockProcessAlive = $true
+$script:mockProcessChecks = 0
+$script:mockExitAfterFirstCheck = $true
+$script:mockVerifyCount = 0
+$script:mockVerifiedResults = @($true, $false)
+$script:mockTaskkillCalls = @()
+$exited = Stop-VerifiedOwnedProcess -ProcessId 424242 -ExpectedExecutable "C:\Program Files\Node\node.exe" -ExpectedStartTime ([DateTime]::UtcNow.ToString("o")) -CommandLineContains @("C:\GugakSignage", "dist\server.js")
+if (-not $exited -or $script:mockTaskkillCalls.Count -ne 1) {
+    throw "A process that exits during identity recheck must succeed without a second kill."
+}
+
 [pscustomobject]@{
     result = "passed"
     nonZeroExitPreserved = $true
     diagnosticCaptured = $true
     verifiedRootRetry = $true
     pidReuseBlockedAfterTreeFailure = $true
+    exitDuringRecheckHandled = $true
 } | ConvertTo-Json -Compress

@@ -252,7 +252,7 @@ try {
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
         if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) { throw "관리자 바로가기 소유권 확인 실패: $shortcutPath" }
-        $adminShortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+        $adminShortcut = [pscustomobject]@{ IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath) }
         if ($adminShortcut.IconLocation -notlike "*msedge.exe*" -and $adminShortcut.IconLocation -notlike "*chrome.exe*") {
             throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($adminShortcut.IconLocation)"
         }

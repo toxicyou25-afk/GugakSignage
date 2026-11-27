@@ -8,6 +8,12 @@ param(
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 . (Join-Path $PSScriptRoot "ops\install-common.ps1")
+
+function Normalize-AclAutoInheritedFlag {
+    param([Parameter(Mandatory = $true)][string]$Sddl)
+    return [regex]::Replace($Sddl, '(?<=D:)([A-Z]*?)AI(?=[A-Z(])', '$1')
+}
+
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $installScript = Join-Path $PSScriptRoot "install.ps1"
 $verifyScript = Join-Path $PSScriptRoot "verify-browser.mjs"
@@ -337,9 +343,9 @@ try {
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
         throw "PowerShell legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
     }
-    $legacyPsDataEnvAclAfter = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
-    if ($legacyPsDataEnvAclAfter -ne $legacyPsEnvAclSddl) {
-        throw "PowerShell legacy .env ACL을 보존하지 않았습니다. expected=$legacyPsEnvAclSddl actual=$legacyPsDataEnvAclAfter"
+    $legacyCopiedAclSddl = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
+    if ((Normalize-AclAutoInheritedFlag $legacyCopiedAclSddl) -ne (Normalize-AclAutoInheritedFlag $legacyPsEnvAclSddl)) {
+        throw "PowerShell legacy .env ACL differs. source=$legacyPsEnvAclSddl; destination=$legacyCopiedAclSddl"
     }
     if ((Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash -ne $legacyPsEnvHashBefore -or
         (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash -ne $legacyPsDbHashBefore -or
@@ -380,10 +386,22 @@ try {
     $roleUploadMarker = Join-Path $dataDir "uploads\p05-role-preservation.txt"
     New-Item -ItemType Directory -Path (Split-Path -Parent $roleUploadMarker) -Force | Out-Null
     [IO.File]::WriteAllText($roleUploadMarker, "preserve role upgrade data")
-    $roleCommon = @("-SourceDir", $repoRoot, "-InstallDir", $installDir, "-DataDir", $dataDir, "-Port", [string]$port,
-        "-TaskName", $taskName, "-DesktopDir", $desktopDir, "-StartMenuDir", $startMenuDir, "-ProfileDir", $profileDir,
-        "-NodePath", $nodePath, "-BrowserPath", [string](Read-JsonFile -Path (Join-Path $installDir "install.json")).browserPath,
-        "-ConfigureOnly", "-NoStart", "-NoAutoStart", "-HeadlessBrowser")
+    $roleCommon = @{
+        SourceDir = $repoRoot
+        InstallDir = $installDir
+        DataDir = $dataDir
+        Port = $port
+        TaskName = $taskName
+        DesktopDir = $desktopDir
+        StartMenuDir = $startMenuDir
+        ProfileDir = $profileDir
+        NodePath = $nodePath
+        BrowserPath = [string](Read-JsonFile -Path (Join-Path $installDir "install.json")).browserPath
+        ConfigureOnly = $true
+        NoStart = $true
+        NoAutoStart = $true
+        HeadlessBrowser = $true
+    }
     $tlsCertFixture = Join-Path $testRoot "manager-test-cert.pem"
     $tlsKeyFixture = Join-Path $testRoot "manager-test-key.pem"
     $caFixture = Join-Path $testRoot "manager-test-ca.pem"
@@ -486,9 +504,10 @@ try {
     )
     foreach ($shortcutPath in $shortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "바로가기가 없습니다: $shortcutPath" }
-        $shortcut = $shell.CreateShortcut($shortcutPath)
-        if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "바로가기 대상이 wscript.exe가 아닙니다." }
-        if ($shortcut.Arguments -notlike "*watchdog-launch.vbs*") { throw "바로가기 인자가 watchdog 실행 파일을 가리키지 않습니다." }
+        $shortcutTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+        $shortcutArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+        if ($shortcutTarget -notlike "*wscript.exe") { throw "바로가기 대상이 wscript.exe가 아닙니다: $shortcutTarget" }
+        if ($shortcutArguments -notlike "*watchdog-launch.vbs*") { throw "바로가기 인자가 watchdog 실행 파일을 가리키지 않습니다: $shortcutArguments" }
     }
     $report.checks.desktopShortcut = $true
     $report.checks.startMenuShortcut = $true
@@ -498,11 +517,13 @@ try {
     )
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
-        $shortcut = $shell.CreateShortcut($shortcutPath)
-        if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
-        if ($shortcut.Arguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $($shortcut.Arguments)" }
-        if ($shortcut.IconLocation -notlike "*msedge.exe*" -and $shortcut.IconLocation -notlike "*chrome.exe*") {
-            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($shortcut.IconLocation)"
+        $shortcutTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+        $shortcutArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+        $shortcutIcon = [GugakShortcutNative]::GetIconLocation($shortcutPath)
+        if ($shortcutTarget -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
+        if ($shortcutArguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $shortcutArguments" }
+        if ($shortcutIcon -notlike "*msedge.exe*" -and $shortcutIcon -notlike "*chrome.exe*") {
+            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $shortcutIcon"
         }
         if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) {
             throw "관리자 바로가기 소유권 확인 실패: $shortcutPath"
