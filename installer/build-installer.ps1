@@ -1,9 +1,10 @@
-﻿# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: Apache-2.0
 [CmdletBinding()]
 param(
     [string]$OutputDir = "",
     [switch]$SkipInstall,
-    [switch]$SkipCompile
+    [switch]$SkipCompile,
+    [switch]$RequireCompile
 )
 
 $ErrorActionPreference = "Stop"
@@ -117,6 +118,7 @@ if (-not $SkipCompile) {
         & $isccPath (Join-Path $PSScriptRoot "GugakSignage.iss")
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup 컴파일 실패" }
     } else {
+        if ($RequireCompile) { throw "CI가 요구한 Inno Setup 6 ISCC.exe를 찾지 못했습니다." }
         Write-Warning "Inno Setup 6 ISCC.exe가 없어 .iss를 컴파일하지 않았습니다. PowerShell 설치 ZIP은 생성되었습니다."
     }
 }
@@ -125,3 +127,4 @@ Write-Step "완료"
 Write-Step "PowerShell 설치 ZIP: $zipPath"
 Write-Step "SHA-256: $hash"
 if ($isccPath) { Write-Step "Inno Setup: $(Join-Path $OutputDir 'inno')" }
+
