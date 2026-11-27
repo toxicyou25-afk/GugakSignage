@@ -98,6 +98,23 @@ public static class GugakShortcutNative
         }
     }
 
+    public static string GetIconLocation(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var icon = new StringBuilder(32768);
+            int iconIndex;
+            link.GetIconLocation(icon, icon.Capacity, out iconIndex);
+            return icon.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
     public static string GetWorkingDirectory(string shortcutPath)
     {
         var link = (GugakShellLinkNative)new GugakShellLinkClass();
