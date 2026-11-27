@@ -356,11 +356,16 @@ try {
   await player.reload({ waitUntil: 'domcontentloaded' });
   await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 15_000 });
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 20_000 });
-  await player.waitForFunction(() =>
-    document.querySelectorAll('.wall-screen .wall-media, .wall-screen .wall-url-offline').length === 4,
-  null, { timeout: 20_000 });
-  await player.waitForSelector('.wall-screen .wall-url-offline', { timeout: 10_000 });
-  await player.waitForTimeout(700);
+  await player.waitForFunction(() => {
+    const state = window.__signagePlayer.getState();
+    const plans = Object.values(state.wallPlans || {});
+    const urlPlanCount = plans.filter((plan) => plan.kind === 'url').length;
+    const imagePlanCount = plans.length - urlPlanCount;
+    return plans.length === 4 && urlPlanCount > 0 &&
+      document.querySelectorAll('.wall-screen .wall-media').length === imagePlanCount &&
+      document.querySelectorAll('.wall-screen .wall-url-offline').length === urlPlanCount &&
+      document.querySelectorAll('.wall-screen iframe').length === 0;
+  }, null, { timeout: 20_000 });
   report.offlineReload = await player.evaluate(async () => {
     const shared = await import('/engine/index.js');
     const manifest = JSON.parse(localStorage.getItem('signage.player.manifest.v1'));
