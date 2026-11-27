@@ -260,11 +260,10 @@ try {
     $adminShortcutDir = Join-Path $tempRoot "admin-desktop"
     New-Item -ItemType Directory -Path $adminShortcutDir -Force | Out-Null
     $adminShortcutPath = Join-Path $adminShortcutDir "GugakSignage 관리자.lnk"
-    $adminShortcut = $shell.CreateShortcut($adminShortcutPath)
-    $adminShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $adminShortcut.Arguments = '//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"'
-    $adminShortcut.WorkingDirectory = $adminOwnerApp
-    $adminShortcut.Save()
+    Save-WindowsShortcut -ShortcutPath $adminShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"') `
+        -WorkingDirectory $adminOwnerApp -Description "Unicode admin shortcut fixture"
     if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $adminShortcutPath -InstallDir $adminOwnerApp)) {
         throw "GugakSignage 관리자 바로가기 소유권을 확인하지 못했습니다."
     }
