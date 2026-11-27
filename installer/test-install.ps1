@@ -68,7 +68,8 @@ $invalidModeCases = @(
     @{ args = @("-Role", "manager", "-Mode", "lan"); name = "manager-missing-cert-key" },
     @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath); name = "manager-missing-key" },
     @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsKeyFile", $PSCommandPath); name = "manager-missing-cert" },
-    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "https://gugak.internal:31416"); name = "manager-base-port-mismatch" },
+    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "https://gugak.internal:31415", "-ConfigureOnly"); name = "manager-lan-requires-bootstrap-password"; expected = "0000" },
+    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "https://gugak.internal:31415", "-AdminPassword", "0000"); name = "manager-lan-rejects-default-password"; expected = "0000" },
     @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "http://gugak.internal:31415"); name = "manager-http-base-url" },
     @{ args = @("-Role", "player", "-Mode", "standalone", "-ManagerUrl", "http://127.0.0.1:3000"); name = "player-standalone" },
     @{ args = @("-Role", "player", "-Mode", "lan", "-ManagerUrl", "https://manager.example"); name = "player-missing-ca" },
@@ -82,7 +83,9 @@ foreach ($case in $invalidModeCases) {
     $probeStdout = Join-Path $setupModeValidationRoot ($case.name + ".stdout.txt")
     $probeStderr = Join-Path $setupModeValidationRoot ($case.name + ".stderr.txt")
     $probeProcess = Start-Process -FilePath $powershellExe -ArgumentList $probeArgumentLine -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $probeStdout -RedirectStandardError $probeStderr
-    if ($probeProcess.ExitCode -eq 0 -or (Test-Path -LiteralPath $installProbe)) {
+    $probeOutput = [IO.File]::ReadAllText($probeStdout) + [IO.File]::ReadAllText($probeStderr)
+    if ($probeProcess.ExitCode -eq 0 -or (Test-Path -LiteralPath $installProbe) -or
+        ($case.expected -and $probeOutput -notmatch [regex]::Escape([string]$case.expected))) {
         Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
         throw "Invalid setup mode was not rejected before mutation: $($case.name)"
     }
@@ -132,6 +135,20 @@ function Test-ServerHealth {
         $content = $client.GetStringAsync("http://127.0.0.1:$PortNumber/api/health").GetAwaiter().GetResult()
         $health = $content | ConvertFrom-Json
         return ($health.ok -and $health.service -eq "gugak-signage")
+    } catch {
+        return $false
+    } finally {
+        $client.Dispose()
+    }
+}
+
+function Test-PlayerHostHealth {
+    $client = [System.Net.Http.HttpClient]::new()
+    $client.Timeout = [TimeSpan]::FromSeconds(2)
+    try {
+        $content = $client.GetStringAsync("http://127.0.0.1:43127/api/health").GetAwaiter().GetResult()
+        $health = $content | ConvertFrom-Json
+        return ($health.ok -and $health.service -eq "gugak-player-host")
     } catch {
         return $false
     } finally {
@@ -385,6 +402,27 @@ try {
     $report.checks.headlessTestBrowser = $true
     $report.checks.evidenceUrlsSanitized = $true
 
+    $preflightArgs = @(
+        "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installScript,
+        "-SourceDir", $installDir, "-InstallDir", $installDir, "-DataDir", $dataDir,
+        "-Role", "player", "-Mode", "lan", "-ManagerUrl", "https://manager.example",
+        "-ManagerCaFile", $PSCommandPath, "-TaskName", $taskName, "-DesktopDir", $desktopDir,
+        "-StartMenuDir", $startMenuDir, "-ProfileDir", $profileDir
+    )
+    $preflightArgumentLine = [string]::Join(' ', @($preflightArgs | ForEach-Object { '"' + ([string]$_).Replace('"', '\"') + '"' }))
+    $preflightStdout = Join-Path $testRoot "role-change-preflight.stdout.txt"
+    $preflightStderr = Join-Path $testRoot "role-change-preflight.stderr.txt"
+    $preflightProcess = Start-Process -FilePath $powershellExe -ArgumentList $preflightArgumentLine -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $preflightStdout -RedirectStandardError $preflightStderr
+    $preflightLog = Get-ChildItem -LiteralPath $logDir -Filter "install-*.log" -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    $preflightLogText = if ($preflightLog) { [IO.File]::ReadAllText($preflightLog.FullName) } else { "" }
+    if ($preflightProcess.ExitCode -eq 0 -or $preflightLogText -notmatch "원본과 설치 폴더가 같습니다") {
+        throw "A role change with identical source and install paths was not rejected by preflight."
+    }
+    if (-not (Test-ServerHealth -PortNumber $port)) {
+        throw "The incumbent service stopped after a role change failed source-path preflight."
+    }
+    $report.checks.roleChangePathPreflightLeavesIncumbentHealthy = $true
+
     # Exercise each supported role in ConfigureOnly mode while preserving the fixture database/uploads.
     & (Join-Path $installDir "tools\set-autostart.ps1") -Disable | Out-Host
     $roleDbPath = Join-Path $dataDir "signage.sqlite"
@@ -411,6 +449,7 @@ try {
     $managerRoleCommon = @{} + $roleCommon
     $managerRoleCommon.HeadlessBrowser = $false
     $managerRoleCommon.OpenAdminOnStartup = $true
+    $managerRoleCommon.AdminPassword = "Fixture-Manager-Password-31415!"
     $tlsCertFixture = Join-Path $testRoot "manager-test-cert.pem"
     $tlsKeyFixture = Join-Path $testRoot "manager-test-key.pem"
     $caFixture = Join-Path $testRoot "manager-test-ca.pem"
@@ -433,6 +472,63 @@ try {
             $roleConfig.adminAutoOpen.enabled -ne $true) { throw "Manager LAN role mapping/TLS paths/admin URL/autostart are incorrect." }
         if (@($roleConfig.shortcuts).Count -ne 0 -or @($roleConfig.adminShortcuts).Count -ne 2) { throw "Manager role shortcuts are incorrect." }
         $report.checks.managerLanRoleContract = $true
+
+        $savedPortConfigPath = Join-Path $installDir "install.json"
+        $savedPortEnvPath = Join-Path $dataDir ".env"
+        $savedPortConfigBytes = [IO.File]::ReadAllBytes($savedPortConfigPath)
+        $savedPortEnvBytes = [IO.File]::ReadAllBytes($savedPortEnvPath)
+        try {
+            $savedPortConfig = Read-JsonFile -Path $savedPortConfigPath
+            $savedPortConfig.port = 443
+            $savedPortConfig.managerBaseUrl = "https://gugak.internal:443"
+            $savedPortConfig.adminUrl = "https://gugak.internal:443/admin/"
+            [IO.File]::WriteAllText($savedPortConfigPath, ($savedPortConfig | ConvertTo-Json -Depth 16), [Text.UTF8Encoding]::new($false))
+            $savedPortEnvText = [IO.File]::ReadAllText($savedPortEnvPath, [Text.UTF8Encoding]::new($false, $true))
+            $savedPortEnvText = [regex]::Replace($savedPortEnvText, '(?m)^PORT=\d+\s*$', 'PORT=443')
+            if ($savedPortEnvText -notmatch '(?m)^PORT=443\s*$') { throw "The saved-port fixture did not set PORT=443." }
+            [IO.File]::WriteAllText($savedPortEnvPath, $savedPortEnvText, [Text.UTF8Encoding]::new($false))
+
+            & $installScript -SourceDir $repoRoot -InstallDir $installDir -DataDir $dataDir -ConfigureOnly -NoStart -NoAutoStart *> $null
+            if ($LASTEXITCODE -ne 0) { throw "Upgrade rejected the saved Manager URL port when -Port was omitted." }
+            $savedPortConfigAfterUpgrade = Read-JsonFile -Path $savedPortConfigPath
+            $savedPortEnvAfterUpgrade = [IO.File]::ReadAllText($savedPortEnvPath, [Text.UTF8Encoding]::new($false, $true))
+            if ($savedPortConfigAfterUpgrade.port -ne 443 -or
+                [string]$savedPortConfigAfterUpgrade.managerBaseUrl -ne "https://gugak.internal:443" -or
+                $savedPortEnvAfterUpgrade -notmatch '(?m)^PORT=443\s*$') {
+                throw "Upgrade did not preserve the saved Manager listener port and HTTPS URL."
+            }
+            $report.checks.savedNondefaultManagerPortUpgrade = $true
+
+            $validSavedPortConfigBytes = [IO.File]::ReadAllBytes($savedPortConfigPath)
+            $validSavedPortEnvBytes = [IO.File]::ReadAllBytes($savedPortEnvPath)
+            try {
+                $mismatchedPortConfig = Read-JsonFile -Path $savedPortConfigPath
+                $mismatchedPortConfig.managerBaseUrl = "https://gugak.internal:444"
+                $mismatchedPortConfig.adminUrl = "https://gugak.internal:444/admin/"
+                [IO.File]::WriteAllText($savedPortConfigPath, ($mismatchedPortConfig | ConvertTo-Json -Depth 16), [Text.UTF8Encoding]::new($false))
+                $mismatchArgs = @(
+                    "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installScript,
+                    "-SourceDir", $repoRoot, "-InstallDir", $installDir, "-DataDir", $dataDir,
+                    "-ConfigureOnly", "-NoStart", "-NoAutoStart"
+                )
+                $mismatchArgumentLine = [string]::Join(' ', @($mismatchArgs | ForEach-Object { '"' + ([string]$_).Replace('"', '\"') + '"' }))
+                $mismatchStdout = Join-Path $testRoot "saved-port-mismatch.stdout.txt"
+                $mismatchStderr = Join-Path $testRoot "saved-port-mismatch.stderr.txt"
+                $mismatchProcess = Start-Process -FilePath $powershellExe -ArgumentList $mismatchArgumentLine -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $mismatchStdout -RedirectStandardError $mismatchStderr
+                $mismatchOutput = [IO.File]::ReadAllText($mismatchStdout) + [IO.File]::ReadAllText($mismatchStderr)
+                if ($mismatchProcess.ExitCode -eq 0 -or $mismatchOutput -notmatch "effective listener port") {
+                    throw "A Manager URL using the wrong port was not rejected against the preserved .env port."
+                }
+                $report.checks.managerPortMismatchRejectedAfterEnvRestore = $true
+            } finally {
+                [IO.File]::WriteAllBytes($savedPortConfigPath, $validSavedPortConfigBytes)
+                [IO.File]::WriteAllBytes($savedPortEnvPath, $validSavedPortEnvBytes)
+            }
+        } finally {
+            [IO.File]::WriteAllBytes($savedPortConfigPath, $savedPortConfigBytes)
+            [IO.File]::WriteAllBytes($savedPortEnvPath, $savedPortEnvBytes)
+        }
+
         $adminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installDir "ops\open-admin.ps1") -InstallDir $installDir -PrintOnly)
         if ([string]$adminUrlOutput[-1] -ne "https://gugak.internal:$port/admin/") { throw "Manager LAN startup opener did not use the configured DNS URL." }
         $report.checks.managerLanAdminOpenerUsesConfiguredDns = $true
@@ -458,6 +554,40 @@ try {
     }
     $report.checks.roleChangesPreserveData = $true
     Wait-Until -TimeoutSeconds 60 -Description "role fixture restored watchdog" -Condition { Test-ServerHealth -PortNumber $port }
+
+    $liveRoleDbHash = (Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash
+    $livePlayerRoleArgs = @{} + $roleCommon
+    $null = $livePlayerRoleArgs.Remove("ConfigureOnly")
+    $null = $livePlayerRoleArgs.Remove("NoStart")
+    $livePlayerRoleArgs.Role = "player"
+    $livePlayerRoleArgs.Mode = "lan"
+    $livePlayerRoleArgs.ManagerUrl = "https://manager.example"
+    $livePlayerRoleArgs.ManagerCaFile = $caFixture
+    & $installScript @livePlayerRoleArgs 2>&1 | Tee-Object -Variable livePlayerRoleLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "실행 중인 통합 설치를 Player Host 역할로 전환하지 못했습니다." }
+    Wait-Until -TimeoutSeconds 20 -Description "role-change Manager shutdown" -Condition { -not (Test-ServerHealth -PortNumber $port) }
+    Wait-Until -TimeoutSeconds 60 -Description "role-change Player Host health" -Condition { Test-PlayerHostHealth }
+    $livePlayerConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    if ($livePlayerConfig.role -ne "player-host" -or $livePlayerConfig.setupRole -ne "player" -or
+        (Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash -ne $liveRoleDbHash -or
+        -not (Test-Path -LiteralPath $roleUploadMarker -PathType Leaf)) {
+        throw "실행 중 역할 전환이 Player Host를 시작하지 못했거나 사용자 데이터를 바꿨습니다."
+    }
+
+    $liveIntegratedRoleArgs = @{} + $roleCommon
+    $null = $liveIntegratedRoleArgs.Remove("ConfigureOnly")
+    $null = $liveIntegratedRoleArgs.Remove("NoStart")
+    $liveIntegratedRoleArgs.Role = "all"
+    $liveIntegratedRoleArgs.Mode = "standalone"
+    & $installScript @liveIntegratedRoleArgs 2>&1 | Tee-Object -Variable liveIntegratedRoleLines | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Player Host 역할에서 통합 역할로 되돌리지 못했습니다." }
+    Wait-Until -TimeoutSeconds 60 -Description "role-change integrated Manager health" -Condition { Test-ServerHealth -PortNumber $port }
+    Wait-Until -TimeoutSeconds 20 -Description "role-change Player Host shutdown" -Condition { -not (Test-PlayerHostHealth) }
+    if ((Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash -ne $liveRoleDbHash -or
+        -not (Test-Path -LiteralPath $roleUploadMarker -PathType Leaf)) {
+        throw "실행 중 역할 복원이 데이터베이스나 업로드를 변경했습니다."
+    }
+    $report.checks.liveRoleChangeRestartsServicesAndPreservesData = $true
 
     $envFile = Join-Path $dataDir ".env"
     $envText = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
@@ -647,6 +777,7 @@ try {
     Wait-Until -TimeoutSeconds 20 -Description "업그레이드 전 서비스 중지" -Condition { -not (Test-ServerHealth -PortNumber $port) }
     $databaseHashBefore = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
     $envBytesBeforeUpgrade = [IO.File]::ReadAllBytes($envFile)
+    $adminPasswordBeforeUpgrade = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
     $envAclBeforeUpgrade = (Get-Acl -LiteralPath $envFile).Sddl
     & $installScript -SourceDir $repoRoot -InstallDir $installDir -NoStart 2>&1 | Tee-Object -Variable upgradeLines | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "기존 설치 업그레이드가 실패했습니다." }
@@ -681,7 +812,7 @@ try {
     if ((Get-Acl -LiteralPath $envFile).Sddl -ne $envAclBeforeUpgrade) {
         throw "업그레이드가 기존 .env의 ACL을 변경했습니다."
     }
-    if ($envAfterUpgrade -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") {
+    if ($envAfterUpgrade -notmatch "(?m)^ADMIN_PASSWORD=$([regex]::Escape([string]$adminPasswordBeforeUpgrade))\s*$") {
         throw "업그레이드가 기존 .env의 관리자 비밀번호를 변경했습니다."
     }
     if ($configAfterUpgrade.browserHeadless -ne $true) {

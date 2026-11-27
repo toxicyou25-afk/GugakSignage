@@ -756,6 +756,14 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const remoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
     assert.equal(remoteTargets.status, 200, JSON.stringify(remoteTargets.body));
     assert.deepEqual(remoteTargets.body.screenTargets, [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' }]);
+    run(db, 'UPDATE displays SET device_id = ?, native_monitor_id = NULL WHERE id = ?', secondDevice.body.device.id, displays[0].id);
+    const partialRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
+    assert.deepEqual(partialRemoteTargets.body.screenTargets, []);
+    run(db, 'UPDATE displays SET enabled = 0 WHERE id = ?', displays[0].id);
+    const disabledRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
+    assert.deepEqual(disabledRemoteTargets.body.screenTargets, [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' }]);
+    run(db, 'UPDATE displays SET device_id = ?, enabled = 1 WHERE id = ?', device.body.device.id, displays[0].id);
+    run(db, 'UPDATE displays SET enabled = 1 WHERE id = ?', displays[1].id);
     const mappingBeforeGroupSave = all<{ id: string; device_id: string | null }>(
       db,
       'SELECT id, device_id FROM displays WHERE group_id = ? ORDER BY start_index, rowid',

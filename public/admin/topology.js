@@ -125,7 +125,7 @@
     const playlistOptions = (selected, noneLabel) => `<option value="">${page(noneLabel)}</option>${playlists.playlists.map((playlist) => `<option value="${page(playlist.id)}" ${playlist.id === selected ? 'selected' : ''}>${page(playlist.name)}</option>`).join('')}`;
     const nativeMonitorsFor = (deviceId) => monitorsByDevice.get(deviceId) || [];
     const deviceOptions = (selected, devices = detail.devices) => `<option value="">PC 연결 안 함</option>${devices.map((device) => {
-      const monitorList = nativeMonitorsFor(device.id).filter((monitor) => monitor.bindingId);
+      const monitorList = nativeMonitorsFor(device.id).filter((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId));
       return `<option value="${page(device.id)}" data-local-host="${device.localHost ? 'true' : 'false'}" data-monitors="${page(JSON.stringify(monitorList))}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`;
     }).join('')}`;
     const nativeMonitorOptions = (selected, deviceId) => {
@@ -343,11 +343,14 @@
     const selectedDeviceId = row.querySelector('[data-screen-device]').value || null;
     const deviceChanged = selectedDeviceId !== (row.dataset.deviceId || null);
     const monitorSelect = row.querySelector('[data-screen-native-monitor]');
-    const selectedMonitor = monitorSelect.selectedOptions[0];
-    const hasReportedStableMonitor = Boolean(monitorSelect.value && selectedMonitor?.value);
-    const nativeMonitorId = deviceChanged
-      ? (hasReportedStableMonitor ? monitorSelect.value : null)
-      : (hasReportedStableMonitor || row.dataset.localHost === 'true' ? monitorSelect.value || null : undefined);
+    const selectedDevice = row.querySelector('[data-screen-device]').selectedOptions[0];
+    let reportedMonitors = [];
+    try { reportedMonitors = JSON.parse(selectedDevice?.dataset.monitors || '[]'); } catch { reportedMonitors = []; }
+    const hasReportedStableMonitor = reportedMonitors.some((monitor) =>
+      monitor.bindingId === monitorSelect.value && /^MONITOR\\/iu.test(monitor.bindingId));
+    const nativeMonitorId = hasReportedStableMonitor
+      ? monitorSelect.value
+      : (deviceChanged || !monitorSelect.value ? null : undefined);
     const body = {
       deviceId: selectedDeviceId,
       playlistId: row.querySelector('[data-screen-playlist]').value || null,
@@ -415,11 +418,12 @@
     monitorSelect.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${monitors.map((monitor) =>
       `<option value="${page(monitor.bindingId)}">${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>`,
     ).join('')}`;
-    monitorSelect.disabled = !localHost && monitors.length === 0;
+    const hasStableMonitors = monitors.some((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId));
+    monitorSelect.disabled = !hasStableMonitors;
     const help = row.querySelector('[data-screen-monitor-help]');
-    if (help) help.textContent = localHost
-      ? 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.'
-      : '해당 Player PC의 모니터 정보가 연결되지 않았습니다.';
+    if (help) help.textContent = hasStableMonitors
+      ? (localHost ? 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.' : '재생기가 보고한 모니터를 선택할 수 있습니다.')
+      : (localHost ? '이 PC에서 안정적인 모니터 식별자를 확인할 수 없습니다.' : '해당 Player PC의 모니터 정보가 아직 보고되지 않았습니다.');
   });
 
   window.GugakTopology = { render };

@@ -172,6 +172,8 @@ begin
   TlsPage.Values[1] := ExpandConstant('{param:TLSKEY|}');
   TlsPage.Add('Manager HTTPS base URL:', False);
   TlsPage.Values[2] := ExistingManagerBaseUrl;
+  TlsPage.Add('Manager administrator password (not 0000):', True);
+  TlsPage.Values[3] := ExpandConstant('{param:ADMINPASSWORD|}');
   PlayerLanPage := CreateInputQueryPage(ModePage.ID, 'Player Host connection', 'Connect to HTTPS Manager', 'The CA file path is recorded for Player Host TLS trust.');
   PlayerLanPage.Add('HTTPS Manager URL:', False);
   PlayerLanPage.Add('CA certificate:', False);
@@ -263,25 +265,24 @@ begin
   if ModePage.SelectedValueIndex = 1 then Result := 'lan' else Result := 'standalone';
 end;
 
-function ManagerBaseUrlMatchesPort(Value, PortValue: String): Boolean;
+function IsHttpsBaseUrl(Value: String): Boolean;
 var
   Normalized, Authority, Scheme: String;
-  AuthorityEnd, SuffixLength: Integer;
+  AuthorityEnd: Integer;
 begin
   Normalized := Lowercase(Trim(Value));
   Scheme := 'https://';
   Result := False;
   if Copy(Normalized, 1, Length(Scheme)) <> Scheme then exit;
   Authority := Copy(Normalized, Length(Scheme) + 1, Length(Normalized));
+  if (Pos('@', Authority) > 0) or (Pos('?', Authority) > 0) or (Pos('#', Authority) > 0) then exit;
   AuthorityEnd := Pos('/', Authority);
   if AuthorityEnd > 0 then
   begin
     if Copy(Authority, AuthorityEnd, Length(Authority)) <> '/' then exit;
     Authority := Copy(Authority, 1, AuthorityEnd - 1);
   end;
-  SuffixLength := Length(PortValue) + 1;
-  if Length(Authority) <= SuffixLength then exit;
-  Result := Copy(Authority, Length(Authority) - SuffixLength + 1, SuffixLength) = ':' + PortValue;
+  Result := (Authority <> '') and (Pos(' ', Authority) = 0);
 end;
 
 function RoleSelectionChanged(): Boolean;
@@ -427,7 +428,7 @@ begin
   if RoleSelectionChanged or ModeSelectionChanged then
     Parameters := Parameters + ' -Role "' + GetRoleArg('') + '" -Mode "' + GetModeArg('') + '"';
   if (GetRoleArg('') = 'manager') and (GetModeArg('') = 'lan') then
-    Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '"';
+    Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '" -AdminPassword "' + TlsPage.Values[3] + '"';
   if (GetRoleArg('') = 'player') and (GetModeArg('') = 'lan') then
     Parameters := Parameters + ' -ManagerUrl "' + PlayerLanPage.Values[0] + '" -ManagerCaFile "' + PlayerLanPage.Values[1] + '"';
   if WizardIsTaskSelected('firewall') then
@@ -509,9 +510,10 @@ begin
   begin
     ManagerUrlText := Lowercase(Trim(TlsPage.Values[2]));
     if (not FileExists(TlsPage.Values[0])) or (not FileExists(TlsPage.Values[1])) or
-       (not ManagerBaseUrlMatchesPort(TlsPage.Values[2], GetPort(''))) then
+       (not IsHttpsBaseUrl(TlsPage.Values[2])) or (Trim(TlsPage.Values[3]) = '') or
+       (Trim(TlsPage.Values[3]) = '0000') then
     begin
-      MsgBox('Select existing TLS certificate and key files, and an HTTPS base URL using the Manager listener port.', mbError, MB_OK);
+      MsgBox('Select existing TLS certificate and key files, enter a valid HTTPS base URL, and choose a nonblank administrator password other than 0000.', mbError, MB_OK);
       Result := False;
     end;
   end;

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,6 +89,7 @@ test('registration persists the Player token before Manager commit and never ret
 
 test('registration reuses a token for the same pairing code and rotates it for another device', async (t) => {
   const playerTokens: string[] = [];
+  const tokenHashesByDevice = new Map<string, string>();
   let managerRequests = 0;
   const manager = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -98,7 +100,9 @@ test('registration reuses a token for the same pairing code and rotates it for a
       playerTokens.push(body.playerToken);
       if (managerRequests === 1) { res.destroy(); return; }
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ token: body.playerToken, device: { id: `device-${playerTokens.length}` } }));
+      const deviceId = `device-${playerTokens.length}`;
+      tokenHashesByDevice.set(deviceId, createHash('sha256').update(body.playerToken).digest('hex'));
+      res.end(JSON.stringify({ token: body.playerToken, device: { id: deviceId } }));
     });
   });
   const managerUrl = await listen(manager);
@@ -124,7 +128,45 @@ test('registration reuses a token for the same pairing code and rotates it for a
   assert.equal(playerTokens[2], retryToken);
   assert.equal((await register('DEVICE-B')).status, 200);
   assert.notEqual(playerTokens[3], retryToken);
+  assert.notEqual(tokenHashesByDevice.get('device-2'), tokenHashesByDevice.get('device-4'));
   assert.equal(creds.current(), playerTokens[3]);
+});
+
+test('simultaneous registration requests for one pairing code share one Manager commit', async (t) => {
+  let managerRequests = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const manager = createServer(async (req, res) => {
+    managerRequests += 1;
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    await gate;
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { playerToken: string };
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ token: body.playerToken, device: { id: 'device-shared' } }));
+  });
+  const managerUrl = await listen(manager);
+  const creds = credentials();
+  const hostServer = createPlayerHostApp({ managerUrl, credentialStore: creds.store, identityStore }).listen(0, '127.0.0.1');
+  t.after(async () => { release(); await close(hostServer); await close(manager); });
+  const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
+    const address = hostServer.address();
+    assert.ok(address && typeof address !== 'string');
+    resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  const register = () => fetch(`${hostUrl}/api/player/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'SAME-CODE' }),
+  });
+  const first = register();
+  while (managerRequests === 0) await new Promise((resolve) => setTimeout(resolve, 1));
+  const second = register();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  release();
+  const responses = await Promise.all([first, second]);
+  assert.deepEqual(responses.map((response) => response.status), [200, 200]);
+  assert.equal(managerRequests, 1);
+  assert.match(creds.current() ?? '', /^[a-f0-9]{64}$/);
+  for (const response of responses) assert.equal(JSON.stringify(await response.json()).includes('playerToken'), false);
 });
 
 test('an upstream stream failure does not prevent a later healthy Player Host request', async (t) => {

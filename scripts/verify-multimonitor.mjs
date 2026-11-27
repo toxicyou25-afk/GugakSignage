@@ -38,6 +38,9 @@ function sanitize(text) {
   return String(text)
     .replaceAll(root, '<repo>')
     .replaceAll(tempDir, '<temp>')
+    .replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):\d+/giu, '<loopback-url>')
+    .replace(/(?:127\.0\.0\.1|localhost):\d+/giu, '<loopback>')
+    .replace(/\[::1\]:\d+/giu, '<loopback>')
     .replace(/[A-Za-z]:\\Users\\[^\\\r\n]+/g, '<home>');
 }
 
@@ -464,6 +467,43 @@ try {
   report.physicalBindingStatus = physicalBindingStatus;
   step('모니터별 분리 창 모드 확인', report.perMonitorWindow);
 
+  const clearRemoteMonitor = admin.locator('.screen-assignment').nth(3);
+  await clearRemoteMonitor.locator('[data-screen-device]').selectOption(secondDeviceId);
+  if (await clearRemoteMonitor.locator('[data-screen-native-monitor]').isDisabled()) {
+    throw new Error('보고된 안정 모니터 ID가 있는 원격 Player에서 모니터 선택이 비활성화되었습니다.');
+  }
+  await clearRemoteMonitor.locator('[data-screen-native-monitor]').selectOption(remoteMonitor.bindingId);
+  const remoteMonitorDisplayId = await clearRemoteMonitor.getAttribute('data-display-id');
+  if (!remoteMonitorDisplayId) throw new Error('원격 화면의 ID를 확인할 수 없습니다.');
+  const remoteMonitorRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(remoteMonitorDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
+  await clearRemoteMonitor.locator('[data-topology-action=save-screen]').click();
+  const remoteMonitorBody = (await remoteMonitorRequestPromise).postDataJSON();
+  if (!Object.hasOwn(remoteMonitorBody, 'nativeMonitorId') || remoteMonitorBody.nativeMonitorId !== remoteMonitor.bindingId) {
+    throw new Error(`보고된 원격 모니터 선택을 저장할 때 식별자를 보내지 않았습니다: ${JSON.stringify(remoteMonitorBody)}`);
+  }
+  await admin.waitForFunction((deviceId) => {
+    const row = document.querySelectorAll('.screen-assignment')[3];
+    return row?.getAttribute('data-device-id') === deviceId && row?.getAttribute('data-local-host') === 'false' &&
+      row.querySelector('[data-screen-device]')?.value === deviceId;
+  }, secondDeviceId);
+  step('재생기가 보고한 원격 모니터 ID를 관리자 배정에 저장', { requestBody: remoteMonitorBody });
+  await clearRemoteMonitor.locator('[data-screen-native-monitor]').selectOption('');
+  const clearMonitorDisplayId = await clearRemoteMonitor.getAttribute('data-display-id');
+  if (!clearMonitorDisplayId) throw new Error('원격 화면의 ID를 확인할 수 없습니다.');
+  const clearMonitorRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(clearMonitorDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
+  await clearRemoteMonitor.locator('[data-topology-action=save-screen]').click();
+  const clearMonitorBody = (await clearMonitorRequestPromise).postDataJSON();
+  if (!Object.hasOwn(clearMonitorBody, 'nativeMonitorId') || clearMonitorBody.nativeMonitorId !== null) {
+    throw new Error(`같은 PC에서 모니터 배정을 지울 때 nativeMonitorId:null을 보내지 않았습니다: ${JSON.stringify(clearMonitorBody)}`);
+  }
+  step('같은 PC에서 원격 모니터 배정 해제 요청 확인', { requestBody: clearMonitorBody });
+
   if (report.adminPreview.displays !== 4 || report.player.screenCount !== 4 || report.perMonitorWindow.screenCount !== 1) {
     throw new Error('브라우저 화면 수가 예상과 다릅니다.');
   }
@@ -479,6 +519,7 @@ try {
 } finally {
   if (browser) await browser.close().catch(() => {});
   await stopServer();
+  report.base = sanitize(report.base);
   report.serverLog = sanitize(report.serverLog);
   const jsonPath = path.join(root, 'docs', 'verification', 'multimonitor-run.json');
   const textPath = path.join(root, 'docs', 'verification', 'multimonitor-run.txt');

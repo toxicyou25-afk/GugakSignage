@@ -99,9 +99,13 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const device = playerDevice(db, req);
     if (!device) { res.status(401).json({ error: '재생기 연결이 만료되었습니다.' }); return; }
     touch(db, req, device);
-    const screenTargets = all<{ displayId: string; nativeMonitorId: string }>(db,
+    const assignedDisplays = all<{ displayId: string; nativeMonitorId: string | null }>(db,
       `SELECT id AS displayId, native_monitor_id AS nativeMonitorId FROM displays
-        WHERE device_id = ? AND native_monitor_id IS NOT NULL ORDER BY start_index, rowid`, device.id);
+        WHERE device_id = ? AND enabled = 1 ORDER BY start_index, rowid`, device.id);
+    const screenTargets = assignedDisplays.some(({ nativeMonitorId }) =>
+      typeof nativeMonitorId !== 'string' || !/^MONITOR\\/iu.test(nativeMonitorId))
+      ? []
+      : assignedDisplays;
     res.setHeader('Cache-Control', 'no-store');
     res.json({ deviceId: device.id, screenTargets });
   });

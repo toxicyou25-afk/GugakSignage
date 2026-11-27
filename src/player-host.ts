@@ -78,9 +78,15 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     if (body !== undefined && contentType) headers.set('content-type', contentType);
     const range = req.get('range');
     if (upstreamPath.startsWith('/media/') && range) headers.set('range', range);
+    const abortController = upstreamPath.startsWith('/media/') ? new AbortController() : null;
+    const abortUpstream = () => abortController?.abort();
+    if (abortController) {
+      req.once('aborted', abortUpstream);
+      res.once('close', abortUpstream);
+    }
     try {
       const target = new URL(upstreamPath, base);
-      const upstream = await fetcher(target, { method: req.method, headers, body, redirect: 'error' });
+      const upstream = await fetcher(target, { method: req.method, headers, body, redirect: 'error', ...(abortController ? { signal: abortController.signal } : {}) });
       if (upstream.status === 401 && authenticated) await options.credentialStore.clear();
       for (const name of passthroughHeaders) {
         const value = upstream.headers.get(name);
@@ -126,11 +132,16 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         return;
       }
       if (!upstream.body) { res.end(); return; }
-      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res);
+      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res, abortController ? { signal: abortController.signal } : {});
     } catch {
       if (upstreamPath === '/api/player/register') res.destroy();
       else if (!res.headersSent) res.status(502).json({ error: 'Manager request failed' });
-      else res.destroy();
+      else if (!res.destroyed) res.destroy();
+    } finally {
+      if (abortController) {
+        req.off('aborted', abortUpstream);
+        res.off('close', abortUpstream);
+      }
     }
   }
 
@@ -198,23 +209,72 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
 
   let lastRegistrationCode: string | null = null;
   let lastRegistrationToken: string | null = null;
+  type RegistrationResult = { status: number; body: string; json: boolean };
+  const registrationsInFlight = new Map<string, Promise<RegistrationResult>>();
+  let registrationQueue: Promise<void> = Promise.resolve();
   app.post('/api/player/register', (req, res) => {
-    void Promise.all([options.identityStore.getOrCreateHardwareId(), options.credentialStore.readToken()]).then(async ([hardwareId, existingToken]) => {
-      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
-      const code = typeof body.code === 'string' ? body.code : null;
-      const canRetry = code !== null && code === lastRegistrationCode && existingToken === lastRegistrationToken;
-      const playerToken = canRetry && existingToken ? existingToken : randomBytes(32).toString('hex');
-      if (playerToken !== existingToken) await options.credentialStore.writeToken(playerToken);
-      lastRegistrationCode = code;
-      lastRegistrationToken = playerToken;
-      await proxy(req, res, '/api/player/register', false,
-        JSON.stringify({ ...body, hardwareId, playerToken }), playerToken);
-      if (res.statusCode >= 400 && res.statusCode < 500 && existingToken && playerToken !== existingToken) {
-        await options.credentialStore.writeToken(existingToken);
-      }
-    }).catch(() => {
-      if (!res.headersSent) res.status(503).json({ error: 'Player identity or credential storage is unavailable' });
-    }).then(() => { if (res.statusCode >= 200 && res.statusCode < 300) return reportNativeMonitors(); });
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const rawCode = typeof body.code === 'string' ? body.code.trim() : '';
+    const key = rawCode ? rawCode.toUpperCase() : JSON.stringify(body);
+    let registration = registrationsInFlight.get(key);
+    if (!registration) {
+      registration = registrationQueue.then(async (): Promise<RegistrationResult> => {
+        const [hardwareId, existingToken] = await Promise.all([
+          options.identityStore.getOrCreateHardwareId(), options.credentialStore.readToken(),
+        ]);
+        const code = rawCode || null;
+        const canRetry = code !== null && code === lastRegistrationCode && existingToken === lastRegistrationToken;
+        const playerToken = canRetry && existingToken ? existingToken : randomBytes(32).toString('hex');
+        if (playerToken !== existingToken) await options.credentialStore.writeToken(playerToken);
+        lastRegistrationCode = code;
+        lastRegistrationToken = playerToken;
+
+        let upstream: globalThis.Response;
+        try {
+          upstream = await fetcher(new URL('/api/player/register', base), {
+            method: req.method,
+            headers: { 'content-type': req.get('content-type') ?? 'application/json' },
+            body: JSON.stringify({ ...body, hardwareId, playerToken }),
+            redirect: 'error',
+          });
+        } catch {
+          return { status: 502, body: JSON.stringify({ error: 'Manager request failed' }), json: true };
+        }
+        const text = await upstream.text();
+        if (!upstream.ok) {
+          if (upstream.status >= 400 && upstream.status < 500 && existingToken && playerToken !== existingToken) {
+            await options.credentialStore.writeToken(existingToken);
+          }
+          return { status: upstream.status, body: text, json: false };
+        }
+        let data: Record<string, unknown>;
+        try { data = JSON.parse(text) as Record<string, unknown>; }
+        catch { return { status: 502, body: JSON.stringify({ error: 'Invalid Manager registration response' }), json: true }; }
+        const acceptedToken = data.token;
+        if (typeof acceptedToken !== 'string' || !/^[a-f0-9]{64}$/.test(acceptedToken)) {
+          return { status: 502, body: JSON.stringify({ error: 'Invalid Manager registration response' }), json: true };
+        }
+        if (acceptedToken !== playerToken) {
+          try { await options.credentialStore.writeToken(acceptedToken); }
+          catch { return { status: 503, body: JSON.stringify({ error: 'Player credential storage is unavailable' }), json: true }; }
+        }
+        lastRegistrationToken = acceptedToken;
+        await reportNativeMonitors();
+        await refreshScreenTargets(acceptedToken);
+        const { token: _secret, ...rendererBody } = data;
+        return { status: upstream.status, body: JSON.stringify(rendererBody), json: true };
+      }).catch(() => ({ status: 503, body: JSON.stringify({ error: 'Player identity or credential storage is unavailable' }), json: true }));
+      registrationsInFlight.set(key, registration);
+      registrationQueue = registration.then(() => undefined, () => undefined);
+      void registration.finally(() => {
+        if (registrationsInFlight.get(key) === registration) registrationsInFlight.delete(key);
+      });
+    }
+    void registration.then((result) => {
+      res.status(result.status);
+      if (result.json) res.json(JSON.parse(result.body));
+      else res.send(result.body);
+    });
   });
   app.get('/api/player/config', async (_req, res) => {
     const fallback = {

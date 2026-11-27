@@ -12,6 +12,7 @@ param(
     [string]$ManagerUrl = "",
     [string]$ManagerCaFile = "",
     [string]$ManagerBaseUrl = "",
+    [string]$AdminPassword = "",
     [string]$PlayerUrl = "",
     [string]$BrowserPath = "",
     [string]$NodePath = "",
@@ -332,7 +333,6 @@ if ($Role -eq "manager" -and $Mode -eq "lan") {
         ($managerBaseUri.AbsolutePath -ne "/" -and $managerBaseUri.AbsolutePath -ne "")) {
         throw "LAN Manager requires an HTTPS base URL with no path, query, or fragment."
     }
-    if ($managerBaseUri.Port -ne $Port) { throw "Manager HTTPS base URL port must match the configured listener port." }
     $ManagerBaseUrl = $managerBaseUri.GetLeftPart([UriPartial]::Authority).TrimEnd('/')
 }
 if ($Role -eq "player" -and $Mode -eq "lan") {
@@ -394,6 +394,27 @@ if ($dataDirChanged -and -not $AllowDataDirChange) {
 }
 
 Assert-DataDirOutsideInstall -InstallDir $InstallDir -DataDir $DataDir
+
+if ($Role -eq "manager" -and $Mode -eq "lan") {
+    $bootstrapEnvFile = Join-Path $DataDir ".env"
+    if (-not (Test-Path -LiteralPath $bootstrapEnvFile -PathType Leaf)) {
+        $legacyBootstrapEnv = Join-Path $InstallDir ".env"
+        if (Test-Path -LiteralPath $legacyBootstrapEnv -PathType Leaf) { $bootstrapEnvFile = $legacyBootstrapEnv }
+    }
+    $existingAdminPassword = if (Test-Path -LiteralPath $bootstrapEnvFile -PathType Leaf) {
+        Get-EnvValue -EnvFile $bootstrapEnvFile -Name "ADMIN_PASSWORD"
+    } else {
+        ""
+    }
+    if ([string]::IsNullOrWhiteSpace($existingAdminPassword) -or $existingAdminPassword -eq "0000") {
+        if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+            $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+        }
+        if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+            throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+        }
+    }
+}
 
 $existingDataDetected = [bool]$resolvedData.HasPreviousEvidence
 if (Test-Path -LiteralPath (Join-Path $DataDir "signage.sqlite")) { $existingDataDetected = $true }
@@ -546,6 +567,17 @@ try {
         if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
             throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
         }
+        if ($roleChanged) {
+            $stopScript = Join-Path $InstallDir "ops\stop.ps1"
+            $currentStopScript = Join-Path $PSScriptRoot "ops\stop.ps1"
+            if (-not (Test-Path -LiteralPath $currentStopScript -PathType Leaf) -or
+                -not (Test-Path -LiteralPath $stopScript -PathType Leaf)) {
+                throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다."
+            }
+            Copy-Item -LiteralPath $currentStopScript -Destination $stopScript -Force
+            Write-Step "설치 역할 변경을 위해 기존 watchdog과 소유 프로세스를 중지"
+            & $stopScript -Quiet
+        }
         Write-Step "서버 파일 복사"
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         foreach ($directory in @("dist", "public", "poc\packages\engine", "seed", "node_modules")) {
@@ -605,6 +637,15 @@ try {
     if (-not (Test-Path -LiteralPath $envFile)) {
         Write-Step "환경 설정과 임의 비밀번호 생성"
         $adminPassword = "0000"
+        if ($Role -eq "manager" -and $Mode -eq "lan") {
+            if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+                $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+            }
+            if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+                throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+            }
+            $adminPassword = $AdminPassword
+        }
         $sessionSecret = New-RandomSecret -ByteCount 48
         $dataDirEnv = $DataDir.Replace('"', '\"')
         $seedSamples = if ($existingDataDetected) { "false" } else { "true" }
@@ -637,6 +678,18 @@ try {
             Write-Step "기존 환경 설정 보존: PORT=$Port"
         } else {
             Write-Step "기존 환경 설정 보존"
+        }
+        if ($Role -eq "manager" -and $Mode -eq "lan") {
+            $existingAdminPassword = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+            if ([string]::IsNullOrWhiteSpace($existingAdminPassword) -or $existingAdminPassword -eq "0000") {
+                if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+                    $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+                }
+                if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+                    throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+                }
+                Set-EnvSetting -Path $envFile -Name "ADMIN_PASSWORD" -Value $AdminPassword
+            }
         }
     }
 
