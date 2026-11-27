@@ -51,12 +51,10 @@ $playerShortcutDir = Join-Path $legacyRoleFixture "shortcuts"
 New-Item -ItemType Directory -Path $playerShortcutDir -Force | Out-Null
     $playerShortcutName = [string]::Concat([char]0xC5F4, [char]0xB9B0, [char]0xC548, [char]0xB0B4, [char]0xD310, " ", [char]0xC7AC, [char]0xC0DD, [char]0xAE30, ".lnk")
     $playerShortcutPath = Join-Path $playerShortcutDir $playerShortcutName
-$shortcutShell = New-Object -ComObject WScript.Shell
-$ownedPlayerShortcut = $shortcutShell.CreateShortcut($playerShortcutPath)
-$ownedPlayerShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-$ownedPlayerShortcut.Arguments = '//B //NoLogo "' + (Join-Path $legacyInstall "ops\watchdog-launch.vbs") + '"'
-$ownedPlayerShortcut.WorkingDirectory = $legacyInstall
-$ownedPlayerShortcut.Save()
+    $playerShortcutTarget = Join-Path $env:SystemRoot "System32\wscript.exe"
+    Save-WindowsShortcut -ShortcutPath $playerShortcutPath -TargetPath $playerShortcutTarget `
+        -Arguments ('//B //NoLogo "' + (Join-Path $legacyInstall "ops\watchdog-launch.vbs") + '"') `
+        -WorkingDirectory $legacyInstall -Description "GugakSignage Player test shortcut" -IconPath $playerShortcutTarget | Out-Null
 $legacyConfig.shortcuts = @($playerShortcutPath)
 [IO.File]::WriteAllText($legacyConfigPath, ($legacyConfig | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 $legacyUninstallError = $null
