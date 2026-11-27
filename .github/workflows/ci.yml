@@ -133,6 +133,33 @@ jobs:
         run: npm ci --prefix prototype
       - name: Verify dependency license inventory
         run: npm run verify:licenses
+      - name: Set up pinned Inno Setup 6.7.3
+        shell: powershell
+        run: |
+          $version = '6.7.3'
+          $expectedHash = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
+          $innoRoot = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'
+          $isccPath = Join-Path $innoRoot 'ISCC.exe'
+          $needsInstall = -not (Test-Path -LiteralPath $isccPath -PathType Leaf)
+          if (-not $needsInstall) { $needsInstall = (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion -notlike "$version*" }
+          if ($needsInstall) {
+            $setupPath = Join-Path $env:RUNNER_TEMP "innosetup-$version.exe"
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setupPath
+            $actualHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) { throw "Inno Setup download SHA-256 mismatch: $actualHash" }
+            $setupSignature = Get-AuthenticodeSignature -FilePath $setupPath
+            if ($setupSignature.Status -ne 'Valid' -or $setupSignature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+              throw "Inno Setup download has no valid Pyrsys B.V. Authenticode signature: $($setupSignature.Status)"
+            }
+            New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+            $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /DIR="' + $innoRoot + '"'
+            $process = Start-Process -FilePath $setupPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          }
+          if (-not (Test-Path -LiteralPath $isccPath -PathType Leaf)) { throw "ISCC.exe is missing: $isccPath" }
+          $installedVersion = (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion
+          if ($installedVersion -notlike "$version*") { throw "Unexpected Inno Setup version: $installedVersion" }
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$innoRoot`r`n", [Text.UTF8Encoding]::new($false))
       - name: Validate Windows install script syntax
         shell: powershell
         run: |
