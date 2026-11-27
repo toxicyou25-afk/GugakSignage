@@ -11,6 +11,79 @@ function Get-NormalizedPath {
     return $full
 }
 
+if (-not ([System.Management.Automation.PSTypeName]'GugakShellLinkNative').Type) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+[ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface GugakShellLinkNative
+{
+    void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int length, IntPtr findData, uint flags);
+    void GetIDList(out IntPtr itemIdList);
+    void SetIDList(IntPtr itemIdList);
+    void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder description, int length);
+    void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string description);
+    void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder directory, int length);
+    void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
+    void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder arguments, int length);
+    void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string arguments);
+    void GetHotkey(out short hotkey);
+    void SetHotkey(short hotkey);
+    void GetShowCmd(out int showCommand);
+    void SetShowCmd(int showCommand);
+    void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder iconPath, int length, out int iconIndex);
+    void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string iconPath, int iconIndex);
+    void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
+    void Resolve(IntPtr window, uint flags);
+    void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
+}
+
+[ComImport, Guid("00021401-0000-0000-C000-000000000046"), ClassInterface(ClassInterfaceType.None), ComDefaultInterface(typeof(GugakShellLinkNative))]
+public class GugakShellLinkClass
+{
+}
+
+public static class GugakShortcutNative
+{
+    public static void Save(string shortcutPath, string targetPath, string arguments, string workingDirectory, string description, string iconPath, int iconIndex)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            link.SetPath(targetPath);
+            link.SetArguments(arguments ?? String.Empty);
+            link.SetWorkingDirectory(workingDirectory ?? String.Empty);
+            link.SetDescription(description ?? String.Empty);
+            link.SetShowCmd(1);
+            if (!String.IsNullOrEmpty(iconPath)) link.SetIconLocation(iconPath, iconIndex);
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Save(shortcutPath, true);
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+}
+"@
+}
+
+function Save-WindowsShortcut {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShortcutPath,
+        [Parameter(Mandatory = $true)][string]$TargetPath,
+        [string]$Arguments = "",
+        [string]$WorkingDirectory = "",
+        [string]$Description = "",
+        [string]$IconPath = "",
+        [int]$IconIndex = 0
+    )
+
+    [GugakShortcutNative]::Save($ShortcutPath, $TargetPath, $Arguments, $WorkingDirectory, $Description, $IconPath, $IconIndex)
+    return $ShortcutPath
+}
+
 if (-not ([System.Management.Automation.PSTypeName]'GugakPathNative').Type) {
     Add-Type -TypeDefinition @"
 using System;
@@ -419,7 +492,12 @@ function Stop-VerifiedOwnedProcess {
         } while ([DateTime]::UtcNow -lt $rootDeadline)
 
         if ($stillRunning) {
-            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
+            $ownerName = "<unavailable>"
+            try {
+                $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -ErrorAction Stop
+                if ($owner.ReturnValue -eq 0) { $ownerName = "$($owner.Domain)\$($owner.User)" }
+            } catch { $ownerName = "error:$($_.Exception.Message)" }
+            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, owner=$ownerName, session=$($process.SessionId), parentPid=$($process.ParentProcessId), treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
         }
         Write-Warning "프로세스 트리 일부를 종료하지 못해 신원을 재확인한 루트 프로세스만 종료했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
     } elseif ($taskkillResult.ExitCode -ne 0) {

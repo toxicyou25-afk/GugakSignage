@@ -220,15 +220,10 @@ function New-Shortcut {
     )
     $parent = Split-Path -Parent $ShortcutPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\watchdog-launch.vbs") + '"'
-    $shortcut.WorkingDirectory = $InstallDir
-    $shortcut.Description = $Description
-    $shortcut.IconLocation = "$BrowserPath,0"
-    $shortcut.Save()
-    return $ShortcutPath
+    return Save-WindowsShortcut -ShortcutPath $ShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $InstallDir "ops\watchdog-launch.vbs") + '"') `
+        -WorkingDirectory $InstallDir -Description $Description -IconPath $BrowserPath
 }
 
 function New-AdminShortcut {
@@ -238,15 +233,10 @@ function New-AdminShortcut {
     )
     $parent = Split-Path -Parent $ShortcutPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-        $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\admin-launch.vbs") + '"'
-    $shortcut.WorkingDirectory = $InstallDir
-    $shortcut.Description = $Description
-    $shortcut.IconLocation = "$BrowserPath,0"
-    $shortcut.Save()
-    return $ShortcutPath
+    return Save-WindowsShortcut -ShortcutPath $ShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $InstallDir "ops\admin-launch.vbs") + '"') `
+        -WorkingDirectory $InstallDir -Description $Description -IconPath $BrowserPath
 }
 
 function Test-AdminShortcutOwnedByInstall {
