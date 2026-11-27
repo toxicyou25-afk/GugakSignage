@@ -880,7 +880,8 @@ try {
     if ((Get-Acl -LiteralPath $envFile).Sddl -ne $envAclBeforeUpgrade) {
         throw "업그레이드가 기존 .env의 ACL을 변경했습니다."
     }
-    if ($envAfterUpgrade -notmatch "(?m)^ADMIN_PASSWORD=$([regex]::Escape([string]$adminPasswordBeforeUpgrade))\s*$") {
+    $adminPasswordAfterUpgrade = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+    if ($adminPasswordAfterUpgrade -ne [string]$adminPasswordBeforeUpgrade) {
         throw "업그레이드가 기존 .env의 관리자 비밀번호를 변경했습니다."
     }
     if ($configAfterUpgrade.browserHeadless -ne $true) {
