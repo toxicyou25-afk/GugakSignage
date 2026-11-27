@@ -341,7 +341,21 @@ function Stop-VerifiedOwnedProcess {
         $missingMarkers = @($CommandLineContains | Where-Object {
             $_ -and $commandLine.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -lt 0
         }) -join ","
-        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers"
+        $nativePath = "<unavailable>"
+        $stateSummary = "<not-read>"
+        try {
+            $nativeProcess = Get-Process -Id $ProcessId -ErrorAction Stop
+            $nativePath = [string]$nativeProcess.Path
+            if ($InstallDir) {
+                $installRoot = Get-NormalizedPath -Path $InstallDir
+                $installConfig = Read-JsonFile -Path (Join-Path $installRoot "install.json")
+                $watchdogState = Read-JsonFile -Path (Join-Path ([string]$installConfig.logDir) "watchdog-state.json")
+                $instancePath = Join-Path (Join-Path ([string]$installConfig.dataDir) "control") "server-instance.json"
+                $instance = if (Test-Path -LiteralPath $instancePath -PathType Leaf) { Read-JsonFile -Path $instancePath } else { $null }
+                $stateSummary = "serverPid=$($watchdogState.serverPid),serverStartedAt=$($watchdogState.serverStartedAt),instancePid=$($instance.pid),instanceStartedAt=$($instance.startedAt),instanceIdMatches=$([bool]($watchdogState.serverInstanceId -and $watchdogState.serverInstanceId -eq $instance.id))"
+            }
+        } catch { $stateSummary = "diagnostic-error=$($_.Exception.Message)" }
+        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, installState=$stateSummary"
     }
     $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
     $exitCode = $LASTEXITCODE
