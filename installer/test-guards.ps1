@@ -159,7 +159,7 @@ try {
     if ($message -notmatch "설치 폴더|install") { throw "내부 데이터 경로 오류가 명확하지 않습니다: $message" }
     $results.legacyDataInsideInstallBlocked = $true
 
-    $fallbackProfile = Join-Path ([IO.Path]::GetPathRoot($env:SystemRoot)) "GugakSignage-ServiceProfile-$suffix"
+    $fallbackProfile = Join-Path $env:USERPROFILE "GugakSignage-ServiceProfile-$suffix"
     $fallbackDocuments = Get-UserDocumentsPath -KnownFolderPath "" -UserProfilePath $fallbackProfile
     $expectedDocuments = Join-Path $fallbackProfile "Documents"
     if (-not (Test-PathEqual -Left $fallbackDocuments -Right $expectedDocuments)) {
@@ -231,7 +231,7 @@ try {
     $unsafeCases = @(
         (Join-Path $env:SystemRoot "System32\GugakSignage"),
         (Join-Path $env:ProgramFiles "GugakSignage\data"),
-        (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "GugakSignage\data"),
+        (Join-Path (Get-UserDocumentsPath) "GugakSignage\data"),
         $env:USERPROFILE
     )
     foreach ($unsafePath in $unsafeCases) {
@@ -332,6 +332,11 @@ try {
 
     $results.result = "passed"
     $results | ConvertTo-Json -Depth 5 -Compress
+} catch {
+    Write-Output "Guard exception: $($_.Exception.ToString())"
+    Write-Output "Position: $($_.InvocationInfo.PositionMessage)"
+    Write-Output "Stack: $($_.ScriptStackTrace)"
+    throw
 } finally {
     if (-not $KeepArtifacts) {
         $tempBase = Get-NormalizedPath -Path ([IO.Path]::GetTempPath())
