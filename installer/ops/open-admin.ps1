@@ -39,8 +39,10 @@ function Resolve-AdminUrl {
                 $validUri = [Uri]::TryCreate([string]$config.adminUrl, [UriKind]::Absolute, [ref]$uri)
                 $validIntegratedHttp = $validUri -and $config.role -eq "integrated" -and $uri.Scheme -eq "http" -and
                     ($uri.Host -eq "127.0.0.1" -or $uri.Host -eq "localhost" -or $uri.Host -eq "::1")
+                $validStandaloneManagerHttp = $validUri -and $config.role -eq "manager" -and $config.mode -eq "standalone" -and
+                    $uri.Scheme -eq "http" -and ($uri.Host -eq "127.0.0.1" -or $uri.Host -eq "localhost" -or $uri.Host -eq "::1")
                 $validManagerHttps = $validUri -and $config.role -eq "manager" -and $uri.Scheme -eq "https"
-                if (-not ($validIntegratedHttp -or $validManagerHttps) -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or
+                if (-not ($validIntegratedHttp -or $validStandaloneManagerHttp -or $validManagerHttps) -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or
                     ($uri.AbsolutePath -ne "/admin/" -and $uri.AbsolutePath -ne "/admin")) {
                     throw "install.json contains an invalid adminUrl for its install role. Refusing to open a fallback URL."
                 }

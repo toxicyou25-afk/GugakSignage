@@ -168,6 +168,18 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
       failedCode();
       return;
     }
+    if (requestedPlayerToken) {
+      const otherOwner = get<{ id: string }>(db,
+        'SELECT id FROM devices WHERE player_token_hash = ? AND hardware_id IS NOT NULL AND id <> ? LIMIT 1',
+        hashPlayerToken(requestedPlayerToken), device.id);
+      if (otherOwner) {
+        res.status(409).json({
+          error: '재생기 인증 정보가 다른 기기에 이미 연결되어 있습니다.',
+          code: 'PLAYER_TOKEN_IN_USE',
+        });
+        return;
+      }
+    }
     if (device.hardware_id && device.hardware_id !== hardwareId) {
       if (req.body?.takeover !== true) {
         res.status(409).json({

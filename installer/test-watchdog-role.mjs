@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolveWatchdogRole } from './ops/watchdog-role.mjs';
+import { resolveWatchdogHealthTarget, resolveWatchdogRole } from './ops/watchdog-role.mjs';
 import { readScreenTargetAssignment, writeScreenTargetAssignment } from './ops/player-state.mjs';
 
 test('remote screen assignments persist atomically and an empty Manager result clears them', () => {
@@ -104,6 +104,34 @@ test('remote Player Host requires HTTPS and a readable PEM CA bundle', (t) => {
   const resolved = resolveWatchdogRole({ ...base, managerCaFile: caFile });
   assert.equal(resolved.managerUrl, 'https://manager.internal.test/');
   assert.equal(resolved.managerCaFile, path.resolve(caFile));
+});
+
+test('health target uses TLS only for LAN Manager, even after role changes', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'watchdog-health-target-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const certificate = path.join(directory, 'manager.pem');
+  fs.writeFileSync(certificate, '-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----\n');
+  const lan = {
+    role: 'manager', mode: 'lan', port: 3443,
+    managerBaseUrl: 'https://manager.internal.test:3443', tlsCertFile: certificate,
+  };
+  assert.deepEqual(resolveWatchdogHealthTarget(lan), {
+    url: 'https://127.0.0.1:3443/api/health',
+    servername: 'manager.internal.test',
+    caFile: path.resolve(certificate),
+  });
+  assert.throws(() => resolveWatchdogHealthTarget({ ...lan, managerBaseUrl: 'http://manager.internal.test:3443' }), /HTTPS/);
+  assert.throws(() => resolveWatchdogHealthTarget({ ...lan, tlsCertFile: '' }), /certificate/i);
+  assert.deepEqual(resolveWatchdogHealthTarget({ ...lan, mode: 'standalone' }), {
+    url: 'http://127.0.0.1:3443/api/health',
+  });
+  assert.deepEqual(resolveWatchdogHealthTarget({ role: 'integrated', port: 3000 }), {
+    url: 'http://127.0.0.1:3000/api/health',
+  });
+  assert.deepEqual(resolveWatchdogHealthTarget({
+    role: 'player-host', port: 3000, managerUrl: 'https://manager.internal.test', managerCaFile: certificate,
+    playerUrl: 'http://127.0.0.1:43127/player/',
+  }), { url: 'http://127.0.0.1:43127/api/health' });
 });
 
 test('role-specific overrides cannot redirect the watchdog to another executable or endpoint', () => {

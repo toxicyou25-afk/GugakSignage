@@ -20,11 +20,17 @@ $openAdminScript = Join-Path $PSScriptRoot "ops\open-admin.ps1"
 $openAdminFixture = Join-Path $setupModeValidationRoot "admin-opener"
 New-Item -ItemType Directory -Path $openAdminFixture -Force | Out-Null
 $openAdminConfig = Join-Path $openAdminFixture "install.json"
-[IO.File]::WriteAllText($openAdminConfig, (@{ role = "manager"; port = 31415; adminUrl = "https://gugak.internal:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($openAdminConfig, (@{ role = "manager"; mode = "lan"; port = 31415; adminUrl = "https://gugak.internal:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 $adminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $openAdminFixture -PrintOnly)
 if ($LASTEXITCODE -ne 0 -or [string]$adminUrlOutput[-1] -ne "https://gugak.internal:31415/admin/") {
     Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
     throw "Manager LAN admin opener did not use the configured HTTPS URL."
+}
+[IO.File]::WriteAllText($openAdminConfig, (@{ role = "manager"; mode = "standalone"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+$standaloneManagerAdminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $openAdminFixture -PrintOnly)
+if ($LASTEXITCODE -ne 0 -or [string]$standaloneManagerAdminUrlOutput[-1] -ne "http://127.0.0.1:31415/admin/") {
+    Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
+    throw "Standalone Manager admin opener did not use the configured loopback HTTP URL."
 }
 [IO.File]::WriteAllText($openAdminConfig, (@{ role = "integrated"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 $legacyAdminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $openAdminFixture -PrintOnly)
@@ -33,7 +39,8 @@ if ($LASTEXITCODE -ne 0 -or [string]$legacyAdminUrlOutput[-1] -ne "http://127.0.
     throw "Legacy admin opener no longer defaults to localhost HTTP."
 }
 $invalidAdminConfigs = @(
-    @{ role = "manager"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/"; expected = "invalid adminUrl" },
+    @{ role = "manager"; mode = "lan"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/"; expected = "invalid adminUrl" },
+    @{ role = "manager"; mode = "standalone"; port = 31415; adminUrl = "http://manager.example:31415/admin/"; expected = "invalid adminUrl" },
     @{ role = "manager"; port = 31415; adminUrl = "https://gugak.internal:31416/admin/"; expected = "port does not match" },
     @{ role = "player-host"; setupRole = "player"; port = 43127; adminUrl = ""; expected = "Player-only install" }
 )

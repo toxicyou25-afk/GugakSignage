@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import fs from 'node:fs';
+import https from 'node:https';
 import path from 'node:path';
+import tls from 'node:tls';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -13,7 +15,7 @@ import {
 import { classifyPlayerState } from './watchdog-health.mjs';
 import { openAdminOnStartup } from './admin-startup.mjs';
 import { verifyAdoptedPlayerStillOwned, verifyPlayerProcessIdentity } from './player-adoption.mjs';
-import { resolveWatchdogRole } from './watchdog-role.mjs';
+import { resolveWatchdogHealthTarget, resolveWatchdogRole } from './watchdog-role.mjs';
 import {
   clearPlayerCommand,
   desiredAfterBrowserExit,
@@ -33,6 +35,7 @@ const config = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/,
 const roleConfig = resolveWatchdogRole(config);
 const { role, serverEntry, healthService, healthPort, playerUrl: configuredPlayerUrl, playerAutoStart, managerUrl, managerCaFile } = roleConfig;
 const configuredWatchdog = config.watchdog || {};
+const healthTarget = resolveWatchdogHealthTarget(config, roleConfig);
 const watchdogConfig = {
   healthIntervalMs: 5000,
   browserCheckIntervalMs: 15000,
@@ -1070,11 +1073,29 @@ async function replaceBrowser(reason) {
 }
 
 async function checkServerHealth() {
-  const response = await fetch('http://127.0.0.1:' + healthPort + '/api/health', {
-    signal: AbortSignal.timeout(2500),
-  });
-  if (!response.ok) throw new Error('HTTP ' + response.status);
-  const data = await response.json();
+  const data = healthTarget.caFile
+    ? await new Promise((resolve, reject) => {
+      const request = https.get(healthTarget.url, {
+        ca: [...tls.rootCertificates, fs.readFileSync(healthTarget.caFile)],
+        servername: healthTarget.servername,
+        timeout: 2500,
+      }, (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => { body += chunk; });
+        response.on('end', () => {
+          if (response.statusCode < 200 || response.statusCode >= 300) return reject(new Error('HTTP ' + response.statusCode));
+          try { resolve(JSON.parse(body)); } catch (error) { reject(error); }
+        });
+      });
+      request.on('timeout', () => request.destroy(new Error('Health probe timeout')));
+      request.on('error', reject);
+    })
+    : await (async () => {
+      const response = await fetch(healthTarget.url, { signal: AbortSignal.timeout(2500) });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })();
   if (!data.ok || data.service !== healthService) throw new Error('unexpected health payload');
 }
 

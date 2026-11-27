@@ -343,9 +343,11 @@
     const selectedDeviceId = row.querySelector('[data-screen-device]').value || null;
     const deviceChanged = selectedDeviceId !== (row.dataset.deviceId || null);
     const monitorSelect = row.querySelector('[data-screen-native-monitor]');
+    const selectedMonitor = monitorSelect.selectedOptions[0];
+    const hasReportedStableMonitor = Boolean(monitorSelect.value && selectedMonitor?.value);
     const nativeMonitorId = deviceChanged
-      ? (row.dataset.localHost === 'true' ? monitorSelect.value || null : null)
-      : (row.dataset.localHost === 'true' ? monitorSelect.value || null : undefined);
+      ? (hasReportedStableMonitor ? monitorSelect.value : null)
+      : (hasReportedStableMonitor || row.dataset.localHost === 'true' ? monitorSelect.value || null : undefined);
     const body = {
       deviceId: selectedDeviceId,
       playlistId: row.querySelector('[data-screen-playlist]').value || null,
@@ -413,7 +415,7 @@
     monitorSelect.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${monitors.map((monitor) =>
       `<option value="${page(monitor.bindingId)}">${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>`,
     ).join('')}`;
-    monitorSelect.disabled = !localHost;
+    monitorSelect.disabled = !localHost && monitors.length === 0;
     const help = row.querySelector('[data-screen-monitor-help]');
     if (help) help.textContent = localHost
       ? 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.'

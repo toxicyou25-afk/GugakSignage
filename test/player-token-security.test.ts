@@ -86,6 +86,35 @@ test('player tokens are hashed, migrated and enforced for manager media', async 
     assert.equal(row.player_token, null); assert.equal(row.player_token_hash, sha256(takeoverToken));
   });
 
+  await t.test('a Player token cannot be bound to more than one device', async () => {
+    insertDevice('token-owner', 'OWNER');
+    insertDevice('token-target', 'TARGET');
+    const sharedToken = 'd'.repeat(64);
+    const owner = await call('/api/player/register', {
+      method: 'POST', body: { code: 'OWNER', hardwareId: 'hardware-shared-host', playerToken: sharedToken },
+    });
+    assert.equal(owner.response.status, 200, owner.text);
+    const collision = await call('/api/player/register', {
+      method: 'POST', body: { code: 'TARGET', hardwareId: 'hardware-shared-host', playerToken: sharedToken },
+    });
+    assert.equal(collision.response.status, 409, collision.text);
+    assert.equal(JSON.parse(collision.text).code, 'PLAYER_TOKEN_IN_USE');
+    const unconsumed = db.prepare('SELECT hardware_id, player_token_hash, pairing_code_consumed_at FROM devices WHERE id = ?').get('token-target') as any;
+    assert.equal(unconsumed.hardware_id, null);
+    assert.equal(unconsumed.player_token_hash, null);
+    assert.equal(unconsumed.pairing_code_consumed_at, null);
+
+    const replacementToken = 'e'.repeat(64);
+    const target = await call('/api/player/register', {
+      method: 'POST', body: { code: 'TARGET', hardwareId: 'hardware-shared-host', playerToken: replacementToken },
+    });
+    assert.equal(target.response.status, 200, target.text);
+    const sharedOwners = db.prepare('SELECT id FROM devices WHERE player_token_hash = ?').all(sha256(sharedToken)) as Array<{ id: string }>;
+    const replacementOwners = db.prepare('SELECT id FROM devices WHERE player_token_hash = ?').all(sha256(replacementToken)) as Array<{ id: string }>;
+    assert.deepEqual(sharedOwners.map((row) => row.id), ['token-owner']);
+    assert.deepEqual(replacementOwners.map((row) => row.id), ['token-target']);
+  });
+
   await t.test('manager media requires token and membership in the device current publication', async () => {
     const one = 'asset-one.png'; const two = 'asset-two.png'; const unpublished = 'asset-private.png';
     for (const name of [one, two, unpublished]) fs.writeFileSync(path.join(config.uploadDir, name), name);

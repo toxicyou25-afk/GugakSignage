@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import express, { type Request, type Response } from 'express';
 import type { NativeMonitorResult } from './native-monitors.js';
 import type { PlayerCredentialStore, PlayerIdentityStore } from './player-credentials.js';
@@ -125,9 +126,10 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         return;
       }
       if (!upstream.body) { res.end(); return; }
-      Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream).pipe(res);
+      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream), res);
     } catch {
-      if (!res.headersSent) res.status(502).json({ error: 'Manager request failed' });
+      if (upstreamPath === '/api/player/register') res.destroy();
+      else if (!res.headersSent) res.status(502).json({ error: 'Manager request failed' });
       else res.destroy();
     }
   }
@@ -194,13 +196,22 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
     }
   }
 
+  let lastRegistrationCode: string | null = null;
+  let lastRegistrationToken: string | null = null;
   app.post('/api/player/register', (req, res) => {
     void Promise.all([options.identityStore.getOrCreateHardwareId(), options.credentialStore.readToken()]).then(async ([hardwareId, existingToken]) => {
       const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
-      const playerToken = existingToken ?? randomBytes(32).toString('hex');
-      if (!existingToken) await options.credentialStore.writeToken(playerToken);
-      return proxy(req, res, '/api/player/register', false,
+      const code = typeof body.code === 'string' ? body.code : null;
+      const canRetry = code !== null && code === lastRegistrationCode && existingToken === lastRegistrationToken;
+      const playerToken = canRetry && existingToken ? existingToken : randomBytes(32).toString('hex');
+      if (playerToken !== existingToken) await options.credentialStore.writeToken(playerToken);
+      lastRegistrationCode = code;
+      lastRegistrationToken = playerToken;
+      await proxy(req, res, '/api/player/register', false,
         JSON.stringify({ ...body, hardwareId, playerToken }), playerToken);
+      if (res.statusCode >= 400 && res.statusCode < 500 && existingToken && playerToken !== existingToken) {
+        await options.credentialStore.writeToken(existingToken);
+      }
     }).catch(() => {
       if (!res.headersSent) res.status(503).json({ error: 'Player identity or credential storage is unavailable' });
     }).then(() => { if (res.statusCode >= 200 && res.statusCode < 300) return reportNativeMonitors(); });

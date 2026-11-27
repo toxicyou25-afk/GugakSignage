@@ -5,7 +5,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import multer from 'multer';
 import { imageSize } from 'image-size';
 import { restrictAdminToLoopback } from './admin-access.js';
-import { requireAdmin } from './auth.js';
+import { isAdminRequest, requireAdmin } from './auth.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
 import { get, getMeta, setMeta, type DB } from './db.js';
@@ -153,6 +153,7 @@ export function createApp(db: DB, config: AppConfig) {
 
   if (config.mode !== 'standalone') {
     app.use('/media', (req, res, next) => {
+      if (isAdminRequest(req, config.sessionSecret, adminSessionEpoch(db))) { next(); return; }
       const authorization = req.headers.authorization;
       const token = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
       if (!token) { res.status(401).json({ error: '재생기 인증이 필요합니다.' }); return; }

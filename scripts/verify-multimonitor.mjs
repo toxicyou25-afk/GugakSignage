@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
@@ -200,10 +201,34 @@ try {
     if (!response.ok || !data.device?.id) throw new Error(data.error || '검증용 PC B를 만들지 못했습니다.');
     return data.device.id;
   });
+  const remoteMonitor = {
+    stableId: 'VERIFY-REMOTE-STABLE', bindingId: 'MONITOR\\VERIFY-REMOTE-STABLE',
+    deviceName: '\\\\.\\DISPLAY7', friendlyName: 'Reported remote monitor',
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
+    orientation: 'landscape', primary: true, attached: true,
+  };
+  const seedDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const reportedAt = new Date().toISOString();
+  seedDb.prepare('UPDATE devices SET last_host_local = 0, last_seen = ? WHERE id = ?').run(reportedAt, secondDeviceId);
+  seedDb.prepare(`INSERT INTO player_monitor_reports (device_id, snapshot_json, reported_at)
+    VALUES (?, ?, ?)`).run(secondDeviceId, JSON.stringify([remoteMonitor]), reportedAt);
+  seedDb.close();
+  const remoteInventory = await admin.evaluate(async (deviceId) => {
+    const response = await fetch(`/api/native-monitors?deviceId=${encodeURIComponent(deviceId)}`);
+    return { status: response.status, body: await response.json() };
+  }, secondDeviceId);
+  if (remoteInventory.status !== 200 || !remoteInventory.body.reported ||
+      !remoteInventory.body.monitors?.some((monitor) => monitor.bindingId === remoteMonitor.bindingId)) {
+    throw new Error(`관리자 API에서 원격 모니터 보고를 확인할 수 없습니다: ${JSON.stringify(remoteInventory)}`);
+  }
   // Device creation adds a migration display; saving the current 4-screen
   // draft removes that temporary extra screen and refreshes the PC choices.
   await admin.click('.topology-config button[type=submit]');
-  await admin.waitForFunction(() => document.querySelectorAll('.screen-assignment').length === 4);
+  await admin.waitForFunction(({ deviceId, bindingId }) => {
+    const option = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')].find((item) => item.value === deviceId);
+    if (!option) return false;
+    try { return JSON.parse(option.dataset.monitors || '[]').some((monitor) => monitor.bindingId === bindingId); } catch { return false; }
+  }, { deviceId: secondDeviceId, bindingId: remoteMonitor.bindingId });
   const initialMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
@@ -217,8 +242,14 @@ try {
   const screenDeviceSelects = admin.locator('.screen-assignment [data-screen-device]');
   if (await screenDeviceSelects.count() !== 4) throw new Error('화면별 PC 선택 UI가 4개 표시되지 않았습니다.');
   await fourth.locator('[data-screen-device]').selectOption(secondDeviceId);
-  const remoteMonitorPickerDisabled = await fourth.locator('[data-screen-native-monitor]').isDisabled();
-  if (!remoteMonitorPickerDisabled) throw new Error('모니터 정보가 보고되지 않은 원격 Player에서 관리자 PC 모니터가 선택지로 노출되었습니다.');
+  const remoteMonitorSelect = fourth.locator('[data-screen-native-monitor]');
+  const remoteMonitorPickerDisabled = await remoteMonitorSelect.isDisabled();
+  if (remoteMonitorPickerDisabled) throw new Error('안정 식별자가 보고된 원격 Player의 모니터 선택기가 비활성화되었습니다.');
+  const remoteMonitorOptionCount = await remoteMonitorSelect.locator('option').evaluateAll((options, bindingId) =>
+    options.filter((option) => option.value === bindingId).length,
+  remoteMonitor.bindingId);
+  if (remoteMonitorOptionCount === 0) throw new Error('보고된 원격 모니터가 선택지에 없습니다.');
+  await remoteMonitorSelect.selectOption(remoteMonitor.bindingId);
   await fourth.locator('[data-topology-action=save-screen]').click();
   await admin.waitForFunction((secondId) =>
     document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-device]')?.value === secondId,
@@ -228,7 +259,7 @@ try {
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
     return detail.groups[0].displays.map((display) => ({ deviceId: display.device_id, nativeMonitorId: display.nativeMonitorId }));
   });
-  if (explicitMapping[3].deviceId !== secondDeviceId || explicitMapping[3].nativeMonitorId !== null || explicitMapping.slice(0, 3).some((value) => value.deviceId !== deviceValue)) {
+  if (explicitMapping[3].deviceId !== secondDeviceId || explicitMapping[3].nativeMonitorId !== remoteMonitor.bindingId || explicitMapping.slice(0, 3).some((value) => value.deviceId !== deviceValue)) {
     throw new Error(`화면별 명시적 PC 재배정이 반영되지 않았습니다: ${JSON.stringify(explicitMapping)}`);
   }
   await admin.click('.topology-config button[type=submit]');
@@ -241,7 +272,7 @@ try {
   if (JSON.stringify(savedMapping) !== JSON.stringify(explicitMapping)) {
     throw new Error(`그룹 저장이 화면별 PC 배정을 덮어썼습니다: ${JSON.stringify(savedMapping)}`);
   }
-  report.deviceMapping = { initialMapping, explicitMapping, savedMapping, remoteMonitorPickerDisabled };
+  report.deviceMapping = { initialMapping, explicitMapping, savedMapping, remoteMonitorPickerDisabled, remoteMonitorBindingId: remoteMonitor.bindingId };
   step('화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존', report.deviceMapping);
 
   const refreshedFourth = admin.locator('.screen-assignment').nth(3);

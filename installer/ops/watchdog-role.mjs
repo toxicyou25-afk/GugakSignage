@@ -70,3 +70,35 @@ export function resolveWatchdogRole(config) {
     ...(managerConnection || {}),
   };
 }
+
+export function resolveWatchdogHealthTarget(config, roleConfig = resolveWatchdogRole(config)) {
+  if (roleConfig.role !== 'manager' || config.mode !== 'lan') {
+    return { url: `http://127.0.0.1:${roleConfig.healthPort}/api/health` };
+  }
+  if (!config.managerBaseUrl || !config.tlsCertFile) {
+    throw new Error('LAN Manager health endpoint requires an HTTPS URL and TLS certificate.');
+  }
+  let managerUrl;
+  try { managerUrl = new URL(String(config.managerBaseUrl)); } catch {
+    throw new Error('Invalid LAN Manager health endpoint.');
+  }
+  const configuredPort = Number(managerUrl.port || 443);
+  if (managerUrl.protocol !== 'https:' || managerUrl.username || managerUrl.password ||
+      managerUrl.pathname !== '/' || managerUrl.search || managerUrl.hash ||
+      configuredPort !== roleConfig.healthPort) {
+    throw new Error('LAN Manager health endpoint must use HTTPS and the configured listener port.');
+  }
+  const caFile = path.resolve(String(config.tlsCertFile));
+  let certificate;
+  try { certificate = fs.readFileSync(caFile, 'utf8'); } catch {
+    throw new Error('LAN Manager health certificate is not readable.');
+  }
+  if (!/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/u.test(certificate)) {
+    throw new Error('LAN Manager health certificate must contain a PEM certificate.');
+  }
+  return {
+    url: `https://127.0.0.1:${roleConfig.healthPort}/api/health`,
+    servername: managerUrl.hostname,
+    caFile,
+  };
+}

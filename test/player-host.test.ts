@@ -86,6 +86,73 @@ test('registration persists the Player token before Manager commit and never ret
   assert.deepEqual(body.device, { id: 'device-1' });
 });
 
+test('registration reuses a token for the same pairing code and rotates it for another device', async (t) => {
+  const playerTokens: string[] = [];
+  let managerRequests = 0;
+  const manager = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on('end', () => {
+      managerRequests += 1;
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { playerToken: string };
+      playerTokens.push(body.playerToken);
+      if (managerRequests === 1) { res.destroy(); return; }
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ token: body.playerToken, device: { id: `device-${playerTokens.length}` } }));
+    });
+  });
+  const managerUrl = await listen(manager);
+  const creds = credentials(token);
+  const hostServer = createPlayerHostApp({ managerUrl, credentialStore: creds.store, identityStore }).listen(0, '127.0.0.1');
+  t.after(async () => { await close(hostServer); await close(manager); });
+  const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
+    const address = hostServer.address();
+    assert.ok(address && typeof address !== 'string');
+    resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  const register = async (code: string) => fetch(`${hostUrl}/api/player/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }),
+  });
+
+  const lostResponseStatus = await register('DEVICE-A').then((response) => response.status, () => 0);
+  assert.ok(lostResponseStatus === 0 || lostResponseStatus === 502);
+  const retryToken = playerTokens[0];
+  assert.match(retryToken ?? '', /^[a-f0-9]{64}$/);
+  assert.equal((await register('DEVICE-A')).status, 200);
+  assert.equal(playerTokens[1], retryToken);
+  assert.equal((await register('DEVICE-A')).status, 200);
+  assert.equal(playerTokens[2], retryToken);
+  assert.equal((await register('DEVICE-B')).status, 200);
+  assert.notEqual(playerTokens[3], retryToken);
+  assert.equal(creds.current(), playerTokens[3]);
+});
+
+test('an upstream stream failure does not prevent a later healthy Player Host request', async (t) => {
+  let truncate = true;
+  const manager = createServer((_req, res) => {
+    if (truncate) {
+      res.writeHead(200, { 'content-length': '20', 'content-type': 'application/octet-stream' });
+      res.write('partial');
+      setImmediate(() => res.destroy());
+      return;
+    }
+    res.end('healthy');
+  });
+  const managerUrl = await listen(manager);
+  const hostServer = createPlayerHostApp({ managerUrl, credentialStore: credentials(token).store, identityStore }).listen(0, '127.0.0.1');
+  t.after(async () => { await close(hostServer); await close(manager); });
+  const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
+    const address = hostServer.address();
+    assert.ok(address && typeof address !== 'string');
+    resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  await assert.rejects(fetch(`${hostUrl}/media/video.mp4`).then((response) => response.arrayBuffer()));
+  truncate = false;
+  const healthy = await fetch(`${hostUrl}/media/video.mp4`);
+  assert.equal(healthy.status, 200);
+  assert.equal(await healthy.text(), 'healthy');
+});
+
 test('reports the Host OS monitor snapshot to the authenticated Manager after registration', async (t) => {
   const calls: Array<{ path: string; authorization: string; monitors?: unknown }> = [];
   const manager = createServer((req, res) => {
