@@ -413,7 +413,10 @@ try {
     $preflightStdout = Join-Path $testRoot "role-change-preflight.stdout.txt"
     $preflightStderr = Join-Path $testRoot "role-change-preflight.stderr.txt"
     $preflightProcess = Start-Process -FilePath $powershellExe -ArgumentList $preflightArgumentLine -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $preflightStdout -RedirectStandardError $preflightStderr
-    $preflightLog = Get-ChildItem -LiteralPath $logDir -Filter "install-*.log" -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    $preflightConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    $preflightLogDir = [string]$preflightConfig.logDir
+    if ([string]::IsNullOrWhiteSpace($preflightLogDir)) { throw "Existing install.json does not record an install log directory." }
+    $preflightLog = Get-ChildItem -LiteralPath $preflightLogDir -Filter "install-*.log" -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
     $preflightLogText = if ($preflightLog) { [IO.File]::ReadAllText($preflightLog.FullName) } else { "" }
     if ($preflightProcess.ExitCode -eq 0 -or $preflightLogText -notmatch "원본과 설치 폴더가 같습니다") {
         throw "A role change with identical source and install paths was not rejected by preflight."
