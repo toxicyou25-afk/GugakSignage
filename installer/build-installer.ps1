@@ -112,12 +112,13 @@ if (-not $SkipCompile) {
             }
         }
     }
+    if (-not $isccPath) {
+        Write-Warning "Inno Setup 6 ISCC.exe가 없어 .iss를 컴파일하지 않았습니다. PowerShell 설치 ZIP은 생성되었습니다."
+    }
     if ($isccPath) {
         Write-Step "Inno Setup 컴파일"
         & $isccPath (Join-Path $PSScriptRoot "GugakSignage.iss")
         if ($LASTEXITCODE -ne 0) { throw "Inno Setup 컴파일 실패" }
-    } else {
-        Write-Warning "Inno Setup 6 ISCC.exe가 없어 .iss를 컴파일하지 않았습니다. PowerShell 설치 ZIP은 생성되었습니다."
     }
 }
 
