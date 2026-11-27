@@ -8,6 +8,7 @@ import http from 'node:http';
 import { createApp } from '../src/app.js';
 import { loadConfig, loadTlsOptions } from '../src/config.js';
 import { assertManagerPasswordChanged, createSessionToken, setSessionCookie } from '../src/auth.js';
+import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword, verifyAdminPassword } from '../src/admin-password.js';
 import { openDatabase } from '../src/db.js';
 import { hashPlayerToken } from '../src/util.js';
 
@@ -97,6 +98,71 @@ test('session cookie secure flag follows the explicit HTTPS mode argument', () =
   setSessionCookie(response as never, 'test-secret', '0', true);
   assert.equal(calls[0]?.options.secure, false);
   assert.equal(calls[1]?.options.secure, true);
+});
+
+test('Manager LAN bootstrap replaces a stored test default and rotates existing sessions', async (t) => {
+  for (const legacyMarker of [false, true]) {
+    await t.test(legacyMarker ? 'legacy database without default marker' : 'database with explicit default marker', () => {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'manager-password-bootstrap-'));
+      let standaloneConfig!: ReturnType<typeof loadConfig>;
+      withEnv({}, () => {
+        standaloneConfig = loadConfig({
+          rootDir: path.resolve(import.meta.dirname, '..'), dataDir: temp,
+          dbPath: path.join(temp, 'manager.sqlite'), uploadDir: path.join(temp, 'uploads'),
+          seedSamples: false, adminPassword: '0000', sessionSecret: 'password-bootstrap-session',
+          databaseWasPresentAtStartup: false, role: 'all', mode: 'standalone',
+        });
+      });
+      const db = openDatabase(standaloneConfig.dbPath);
+      try {
+        initializeAdminPassword(db, standaloneConfig);
+        if (legacyMarker) db.prepare('DELETE FROM meta WHERE key = ?').run('admin_password_is_test_default');
+        assert.equal(verifyAdminPassword(db, '0000'), true);
+        if (!legacyMarker) assert.equal(usesTestDefaultAdminPassword(db), true);
+        const previousEpoch = adminSessionEpoch(db);
+        const lanConfig = { ...standaloneConfig, role: 'manager' as const, mode: 'lan' as const, adminPassword: 'Fixture-Manager-Password-31415!' };
+
+        initializeAdminPassword(db, lanConfig);
+
+        assert.equal(verifyAdminPassword(db, '0000'), false);
+        assert.equal(verifyAdminPassword(db, 'Fixture-Manager-Password-31415!'), true);
+        assert.equal(usesTestDefaultAdminPassword(db), false);
+        assert.notEqual(adminSessionEpoch(db), previousEpoch);
+        assert.doesNotThrow(() => assertManagerPasswordChanged(usesTestDefaultAdminPassword(db)));
+        const rotatedEpoch = adminSessionEpoch(db);
+        initializeAdminPassword(db, lanConfig);
+        assert.equal(adminSessionEpoch(db), rotatedEpoch);
+        assert.equal(verifyAdminPassword(db, 'Fixture-Manager-Password-31415!'), true);
+      } finally {
+        db.close(); fs.rmSync(temp, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test('Manager LAN bootstrap preserves a password already changed by the administrator', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'manager-password-preserved-'));
+  let existingConfig!: ReturnType<typeof loadConfig>;
+  withEnv({}, () => {
+    existingConfig = loadConfig({
+      rootDir: path.resolve(import.meta.dirname, '..'), dataDir: temp,
+      dbPath: path.join(temp, 'manager.sqlite'), uploadDir: path.join(temp, 'uploads'),
+      seedSamples: false, adminPassword: 'Administrator-Changed-Password', sessionSecret: 'password-preserve-session',
+      databaseWasPresentAtStartup: false, role: 'all', mode: 'standalone',
+    });
+  });
+  const db = openDatabase(existingConfig.dbPath);
+  try {
+    initializeAdminPassword(db, existingConfig);
+    const previousEpoch = adminSessionEpoch(db);
+    initializeAdminPassword(db, { ...existingConfig, role: 'manager', mode: 'lan', adminPassword: 'Installer-New-Password' });
+    assert.equal(verifyAdminPassword(db, 'Administrator-Changed-Password'), true);
+    assert.equal(verifyAdminPassword(db, 'Installer-New-Password'), false);
+    assert.equal(usesTestDefaultAdminPassword(db), false);
+    assert.equal(adminSessionEpoch(db), previousEpoch);
+  } finally {
+    db.close(); fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test('manager media accepts admin sessions while keeping Player access publication-scoped', async (t) => {
