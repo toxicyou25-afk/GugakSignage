@@ -455,3 +455,4 @@ try {
   fs.writeFileSync(textPath, `${JSON.stringify(report, null, 2)}\n\n${report.serverLog}`);
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
+

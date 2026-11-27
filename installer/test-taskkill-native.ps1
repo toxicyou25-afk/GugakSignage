@@ -98,3 +98,4 @@ if (-not $exited -or $script:mockTaskkillCalls.Count -ne 1) {
     pidReuseBlockedAfterTreeFailure = $true
     exitDuringRecheckHandled = $true
 } | ConvertTo-Json -Compress
+

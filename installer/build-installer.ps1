@@ -126,3 +126,4 @@ Write-Step "완료"
 Write-Step "PowerShell 설치 ZIP: $zipPath"
 Write-Step "SHA-256: $hash"
 if ($isccPath) { Write-Step "Inno Setup: $(Join-Path $OutputDir 'inno')" }
+

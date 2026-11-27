@@ -362,3 +362,4 @@ test('watchdog state restores screen targets and old state defaults to legacy ca
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+

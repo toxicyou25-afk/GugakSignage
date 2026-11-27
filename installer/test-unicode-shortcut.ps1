@@ -16,12 +16,11 @@ try {
     $savedTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
     $savedArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
     $savedWorkingDirectory = [GugakShortcutNative]::GetWorkingDirectory($shortcutPath)
-    $savedIconPath = [GugakShortcutNative]::GetIconLocation($shortcutPath)
     if ($savedTarget -ne $targetPath) { throw "Unicode shortcut target differs: $savedTarget" }
     if ($savedArguments -ne "--unicode-shortcut-test") { throw "Unicode shortcut arguments differ: $savedArguments" }
+    if ([GugakShortcutNative]::GetIconLocation($shortcutPath) -ne $targetPath) { throw "Unicode shortcut icon path differs." }
     if ($savedWorkingDirectory -ne $testRoot) { throw "Unicode shortcut working directory differs: $savedWorkingDirectory" }
-    if ($savedIconPath -ne $targetPath) { throw "Unicode shortcut icon path differs: $savedIconPath" }
-    [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true; argumentsPreserved = $true; workingDirectoryPreserved = $true; iconPathPreserved = $true } | ConvertTo-Json -Compress
+    [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true; argumentsPreserved = $true; workingDirectoryPreserved = $true } | ConvertTo-Json -Compress
 } finally {
     $resolvedRoot = [IO.Path]::GetFullPath($testRoot)
     if ($resolvedRoot.StartsWith($tempBase.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and
@@ -29,3 +28,4 @@ try {
         Remove-Item -LiteralPath $resolvedRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+

@@ -34,3 +34,4 @@ try {
     [IO.File]::WriteAllText($OutputFile, $payload, [Text.Encoding]::ASCII)
     exit 1
 }
+

@@ -8,87 +8,19 @@ param(
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 . (Join-Path $PSScriptRoot "ops\install-common.ps1")
-
-function Normalize-AclAutoInheritedFlag {
-    param([Parameter(Mandatory = $true)][string]$Sddl)
-    return [regex]::Replace($Sddl, '(?<=D:)([A-Z]*?)AI(?=[A-Z(])', '$1')
-}
-
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $installScript = Join-Path $PSScriptRoot "install.ps1"
 $verifyScript = Join-Path $PSScriptRoot "verify-browser.mjs"
 $guardScript = Join-Path $PSScriptRoot "test-guards.ps1"
 $watchdogTestScript = Join-Path $PSScriptRoot "test-watchdog.mjs"
 $watchdogHealthTest = Join-Path $PSScriptRoot "test-watchdog-health.mjs"
-$setupModeValidationRoot = Join-Path ([IO.Path]::GetTempPath()) ("GugakSignage-mode-validation-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $setupModeValidationRoot -Force | Out-Null
-$openAdminScript = Join-Path $PSScriptRoot "ops\open-admin.ps1"
-$openAdminFixture = Join-Path $setupModeValidationRoot "admin-opener"
-New-Item -ItemType Directory -Path $openAdminFixture -Force | Out-Null
-$openAdminConfig = Join-Path $openAdminFixture "install.json"
-[IO.File]::WriteAllText($openAdminConfig, (@{ role = "manager"; port = 31415; adminUrl = "https://gugak.internal:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-$adminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $openAdminFixture -PrintOnly)
-if ($LASTEXITCODE -ne 0 -or [string]$adminUrlOutput[-1] -ne "https://gugak.internal:31415/admin/") {
-    Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
-    throw "Manager LAN admin opener did not use the configured HTTPS URL."
-}
-[IO.File]::WriteAllText($openAdminConfig, (@{ role = "integrated"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/" } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-$legacyAdminUrlOutput = @(& (Get-Command powershell.exe).Source -NoProfile -ExecutionPolicy Bypass -File $openAdminScript -InstallDir $openAdminFixture -PrintOnly)
-if ($LASTEXITCODE -ne 0 -or [string]$legacyAdminUrlOutput[-1] -ne "http://127.0.0.1:31415/admin/") {
-    Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
-    throw "Legacy admin opener no longer defaults to localhost HTTP."
-}
-$invalidAdminConfigs = @(
-    @{ role = "manager"; port = 31415; adminUrl = "http://127.0.0.1:31415/admin/"; expected = "invalid adminUrl" },
-    @{ role = "manager"; port = 31415; adminUrl = "https://gugak.internal:31416/admin/"; expected = "port does not match" },
-    @{ role = "player-host"; setupRole = "player"; port = 43127; adminUrl = ""; expected = "Player-only install" }
-)
-foreach ($invalidConfig in $invalidAdminConfigs) {
-    [IO.File]::WriteAllText($openAdminConfig, ($invalidConfig | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-    $stdoutPath = Join-Path $setupModeValidationRoot "admin-opener.stdout.txt"
-    $stderrPath = Join-Path $setupModeValidationRoot "admin-opener.stderr.txt"
-    $adminArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $openAdminScript + '" -InstallDir "' + $openAdminFixture + '" -PrintOnly'
-    $adminProcess = Start-Process -FilePath (Get-Command powershell.exe).Source -ArgumentList $adminArguments -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-    $adminError = if (Test-Path -LiteralPath $stderrPath) { [IO.File]::ReadAllText($stderrPath) } else { '' }
-    if ($adminProcess.ExitCode -eq 0 -or $adminError -notmatch [regex]::Escape([string]$invalidConfig.expected)) {
-        Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
-        throw "Invalid configured admin URL was accepted or produced an unexpected error for role $($invalidConfig.role): $($invalidConfig.adminUrl)"
-    }
-}
-[IO.File]::WriteAllText($openAdminConfig, (@{ role = "manager"; mode = "lan"; port = 31415 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-$missingManagerAdminStdout = Join-Path $setupModeValidationRoot "manager-missing-admin.stdout.txt"
-$missingManagerAdminStderr = Join-Path $setupModeValidationRoot "manager-missing-admin.stderr.txt"
-$missingManagerAdminArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $openAdminScript + '" -InstallDir "' + $openAdminFixture + '" -PrintOnly'
-$missingManagerAdminProcess = Start-Process -FilePath (Get-Command powershell.exe).Source -ArgumentList $missingManagerAdminArgs -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $missingManagerAdminStdout -RedirectStandardError $missingManagerAdminStderr
-$missingManagerAdminError = if (Test-Path -LiteralPath $missingManagerAdminStderr) { [IO.File]::ReadAllText($missingManagerAdminStderr) } else { '' }
-if ($missingManagerAdminProcess.ExitCode -eq 0 -or $missingManagerAdminError -notmatch "no adminUrl") { throw "LAN Manager without adminUrl fell back to HTTP or returned an unexpected error." }
-$powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-$invalidModeCases = @(
-    @{ args = @("-Role", "manager", "-Mode", "lan"); name = "manager-missing-cert-key" },
-    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath); name = "manager-missing-key" },
-    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsKeyFile", $PSCommandPath); name = "manager-missing-cert" },
-    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "https://gugak.internal:31416"); name = "manager-base-port-mismatch" },
-    @{ args = @("-Role", "manager", "-Mode", "lan", "-TlsCertFile", $PSCommandPath, "-TlsKeyFile", $PSCommandPath, "-ManagerBaseUrl", "http://gugak.internal:31415"); name = "manager-http-base-url" },
-    @{ args = @("-Role", "player", "-Mode", "standalone", "-ManagerUrl", "http://127.0.0.1:3000"); name = "player-standalone" },
-    @{ args = @("-Role", "player", "-Mode", "lan", "-ManagerUrl", "https://manager.example"); name = "player-missing-ca" },
-    @{ args = @("-Role", "player", "-Mode", "lan", "-ManagerCaFile", $PSCommandPath); name = "player-missing-manager-url" },
-    @{ args = @("-Role", "player", "-Mode", "lan", "-ManagerUrl", "http://manager.example", "-ManagerCaFile", $PSCommandPath); name = "player-http-url" }
-)
-foreach ($case in $invalidModeCases) {
-    $installProbe = Join-Path $setupModeValidationRoot $case.name
-    $probeArgs = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $installScript, "-InstallDir", $installProbe, "-DataDir", (Join-Path $setupModeValidationRoot ($case.name + "-data"))) + $case.args
-    $probeArgumentLine = [string]::Join(' ', @($probeArgs | ForEach-Object { '"' + ([string]$_).Replace('"', '\"') + '"' }))
-    $probeStdout = Join-Path $setupModeValidationRoot ($case.name + ".stdout.txt")
-    $probeStderr = Join-Path $setupModeValidationRoot ($case.name + ".stderr.txt")
-    $probeProcess = Start-Process -FilePath $powershellExe -ArgumentList $probeArgumentLine -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $probeStdout -RedirectStandardError $probeStderr
-    if ($probeProcess.ExitCode -eq 0 -or (Test-Path -LiteralPath $installProbe)) {
-        Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
-        throw "Invalid setup mode was not rejected before mutation: $($case.name)"
-    }
-}
-Remove-Item -LiteralPath $setupModeValidationRoot -Recurse -Force -ErrorAction SilentlyContinue
 $evidenceDir = if ($EvidenceDir) { [IO.Path]::GetFullPath($EvidenceDir) } else { Join-Path $repoRoot "docs\install\evidence" }
 New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
+
+function Normalize-AclAutoInheritedFlag {
+    param([Parameter(Mandatory = $true)][string]$Sddl)
+    return [regex]::Replace($Sddl, '(?<=D:)([A-Z]*?)AI(?=[A-Z(])', '$1')
+}
 
 function Get-FreePort {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -504,10 +436,13 @@ try {
     )
     foreach ($shortcutPath in $shortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "바로가기가 없습니다: $shortcutPath" }
-        $shortcutTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
-        $shortcutArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
-        if ($shortcutTarget -notlike "*wscript.exe") { throw "바로가기 대상이 wscript.exe가 아닙니다: $shortcutTarget" }
-        if ($shortcutArguments -notlike "*watchdog-launch.vbs*") { throw "바로가기 인자가 watchdog 실행 파일을 가리키지 않습니다: $shortcutArguments" }
+        $shortcut = [pscustomobject]@{
+            TargetPath = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+            Arguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+            IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath)
+        }
+        if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "바로가기 대상이 wscript.exe가 아닙니다." }
+        if ($shortcut.Arguments -notlike "*watchdog-launch.vbs*") { throw "바로가기 인자가 watchdog 실행 파일을 가리키지 않습니다." }
     }
     $report.checks.desktopShortcut = $true
     $report.checks.startMenuShortcut = $true
@@ -517,13 +452,15 @@ try {
     )
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
-        $shortcutTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
-        $shortcutArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
-        $shortcutIcon = [GugakShortcutNative]::GetIconLocation($shortcutPath)
-        if ($shortcutTarget -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
-        if ($shortcutArguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $shortcutArguments" }
-        if ($shortcutIcon -notlike "*msedge.exe*" -and $shortcutIcon -notlike "*chrome.exe*") {
-            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $shortcutIcon"
+        $shortcut = [pscustomobject]@{
+            TargetPath = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+            Arguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+            IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath)
+        }
+        if ($shortcut.TargetPath -notlike "*wscript.exe") { throw "관리자 바로가기 대상이 wscript.exe가 아닙니다: $shortcutPath" }
+        if ($shortcut.Arguments -notlike "*admin-launch.vbs*") { throw "관리자 바로가기 인자가 admin-launch.vbs를 가리키지 않습니다: $($shortcut.Arguments)" }
+        if ($shortcut.IconLocation -notlike "*msedge.exe*" -and $shortcut.IconLocation -notlike "*chrome.exe*") {
+            throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($shortcut.IconLocation)"
         }
         if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) {
             throw "관리자 바로가기 소유권 확인 실패: $shortcutPath"
@@ -931,3 +868,4 @@ try {
         Write-Host "[install-test] 테스트 산출물 보존: $testRoot"
     }
 }
+

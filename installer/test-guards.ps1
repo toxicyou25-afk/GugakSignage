@@ -436,3 +436,4 @@ try {
         Write-Host "Guard artifacts: $tempRoot"
     }
 }
+
