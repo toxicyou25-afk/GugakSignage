@@ -15,9 +15,11 @@ try {
     if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "Unicode shortcut was not created: $shortcutPath" }
     $savedTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
     $savedArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+    $savedWorkingDirectory = [GugakShortcutNative]::GetWorkingDirectory($shortcutPath)
     if ($savedTarget -ne $targetPath) { throw "Unicode shortcut target differs: $savedTarget" }
     if ($savedArguments -ne "--unicode-shortcut-test") { throw "Unicode shortcut arguments differ: $savedArguments" }
-    [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true } | ConvertTo-Json -Compress
+    if ($savedWorkingDirectory -ne $testRoot) { throw "Unicode shortcut working directory differs: $savedWorkingDirectory" }
+    [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true; argumentsPreserved = $true; workingDirectoryPreserved = $true } | ConvertTo-Json -Compress
 } finally {
     $resolvedRoot = [IO.Path]::GetFullPath($testRoot)
     if ($resolvedRoot.StartsWith($tempBase.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and

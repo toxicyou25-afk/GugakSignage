@@ -97,6 +97,22 @@ public static class GugakShortcutNative
             if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
         }
     }
+
+    public static string GetWorkingDirectory(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var directory = new StringBuilder(32768);
+            link.GetWorkingDirectory(directory, directory.Capacity);
+            return directory.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
 }
 "@
 }
@@ -544,13 +560,14 @@ function Test-ShortcutOwnedByInstall {
         [Parameter(Mandatory = $true)][string]$InstallDir
     )
     if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\watchdog-launch.vbs"
-    return ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
-        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
+    return ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir))
 }
 
 function Test-AdminShortcutOwnedByInstall {
@@ -559,13 +576,14 @@ function Test-AdminShortcutOwnedByInstall {
         [Parameter(Mandatory = $true)][string]$InstallDir
     )
     if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\admin-launch.vbs"
-    return ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
-        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
+    return ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir))
 }
 
 function Test-ScheduledTaskOwnedByInstall {
