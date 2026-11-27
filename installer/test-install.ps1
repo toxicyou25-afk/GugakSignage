@@ -446,8 +446,8 @@ try {
             [string]$roleConfig.playerUrl -ne "http://127.0.0.1:43127/player/") { throw "Player Host role/CA/URL/auto-start configuration is incorrect." }
         if (@($roleConfig.adminShortcuts).Count -ne 0 -or @($roleConfig.shortcuts).Count -ne 2) { throw "Player Host shortcuts are incorrect." }
         $modeEnv = [IO.File]::ReadAllText((Join-Path $dataDir ".env"))
-        if ($modeEnv -notmatch '(?m)^HOST="127\.0\.0\.1"$' -or $modeEnv -notmatch '(?m)^GUGAK_PLAYER_HOST_PORT=43127$' -or
-            $modeEnv -notmatch '(?m)^GUGAK_TLS_CA_FILE=' -or $modeEnv -notmatch '(?m)^GUGAK_MANAGER_URL=https://manager\.example$') { throw "Player Host did not keep loopback binding/port or HTTPS Manager CA configuration." }
+        if ($modeEnv -notmatch '(?m)^HOST="127\.0\.0\.1"$' -or $modeEnv -notmatch '(?m)^GUGAK_PLAYER_HOST_PORT="43127"$' -or
+            $modeEnv -notmatch '(?m)^GUGAK_TLS_CA_FILE=".+"$' -or $modeEnv -notmatch '(?m)^GUGAK_MANAGER_URL="https://manager\.example"$') { throw "Player Host did not keep loopback binding/port or HTTPS Manager CA configuration." }
         $report.checks.playerHostRoleContractAndLoopback = $true
     } finally {
         & $installScript @roleCommon -Role all -Mode standalone *> $null
