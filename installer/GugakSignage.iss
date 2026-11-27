@@ -91,7 +91,7 @@ var
 begin
   Result := False;
   if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
-    Result := Pos('"mode"', String(Content)) > 0 and Pos('"lan"', String(Content)) > 0;
+    Result := (Pos('"mode"', String(Content)) > 0) and (Pos('"lan"', String(Content)) > 0);
 end;
 
 function ExistingManagerBaseUrl(): String;
