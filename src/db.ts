@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { migrateLegacyTopology } from './topology-migration.js';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { hashPlayerToken } from './util.js';
 
 export type DB = DatabaseSync;
 
@@ -94,6 +95,9 @@ function migrate(db: DB): void {
       pairing_code TEXT NOT NULL UNIQUE,
       hardware_id TEXT,
       player_token TEXT UNIQUE,
+      player_token_hash TEXT,
+      pairing_code_expires_at TEXT,
+      pairing_code_consumed_at TEXT,
       playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL,
       published_version INTEGER NOT NULL DEFAULT 0,
       published_at TEXT,
@@ -115,6 +119,19 @@ function migrate(db: DB): void {
       site_id TEXT REFERENCES sites(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS player_monitor_reports (
+      device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+      snapshot_json TEXT NOT NULL,
+      reported_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS player_pairing_attempts (
+      client_key_hash TEXT PRIMARY KEY,
+      failed_count INTEGER NOT NULL,
+      window_started_at TEXT NOT NULL,
+      blocked_until TEXT
     );
 
     CREATE TABLE IF NOT EXISTS display_groups (
@@ -181,6 +198,28 @@ function migrate(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_publications_device
       ON publications(device_id, version DESC);
   `);
+
+  const tokenColumns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
+  if (!tokenColumns.some((column) => column.name === 'player_token_hash')) {
+    db.exec('ALTER TABLE devices ADD COLUMN player_token_hash TEXT;');
+  }
+  if (!tokenColumns.some((column) => column.name === 'pairing_code_expires_at')) {
+    db.exec('ALTER TABLE devices ADD COLUMN pairing_code_expires_at TEXT;');
+  }
+  if (!tokenColumns.some((column) => column.name === 'pairing_code_consumed_at')) {
+    db.exec('ALTER TABLE devices ADD COLUMN pairing_code_consumed_at TEXT;');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_devices_player_token_hash ON devices(player_token_hash);');
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    const legacyTokens = db.prepare('SELECT id, player_token FROM devices WHERE player_token IS NOT NULL').all() as Array<{ id: string; player_token: string }>;
+    const update = db.prepare('UPDATE devices SET player_token_hash = ?, player_token = NULL WHERE id = ?');
+    for (const row of legacyTokens) update.run(hashPlayerToken(row.player_token), row.id);
+    db.exec('COMMIT;');
+  } catch (error) {
+    db.exec('ROLLBACK;');
+    throw error;
+  }
 
   const columns = db.prepare('PRAGMA table_info(devices)').all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === 'site_id')) {

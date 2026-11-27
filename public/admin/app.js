@@ -764,6 +764,7 @@ function deviceCardHtml(device) {
       <div><span class="device-code-label">등록 코드 · 재생기 첫 화면에 입력</span><span class="device-code">${esc(device.pairingCode)}</span></div>
       <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button>${playerLaunchButton(device)}<a class="btn btn-ghost btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">미리보기</a></div>
     </div>
+    ${device.pairingCodeExpiresAt ? `<div class="device-facts"><span>등록 코드 만료 <strong>${device.pairingCodeConsumedAt ? '사용됨' : `${Math.max(0, Math.ceil((Date.parse(device.pairingCodeExpiresAt) - Date.now()) / 60000))}분 남음 · ${esc(new Date(device.pairingCodeExpiresAt).toLocaleString())}`}</strong></span></div>` : ''}
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>
       <span>장소 <strong>${esc(device.siteName || '미지정')}</strong></span>

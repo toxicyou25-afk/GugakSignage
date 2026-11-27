@@ -19,6 +19,7 @@ import { playerRoutes } from './routes/player.js';
 import { playerControlRoutes } from './routes/player-control.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { topologyRoutes } from './routes/topology.js';
+import { hashPlayerToken } from './util.js';
 
 type DecodedImage = { width: number; height: number; data: Uint8Array };
 const require = createRequire(import.meta.url);
@@ -76,15 +77,20 @@ export function createApp(db: DB, config: AppConfig) {
       if (!device) { res.status(404).json({ error: '기기를 찾을 수 없습니다.' }); return; }
       const lastSeen = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
       const heartbeatAge = Date.now() - lastSeen;
-      const localPlayerOnline = device.last_host_local === 1 &&
-        Number.isFinite(lastSeen) && heartbeatAge >= 0 && heartbeatAge <= config.heartbeatOnlineMs;
-      if (!localPlayerOnline) {
+      const playerOnline = Number.isFinite(lastSeen) && heartbeatAge >= 0 && heartbeatAge <= config.heartbeatOnlineMs;
+      if (!playerOnline) {
         res.json({
           supported: true,
           detectedAt: new Date().toISOString(),
           monitors: [],
           error: '해당 Player PC의 실제 모니터 정보가 보고되지 않았습니다.',
         });
+        return;
+      }
+      if (device.last_host_local === 0) {
+        const report = get<{ snapshot_json: string; reported_at: string }>(db, 'SELECT snapshot_json, reported_at FROM player_monitor_reports WHERE device_id = ?', device.id);
+        if (!report) { res.json({ supported: true, detectedAt: null, monitors: [], reported: false, error: '해당 Player PC의 실제 모니터 정보가 보고되지 않았습니다.' }); return; }
+        res.json({ supported: true, detectedAt: report.reported_at, monitors: JSON.parse(report.snapshot_json), reported: true });
         return;
       }
     }
@@ -145,6 +151,44 @@ export function createApp(db: DB, config: AppConfig) {
   app.use('/api/devices', admin, deviceRoutes(db, config));
   app.use('/api', admin, topologyRoutes(db, config));
 
+  if (config.mode !== 'standalone') {
+    app.use('/media', (req, res, next) => {
+      const authorization = req.headers.authorization;
+      const token = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+      if (!token) { res.status(401).json({ error: '재생기 인증이 필요합니다.' }); return; }
+      const device = get<{ id: string; published_version: number }>(db,
+        'SELECT id, published_version FROM devices WHERE player_token_hash = ? AND hardware_id IS NOT NULL', hashPlayerToken(token));
+      if (!device) { res.status(401).json({ error: '재생기 인증이 필요합니다.' }); return; }
+      let storedName: string;
+      try {
+        const rawPath = req.originalUrl.split('?', 1)[0]!.slice('/media/'.length);
+        storedName = decodeURIComponent(rawPath);
+      } catch { res.status(400).json({ error: '미디어 경로가 올바르지 않습니다.' }); return; }
+      if (!storedName || storedName === '.' || storedName === '..' || /[\\/\0]/u.test(storedName)) {
+        res.status(400).json({ error: '미디어 경로가 올바르지 않습니다.' }); return;
+      }
+      const publication = get<{ snapshot: string }>(db,
+        'SELECT snapshot FROM publications WHERE device_id = ? AND version = ?', device.id, device.published_version);
+      if (!publication) { res.status(403).json({ error: '게시된 미디어에 접근할 수 없습니다.' }); return; }
+      let found = false;
+      const visit = (value: unknown): void => {
+        if (!value || typeof value !== 'object' || found) return;
+        if (Array.isArray(value)) { for (const item of value) visit(item); return; }
+        for (const [key, child] of Object.entries(value)) {
+          if (key === 'url' && typeof child === 'string') {
+            try {
+              const pathname = new URL(child, 'http://manager.local').pathname;
+              const mediaPath = pathname.startsWith('/media/') ? decodeURIComponent(pathname.slice('/media/'.length)) : '';
+              if (mediaPath === storedName) found = true;
+            } catch { /* Malformed or unrelated URLs cannot grant access. */ }
+          } else visit(child);
+        }
+      };
+      try { visit(JSON.parse(publication.snapshot) as unknown); } catch { /* Invalid snapshots grant no access. */ }
+      if (!found) { res.status(403).json({ error: '게시된 미디어에 접근할 수 없습니다.' }); return; }
+      next();
+    });
+  }
   app.use(
     '/media',
     express.static(config.uploadDir, {
@@ -153,7 +197,7 @@ export function createApp(db: DB, config: AppConfig) {
       dotfiles: 'deny',
       maxAge: '1h',
       setHeaders: (res) => {
-        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Cache-Control', config.mode === 'standalone' ? 'public, max-age=3600' : 'private, no-store');
       },
     }),
   );

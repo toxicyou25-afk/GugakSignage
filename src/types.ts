@@ -56,8 +56,11 @@ export interface DeviceRow {
   width: number;
   height: number;
   pairing_code: string;
+  pairing_code_expires_at: string | null;
+  pairing_code_consumed_at: string | null;
   hardware_id: string | null;
   player_token: string | null;
+  player_token_hash: string | null;
   playlist_id: string | null;
   published_version: number;
   published_at: string | null;
@@ -79,6 +82,12 @@ export interface DeviceRow {
   site_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PlayerMonitorReportRow {
+  device_id: string;
+  snapshot_json: string;
+  reported_at: string;
 }
 
 export interface SiteRow {

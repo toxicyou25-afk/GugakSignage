@@ -457,6 +457,7 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     assert.equal(remoteMonitors.status, 200, JSON.stringify(remoteMonitors.body));
     assert.equal(remoteMonitors.body.supported, true);
     assert.deepEqual(remoteMonitors.body.monitors, []);
+    assert.equal(remoteMonitors.body.reported, false);
     assert.match(remoteMonitors.body.error, /Player PC.*모니터 정보/);
     const site = await request('/api/sites', { method: 'POST', body: { name: '1층 로비', timezone: 'Asia/Seoul' } });
     assert.equal(site.status, 201, JSON.stringify(site.body));
@@ -684,6 +685,32 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       body: { code: secondDevice.body.device.pairingCode, hardwareId: 'hardware-second-pc' },
     });
     assert.equal(secondRegistration.status, 200, JSON.stringify(secondRegistration.body));
+    run(db, 'UPDATE devices SET last_host_local = 0 WHERE id = ?', secondDevice.body.device.id);
+    const reportedMonitors = [{ stableId: 'REMOTE-PRIMARY', bindingId: 'MONITOR\\REMOTE-PRIMARY', deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Remote primary', bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 }, orientation: 'landscape', primary: true, attached: true }];
+    const unauthenticatedReport = await request('/api/player/native-monitors', { method: 'PUT', body: { monitors: reportedMonitors } });
+    assert.equal(unauthenticatedReport.status, 401);
+    const reported = await request('/api/player/native-monitors', { method: 'PUT', token: secondRegistration.body.token, body: { monitors: reportedMonitors } });
+    assert.equal(reported.status, 200, JSON.stringify(reported.body));
+    const managerRemoteMonitors = await request(`/api/native-monitors?deviceId=${encodeURIComponent(secondDevice.body.device.id)}`);
+    assert.equal(managerRemoteMonitors.status, 200, JSON.stringify(managerRemoteMonitors.body));
+    assert.deepEqual(managerRemoteMonitors.body.monitors.map((monitor: any) => monitor.bindingId), ['MONITOR\\REMOTE-PRIMARY']);
+    assert.ok(managerRemoteMonitors.body.detectedAt);
+    const unboundRemoteMonitor = {
+      ...reportedMonitors[0], stableId: 'REMOTE-UNBOUND', bindingId: null,
+      deviceName: '\\\\.\\DISPLAY2', friendlyName: 'Remote monitor without a stable binding', primary: false,
+    };
+    const reportWithUnboundMonitor = await request('/api/player/native-monitors', {
+      method: 'PUT', token: secondRegistration.body.token, body: { monitors: [...reportedMonitors, unboundRemoteMonitor] },
+    });
+    assert.equal(reportWithUnboundMonitor.status, 200, JSON.stringify(reportWithUnboundMonitor.body));
+    const reportedBoundAndUnbound = await request(`/api/native-monitors?deviceId=${encodeURIComponent(secondDevice.body.device.id)}`);
+    assert.deepEqual(reportedBoundAndUnbound.body.monitors.map((monitor: any) => monitor.bindingId), ['MONITOR\\REMOTE-PRIMARY', null]);
+    const invalidReport = await request('/api/player/native-monitors', { method: 'PUT', token: secondRegistration.body.token, body: { monitors: [{ ...reportedMonitors[0], bounds: { ...reportedMonitors[0].bounds, width: -1 } }] } });
+    assert.equal(invalidReport.status, 400);
+    const oversizedReport = await request('/api/player/native-monitors', { method: 'PUT', token: secondRegistration.body.token, body: { monitors: Array(33).fill(reportedMonitors[0]).map((monitor: any, index: number) => ({ ...monitor, stableId: `REMOTE-${index}`, bindingId: `MONITOR\\REMOTE-${index}` })) } });
+    assert.equal(oversizedReport.status, 400);
+    const preservedReport = await request(`/api/native-monitors?deviceId=${encodeURIComponent(secondDevice.body.device.id)}`);
+    assert.deepEqual(preservedReport.body.monitors.map((monitor: any) => monitor.bindingId), ['MONITOR\\REMOTE-PRIMARY', null]);
     const manifest = await request('/api/player/manifest', { token: registration.body.token });
     assert.equal(manifest.status, 200);
     assert.equal(manifest.body.manifest.wall.displays.length, 4);
@@ -693,6 +720,8 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const secondManifest = await request('/api/player/manifest', { token: secondRegistration.body.token });
     assert.equal(secondManifest.body.manifest.wall.screens.length, 1);
     assert.equal(secondManifest.body.manifest.wall.screens[0].playlistId, 'playlist-2');
+    const unauthenticatedTargets = await request('/api/player/screen-targets');
+    assert.equal(unauthenticatedTargets.status, 401);
 
     const changed = await request(`/api/groups/${groupId}/configuration`, {
       method: 'PUT',
@@ -721,9 +750,12 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
 
     const explicitSecondPc = await request(`/api/displays/${displays[1].id}`, {
       method: 'PUT',
-      body: { deviceId: secondDevice.body.device.id },
+      body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' },
     });
     assert.equal(explicitSecondPc.status, 200, JSON.stringify(explicitSecondPc.body));
+    const remoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
+    assert.equal(remoteTargets.status, 200, JSON.stringify(remoteTargets.body));
+    assert.deepEqual(remoteTargets.body.screenTargets, [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' }]);
     const mappingBeforeGroupSave = all<{ id: string; device_id: string | null }>(
       db,
       'SELECT id, device_id FROM displays WHERE group_id = ? ORDER BY start_index, rowid',

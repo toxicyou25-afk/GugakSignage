@@ -221,11 +221,16 @@ try {
     if ($installer.ExitCode -ne 0) { throw "Inno Setup 설치 실패: exit=$($installer.ExitCode), log=$installerLog" }
     Wait-Until -TimeoutSeconds 30 -Description "Inno 설치 파일" -Condition { Test-Path -LiteralPath (Join-Path $installDir "install.json") }
     $config = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    if ([string]$config.role -ne "integrated" -or [string]$config.setupRole -ne "all" -or [string]$config.mode -ne "standalone") {
+        throw "기본 Inno 설치가 legacy integrated/standalone 역할 계약을 기록하지 않았습니다."
+    }
     if (-not (Test-PathEqual -Left ([string]$config.installDir) -Right $installDir)) { throw "EXE 설치 경로가 격리 경로와 다릅니다." }
     if (-not (Test-PathEqual -Left ([string]$config.dataDir) -Right $dataDir)) { throw "EXE 데이터 경로가 /DATADIR와 다릅니다." }
+    if ([string]$config.adminUrl -ne "http://127.0.0.1:$port/admin/") { throw "Integrated install did not retain the localhost HTTP admin URL." }
     if ([string]$config.taskName -ne $taskName) { throw "EXE 작업 이름이 /WATCHDOGTASK와 다릅니다." }
     $report.checks.isolatedInstallDir = $true
     $report.checks.isolatedDataDir = $true
+    $report.checks.legacyIntegratedRole = $true
     $report.checks.headlessTestBrowser = [bool]$config.browserHeadless
     if (@($config.adminShortcuts).Count -ne 2) { throw "EXE 설치가 관리자 바로가기 두 개를 install.json에 기록하지 않았습니다." }
     if ($config.adminAutoOpen.enabled -ne $false) { throw "headless EXE 설치가 관리자 페이지 자동 열기를 끄지 않았습니다." }

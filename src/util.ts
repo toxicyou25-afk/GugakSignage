@@ -23,6 +23,10 @@ export function newPlayerToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+export function hashPlayerToken(token: string): string {
+  return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
 export function normalizePairingCode(raw: unknown): string {
   return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 }

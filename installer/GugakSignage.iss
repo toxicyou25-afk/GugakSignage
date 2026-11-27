@@ -52,6 +52,10 @@ Type: files; Name: "{app}\ops\watchdog-launch.vbs"
 var
   DataDirPage: TInputDirWizardPage;
   PortPage: TInputQueryWizardPage;
+  RolePage: TInputOptionWizardPage;
+  ModePage: TInputOptionWizardPage;
+  TlsPage: TInputQueryWizardPage;
+  PlayerLanPage: TInputQueryWizardPage;
   PreviousDataDir: String;
   DataDirChangeConfirmed: Boolean;
   DataDirWasSpecified: Boolean;
@@ -67,6 +71,51 @@ begin
     Result := ExpandConstant('{commonappdata}\GugakSignage')
   else
     Result := ExpandConstant('{localappdata}\GugakSignage');
+end;
+
+function ExistingRoleIndex(): Integer;
+var
+  Content: AnsiString;
+begin
+  Result := 0;
+  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+  begin
+    if Pos('"player-host"', String(Content)) > 0 then Result := 2
+    else if Pos('"manager"', String(Content)) > 0 then Result := 1;
+  end;
+end;
+
+function ExistingLanMode(): Boolean;
+var
+  Content: AnsiString;
+begin
+  Result := False;
+  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+    Result := Pos('"mode"', String(Content)) > 0 and Pos('"lan"', String(Content)) > 0;
+end;
+
+function ExistingManagerBaseUrl(): String;
+var
+  Content: AnsiString;
+  JsonText, Marker: String;
+  StartAt, EndAt: Integer;
+begin
+  Result := '';
+  if LoadStringFromFile(ExpandConstant('{app}\install.json'), Content) then
+  begin
+    JsonText := String(Content);
+    Marker := '"managerBaseUrl"';
+    StartAt := Pos(Marker, JsonText);
+    if StartAt > 0 then
+    begin
+      StartAt := StartAt + Length(Marker);
+      while (StartAt <= Length(JsonText)) and ((JsonText[StartAt] = ' ') or (JsonText[StartAt] = #9) or (JsonText[StartAt] = ':')) do StartAt := StartAt + 1;
+      if (StartAt <= Length(JsonText)) and (JsonText[StartAt] = '"') then StartAt := StartAt + 1;
+      EndAt := StartAt;
+      while (EndAt <= Length(JsonText)) and (JsonText[EndAt] <> '"') do EndAt := EndAt + 1;
+      Result := Copy(JsonText, StartAt, EndAt - StartAt);
+    end;
+  end;
 end;
 
 procedure InitializeWizard;
@@ -96,6 +145,33 @@ begin
   );
   PortPage.Add('Port:', False);
   PortPage.Values[0] := ExpandConstant('{param:PORT|3000}');
+
+  RolePage := CreateInputOptionPage(PortPage.ID, 'Installation role', 'Choose services', 'Integrated mode preserves the legacy installation.', True, False);
+  RolePage.Add('Integrated Manager and Player');
+  RolePage.Add('Manager only');
+  RolePage.Add('Player Host only');
+  RolePage.SelectedValueIndex := ExistingRoleIndex;
+  if ExpandConstant('{param:ROLE|}') = 'manager' then RolePage.SelectedValueIndex := 1;
+  if ExpandConstant('{param:ROLE|}') = 'player' then RolePage.SelectedValueIndex := 2;
+
+  ModePage := CreateInputOptionPage(RolePage.ID, 'Network mode', 'Choose network mode', 'LAN HTTP is not supported. LAN connections use HTTPS.', True, False);
+  ModePage.Add('Standalone');
+  ModePage.Add('LAN (HTTPS)');
+  if ExistingLanMode then ModePage.SelectedValueIndex := 1 else ModePage.SelectedValueIndex := 0;
+  if ExpandConstant('{param:MODE|}') = 'lan' then ModePage.SelectedValueIndex := 1;
+
+  TlsPage := CreateInputQueryPage(ModePage.ID, 'Manager TLS files', 'Select existing TLS files', 'The installer requires existing certificate and key files.');
+  TlsPage.Add('Certificate:', False);
+  TlsPage.Add('Private key:', False);
+  TlsPage.Values[0] := ExpandConstant('{param:TLSCERT|}');
+  TlsPage.Values[1] := ExpandConstant('{param:TLSKEY|}');
+  TlsPage.Add('Manager HTTPS base URL:', False);
+  TlsPage.Values[2] := ExistingManagerBaseUrl;
+  PlayerLanPage := CreateInputQueryPage(ModePage.ID, 'Player Host connection', 'Connect to HTTPS Manager', 'The CA file path is recorded for Player Host TLS trust.');
+  PlayerLanPage.Add('HTTPS Manager URL:', False);
+  PlayerLanPage.Add('CA certificate:', False);
+  PlayerLanPage.Values[0] := ExpandConstant('{param:MANAGERURL|}');
+  PlayerLanPage.Values[1] := ExpandConstant('{param:MANAGERCA|}');
 end;
 
 function DecodeUtf16Hex(Value: String): String;
@@ -168,6 +244,57 @@ end;
 function GetPort(Param: String): String;
 begin
   Result := PortPage.Values[0];
+end;
+
+function GetRoleArg(Param: String): String;
+begin
+  if RolePage.SelectedValueIndex = 1 then Result := 'manager'
+  else if RolePage.SelectedValueIndex = 2 then Result := 'player'
+  else Result := 'all';
+end;
+
+function GetModeArg(Param: String): String;
+begin
+  if ModePage.SelectedValueIndex = 1 then Result := 'lan' else Result := 'standalone';
+end;
+
+function ManagerBaseUrlMatchesPort(Value, PortValue: String): Boolean;
+var
+  Normalized, Authority, Scheme: String;
+  AuthorityEnd, SuffixLength: Integer;
+begin
+  Normalized := Lowercase(Trim(Value));
+  Scheme := 'https://';
+  Result := False;
+  if Copy(Normalized, 1, Length(Scheme)) <> Scheme then exit;
+  Authority := Copy(Normalized, Length(Scheme) + 1, Length(Normalized));
+  AuthorityEnd := Pos('/', Authority);
+  if AuthorityEnd > 0 then
+  begin
+    if Copy(Authority, AuthorityEnd, Length(Authority)) <> '/' then exit;
+    Authority := Copy(Authority, 1, AuthorityEnd - 1);
+  end;
+  SuffixLength := Length(PortValue) + 1;
+  if Length(Authority) <= SuffixLength then exit;
+  Result := Copy(Authority, Length(Authority) - SuffixLength + 1, SuffixLength) = ':' + PortValue;
+end;
+
+function RoleSelectionChanged(): Boolean;
+begin
+  Result := (ExpandConstant('{param:ROLE|}') <> '') or (RolePage.SelectedValueIndex <> ExistingRoleIndex);
+end;
+
+function ModeSelectionChanged(): Boolean;
+begin
+  Result := (ExpandConstant('{param:MODE|}') <> '') or
+    ((ModePage.SelectedValueIndex = 1) <> ExistingLanMode);
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (PageID = TlsPage.ID) and ((GetRoleArg('') <> 'manager') or (GetModeArg('') <> 'lan')) then Result := True;
+  if (PageID = PlayerLanPage.ID) and ((GetRoleArg('') <> 'player') or (GetModeArg('') <> 'lan')) then Result := True;
 end;
 
 function GetTaskName(Param: String): String;
@@ -292,6 +419,12 @@ begin
     '" -StartMenuDir "' + GetStartMenuDir('') +
     '" -ProfileDir "' + GetProfileDir('') + '"' +
     GetDataDirChangeFlag('') + GetNoStartFlag('') + GetHeadlessFlag('');
+  if RoleSelectionChanged or ModeSelectionChanged then
+    Parameters := Parameters + ' -Role "' + GetRoleArg('') + '" -Mode "' + GetModeArg('') + '"';
+  if (GetRoleArg('') = 'manager') and (GetModeArg('') = 'lan') then
+    Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '"';
+  if (GetRoleArg('') = 'player') and (GetModeArg('') = 'lan') then
+    Parameters := Parameters + ' -ManagerUrl "' + PlayerLanPage.Values[0] + '" -ManagerCaFile "' + PlayerLanPage.Values[1] + '"';
   if WizardIsTaskSelected('firewall') then
     Parameters := Parameters + ' -OpenFirewall';
   if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Parameters,
@@ -329,6 +462,7 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   PortNumber: Integer;
+  ManagerUrlText: String;
 begin
   Result := True;
   if CurPageID = wpSelectDir then
@@ -341,12 +475,47 @@ begin
     else if not DataDirWasSpecified then
       DataDirPage.Values[0] := GetDefaultDataDir;
   end;
+  if (CurPageID = wpSelectDir) and (not WizardSilent) then
+  begin
+    if ExpandConstant('{param:ROLE|}') = 'manager' then RolePage.SelectedValueIndex := 1
+    else if ExpandConstant('{param:ROLE|}') = 'player' then RolePage.SelectedValueIndex := 2
+    if ExpandConstant('{param:MODE|}') = 'lan' then ModePage.SelectedValueIndex := 1
+  end;
   if CurPageID = PortPage.ID then
   begin
     PortNumber := StrToIntDef(PortPage.Values[0], 0);
     if (PortNumber < 1) or (PortNumber > 65535) then
     begin
       MsgBox('Enter a TCP port from 1 to 65535.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+  if (CurPageID = RolePage.ID) and (RolePage.SelectedValueIndex = 0) and (ModePage.SelectedValueIndex = 1) then
+  begin
+    MsgBox('Integrated mode supports Standalone only.', mbError, MB_OK);
+    Result := False;
+  end;
+  if (CurPageID = ModePage.ID) and (RolePage.SelectedValueIndex = 2) and (ModePage.SelectedValueIndex = 0) then
+  begin
+    MsgBox('Player Host installs require LAN mode and an HTTPS Manager URL.', mbError, MB_OK);
+    Result := False;
+  end;
+  if (CurPageID = TlsPage.ID) and (RolePage.SelectedValueIndex = 1) and (ModePage.SelectedValueIndex = 1) then
+  begin
+    ManagerUrlText := Lowercase(Trim(TlsPage.Values[2]));
+    if (not FileExists(TlsPage.Values[0])) or (not FileExists(TlsPage.Values[1])) or
+       (not ManagerBaseUrlMatchesPort(TlsPage.Values[2], GetPort(''))) then
+    begin
+      MsgBox('Select existing TLS certificate and key files, and an HTTPS base URL using the Manager listener port.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+  if (CurPageID = PlayerLanPage.ID) and (RolePage.SelectedValueIndex = 2) and (ModePage.SelectedValueIndex = 1) then
+  begin
+    ManagerUrlText := Lowercase(Trim(PlayerLanPage.Values[0]));
+    if (Copy(ManagerUrlText, 1, 8) <> 'https://') or (not FileExists(PlayerLanPage.Values[1])) then
+    begin
+      MsgBox('Enter an HTTPS Manager URL and select an existing CA certificate file.', mbError, MB_OK);
       Result := False;
     end;
   end;

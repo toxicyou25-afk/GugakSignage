@@ -459,6 +459,43 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(launch.status, 202);
     assert.equal(launch.body.screenTargetCount, 0);
     fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+
+    const reportedMonitor = {
+      stableId: 'DISPLAY\\REMOTE-1',
+      bindingId: 'MONITOR\\REMOTE-1',
+      deviceName: '\\\\.\\DISPLAY1',
+      friendlyName: 'Remote display 1',
+      bounds: { x: 1920, y: 0, width: 1920, height: 1080 },
+      orientation: 'landscape',
+      primary: true,
+      attached: true,
+    };
+    const report = await request('/api/player/native-monitors', {
+      method: 'PUT',
+      body: { monitors: [reportedMonitor] },
+      headers: { Authorization: `Bearer ${created.playerToken}` },
+    });
+    assert.equal(report.status, 200, JSON.stringify(report.body));
+
+    const remoteMonitors = await admin(`/api/native-monitors?deviceId=${created.deviceId}`);
+    assert.equal(remoteMonitors.status, 200);
+    assert.equal(remoteMonitors.body.reported, true);
+    assert.deepEqual(remoteMonitors.body.monitors.map((monitor: { bindingId: string }) => monitor.bindingId), ['MONITOR\\REMOTE-1']);
+
+    const remoteDisplay = db.prepare('SELECT id FROM displays WHERE device_id = ? ORDER BY start_index LIMIT 1').get(created.deviceId) as { id: string } | undefined;
+    assert.ok(remoteDisplay);
+    const displayAssignment = await admin(`/api/displays/${remoteDisplay.id}`, {
+      method: 'PUT',
+      body: { deviceId: created.deviceId, nativeMonitorId: 'MONITOR\\REMOTE-1' },
+    });
+    assert.equal(displayAssignment.status, 200, JSON.stringify(displayAssignment.body));
+
+    const assignedTargets = await request('/api/player/screen-targets', {
+      headers: { Authorization: `Bearer ${created.playerToken}` },
+    });
+    assert.equal(assignedTargets.status, 200, JSON.stringify(assignedTargets.body));
+    assert.deepEqual(assignedTargets.body.screenTargets, [{ displayId: remoteDisplay.id, nativeMonitorId: 'MONITOR\\REMOTE-1' }]);
+    db.prepare('UPDATE devices SET last_host_local = 0 WHERE id = ?').run(created.deviceId);
   });
 
   await t.test('사용 중 콘텐츠 삭제와 잘못된 연결 해제를 막는다', async () => {
@@ -471,6 +508,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const unpair = await admin(`/api/devices/${created.deviceId}/unpair`, { method: 'POST' });
     assert.equal(unpair.status, 200);
+    assert.equal(db.prepare('SELECT player_token_hash FROM devices WHERE id = ?').get(created.deviceId)?.player_token_hash, null);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM displays WHERE device_id = ? AND native_monitor_id IS NOT NULL').get(created.deviceId)?.n, 0);
     const staleManifest = await player('/api/player/manifest');
     assert.equal(staleManifest.status, 401);
@@ -478,6 +516,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     db.prepare('UPDATE displays SET native_monitor_id = ? WHERE device_id = ?').run('MONITOR\\STALE-CODE', created.deviceId);
     const regenerate = await admin(`/api/devices/${created.deviceId}/regenerate-code`, { method: 'POST' });
     assert.equal(regenerate.status, 200);
+    assert.equal(db.prepare('SELECT player_token_hash FROM devices WHERE id = ?').get(created.deviceId)?.player_token_hash, null);
     assert.notEqual(regenerate.body.device.pairingCode, created.pairingCode);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM displays WHERE device_id = ? AND native_monitor_id IS NOT NULL').get(created.deviceId)?.n, 0);
   });

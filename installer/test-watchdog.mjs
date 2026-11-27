@@ -23,6 +23,10 @@ try {
     path.join(opsDir, 'watchdog.mjs'),
   );
   fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'watchdog-role.mjs'),
+    path.join(opsDir, 'watchdog-role.mjs'),
+  );
+  fs.copyFileSync(
     path.join(repoRoot, 'installer', 'ops', 'watchdog-health.mjs'),
     path.join(opsDir, 'watchdog-health.mjs'),
   );

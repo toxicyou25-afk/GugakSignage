@@ -112,8 +112,9 @@
         monitorsByDevice.set(device.id, nativeMonitorResult.supported && !nativeMonitorResult.error ? nativeMonitorResult.monitors : []);
         if (nativeMonitorResult.error) monitorErrorsByDevice.set(device.id, nativeMonitorResult.error);
       } else {
-        monitorsByDevice.set(device.id, []);
-        monitorErrorsByDevice.set(device.id, '해당 Player PC의 실제 모니터 정보가 연결되지 않았습니다.');
+        const remoteResult = await request(`/api/native-monitors?deviceId=${encodeURIComponent(device.id)}`);
+        monitorsByDevice.set(device.id, remoteResult.supported && !remoteResult.error ? remoteResult.monitors : []);
+        if (remoteResult.error) monitorErrorsByDevice.set(device.id, remoteResult.error);
       }
     }
     if (!group) {
@@ -124,7 +125,7 @@
     const playlistOptions = (selected, noneLabel) => `<option value="">${page(noneLabel)}</option>${playlists.playlists.map((playlist) => `<option value="${page(playlist.id)}" ${playlist.id === selected ? 'selected' : ''}>${page(playlist.name)}</option>`).join('')}`;
     const nativeMonitorsFor = (deviceId) => monitorsByDevice.get(deviceId) || [];
     const deviceOptions = (selected, devices = detail.devices) => `<option value="">PC 연결 안 함</option>${devices.map((device) => {
-      const monitorList = device.localHost ? nativeMonitorsFor(device.id).filter((monitor) => monitor.bindingId) : [];
+      const monitorList = nativeMonitorsFor(device.id).filter((monitor) => monitor.bindingId);
       return `<option value="${page(device.id)}" data-local-host="${device.localHost ? 'true' : 'false'}" data-monitors="${page(JSON.stringify(monitorList))}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`;
     }).join('')}`;
     const nativeMonitorOptions = (selected, deviceId) => {
@@ -177,7 +178,7 @@
                 <div class="screen-assignment" data-display-id="${page(display.id)}" data-device-id="${page(display.device_id || '')}" data-local-host="${display.localHost ? 'true' : 'false'}">
                   <div class="screen-assignment-name"><span>${index + 1}</span><div><strong>${page(display.name)}</strong><small>${display.width}×${display.height} · ${page(display.deviceName || 'PC 미연결')}</small></div></div>
                   <label><span>PC 기기</span><select data-screen-device>${deviceOptions(display.device_id, groupDevices)}</select></label>
-                  <label><span>물리 모니터 (${page(display.deviceName || 'PC 미연결')})</span><select data-screen-native-monitor ${display.device_id && display.localHost ? '' : 'disabled'}>${nativeMonitorOptions(display.nativeMonitorId, display.device_id)}</select><small class="muted" data-screen-monitor-help>${monitorErrorsByDevice.get(display.device_id) ? page(monitorErrorsByDevice.get(display.device_id)) : 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.'}</small></label>
+                  <label><span>물리 모니터 (${page(display.deviceName || 'PC 미연결')})</span><select data-screen-native-monitor ${display.device_id ? '' : 'disabled'}>${nativeMonitorOptions(display.nativeMonitorId, display.device_id)}</select><small class="muted" data-screen-monitor-help>${monitorErrorsByDevice.get(display.device_id) ? page(monitorErrorsByDevice.get(display.device_id)) : 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.'}</small></label>
                   <label><span>재생목록</span><select data-screen-playlist>${playlistOptions(display.playlist_id, '그룹 기본 사용')}</select></label>
                   <label><span>회전</span><select data-screen-rotation>${[0,90,180,270].map((rotation) => `<option value="${rotation}" ${display.rotation === rotation ? 'selected' : ''}>${rotation}°</option>`).join('')}</select></label>
                   <label><span>맞춤</span><select data-screen-fit><option value="contain" ${display.fit_mode === 'contain' ? 'selected' : ''}>전체</option><option value="cover" ${display.fit_mode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${display.fit_mode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>

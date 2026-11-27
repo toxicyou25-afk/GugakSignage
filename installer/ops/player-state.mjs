@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export const PLAYER_STATE_SCHEMA_VERSION = 1;
 export const PLAYER_COMMAND_TTL_MS = 30000;
@@ -15,6 +16,10 @@ export function playerStatePath(dataDir) {
 
 export function playerCommandPath(dataDir) {
   return path.join(controlDir(dataDir), 'player-command.json');
+}
+
+export function screenTargetAssignmentPath(dataDir) {
+  return path.join(controlDir(dataDir), 'screen-targets.json');
 }
 
 export function serverInstancePath(dataDir) {
@@ -36,7 +41,7 @@ export function defaultPlayerState() {
   };
 }
 
-function normalizeScreenTargets(value) {
+export function normalizeScreenTargets(value) {
   if (!Array.isArray(value) || value.length === 0) return [];
   const targets = [];
   const displayIds = new Set();
@@ -60,6 +65,36 @@ function normalizeScreenTargets(value) {
     targets.push({ displayId, nativeMonitorId, ...(bounds ? { bounds } : {}) });
   }
   return targets;
+}
+
+export function readScreenTargetAssignment(dataDir) {
+  try {
+    const value = JSON.parse(fs.readFileSync(screenTargetAssignmentPath(dataDir), 'utf8').replace(/^\uFEFF/, ''));
+    if (typeof value?.deviceId !== 'string' || !value.deviceId || !Array.isArray(value.screenTargets)) return null;
+    const screenTargets = normalizeScreenTargets(value.screenTargets);
+    if (screenTargets.length !== value.screenTargets.length) return null;
+    return { deviceId: value.deviceId, screenTargets };
+  } catch {
+    return null;
+  }
+}
+
+export function writeScreenTargetAssignment(dataDir, assignment) {
+  if (!assignment || typeof assignment.deviceId !== 'string' || !assignment.deviceId || !Array.isArray(assignment.screenTargets)) {
+    throw new Error('Invalid screen target assignment.');
+  }
+  const screenTargets = normalizeScreenTargets(assignment.screenTargets);
+  if (screenTargets.length !== assignment.screenTargets.length) throw new Error('Invalid screen target assignment.');
+  fs.mkdirSync(controlDir(dataDir), { recursive: true });
+  const filePath = screenTargetAssignmentPath(dataDir);
+  const temporary = `${filePath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  fs.writeFileSync(temporary, `${JSON.stringify({ deviceId: assignment.deviceId, screenTargets }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  try {
+    fs.renameSync(temporary, filePath);
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    throw error;
+  }
 }
 
 export function readPlayerState(dataDir) {

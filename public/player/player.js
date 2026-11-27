@@ -48,6 +48,8 @@ const runtime = {
   cacheReadiness: createCacheReadiness(),
   token: safeGet(STORAGE.token),
   deviceId: safeGet(STORAGE.deviceId),
+  hostManaged: false,
+  connectionGeneration: 0,
   manifest: null,
   pendingManifest: null,
   playlistId: null,
@@ -97,6 +99,18 @@ function safeSet(key, value) {
 
 function safeRemove(key) {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+function isConnected() {
+  return runtime.hostManaged ? Boolean(runtime.deviceId) : Boolean(runtime.token);
+}
+
+function connectionSnapshot() {
+  return { generation: runtime.connectionGeneration, identity: runtime.hostManaged ? runtime.deviceId : runtime.token };
+}
+
+function isCurrentConnection(snapshot) {
+  return snapshot.generation === runtime.connectionGeneration && snapshot.identity === (runtime.hostManaged ? runtime.deviceId : runtime.token);
 }
 
 function hardwareId() {
@@ -160,6 +174,7 @@ async function pair(code, auto = false, options = {}) {
   }
   if (runtime.pairing) return;
   runtime.lastAttemptCode = normalized;
+  const attemptGeneration = runtime.connectionGeneration;
   runtime.pairing = true;
   setBusy(el.pairButton, true, '연결 중…');
   el.sampleConnect.disabled = true;
@@ -179,6 +194,7 @@ async function pair(code, auto = false, options = {}) {
       }),
     });
     const data = await response.json().catch(() => null);
+    if (attemptGeneration !== runtime.connectionGeneration) return;
     if (!response.ok) {
       const error = new Error(data?.error || '등록 코드를 확인해 주세요.');
       error.status = response.status;
@@ -186,11 +202,14 @@ async function pair(code, auto = false, options = {}) {
       throw error;
     }
     const previousDevice = runtime.deviceId;
-    runtime.token = data.token;
+    runtime.token = runtime.hostManaged ? null : data.token;
     runtime.deviceId = data.device?.id || null;
+    if (runtime.hostManaged && !runtime.deviceId) throw new Error('재생기 연결 정보를 받지 못했습니다.');
+    runtime.connectionGeneration += 1;
     clearInterval(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
-    safeSet(STORAGE.token, data.token);
+    if (runtime.hostManaged) safeRemove(STORAGE.token);
+    else safeSet(STORAGE.token, data.token);
     runtime.cacheReadiness.invalidate();
     runtime.cacheReady = false;
     if (runtime.deviceId) safeSet(STORAGE.deviceId, runtime.deviceId);
@@ -230,7 +249,7 @@ async function pair(code, auto = false, options = {}) {
 function startAutoReconnect() {
   if (!runtime.autoReconnect || !runtime.reconnectCode || runtime.reconnectTimer) return;
   runtime.reconnectTimer = setInterval(async () => {
-    if (runtime.token || runtime.pairing || !navigator.onLine) return;
+    if (isConnected() || runtime.pairing || !navigator.onLine) return;
     await pair(runtime.reconnectCode, true, { takeover: true });
   }, 15_000);
 }
@@ -240,6 +259,20 @@ async function loadPlayerConfig() {
     const response = await fetch('/api/player/config', { cache: 'no-store' });
     if (!response.ok) return;
     const config = await response.json();
+    runtime.hostManaged = config.hostManaged === true;
+    if (runtime.hostManaged) {
+      runtime.token = null;
+      safeRemove(STORAGE.token);
+    }
+    if (runtime.hostManaged && typeof config.adminDevicesUrl === 'string') {
+      try {
+        const adminUrl = new URL(config.adminDevicesUrl, location.href);
+        const adminLink = el.pair.querySelector('.pair-admin-link a');
+        if ((adminUrl.protocol === 'http:' || adminUrl.protocol === 'https:') && adminLink) {
+          adminLink.href = adminUrl.toString();
+        }
+      } catch { /* retain the same-origin link */ }
+    }
     runtime.sampleMode = Boolean(config.sampleMode && config.sampleCode);
     runtime.sampleCode = config.sampleCode || null;
     if (runtime.sampleMode) {
@@ -269,10 +302,12 @@ async function syncServerClock() {
   const samples = [];
   for (let index = 0; index < 5; index += 1) {
     const sent = Date.now();
+  const connection = connectionSnapshot();
     const response = await fetch('/api/time', { cache: 'no-store' });
     const received = Date.now();
     if (!response.ok) throw new Error(`time ${response.status}`);
     const data = await response.json();
+    if (!isCurrentConnection(connection)) return;
     const serverMs = Number(data.serverTimeMs ?? Date.parse(data.serverTime));
     if (!Number.isFinite(serverMs)) continue;
     samples.push({ offset: serverMs - (sent + received) / 2, rtt: received - sent });
@@ -290,24 +325,25 @@ function serverNow() {
 }
 
 async function fetchManifest(options = {}) {
-  if (!runtime.token) return;
+  if (!isConnected()) return;
+  const connection = connectionSnapshot();
   const requestToken = runtime.token;
   const manifestGeneration = runtime.cacheReadiness.begin();
   try {
     const response = await fetch('/api/player/manifest', {
-      headers: { Authorization: `Bearer ${requestToken}` },
+      headers: runtime.hostManaged ? {} : { Authorization: `Bearer ${requestToken}` },
       cache: 'no-store',
     });
     if (response.status === 401) {
-      handleUnauthorized(requestToken);
+      handleUnauthorized(requestToken, connection);
       return;
     }
     const data = await response.json().catch(() => null);
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
-    if (runtime.token !== requestToken) return;
+    if (!isCurrentConnection(connection)) return;
     setOffline(false);
     if (runtime.lastError) runtime.lastError = null;
     const serverMs = Date.parse(manifest.serverTime);
@@ -319,12 +355,12 @@ async function fetchManifest(options = {}) {
     acceptManifest(manifest, Boolean(options.initial));
     const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
-      (isCurrent) => prefetchAssets(manifest, requestToken, isCurrent),
+      (isCurrent) => prefetchAssets(manifest, connection, isCurrent),
     );
-    if (requestToken !== runtime.token || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
+    if (!isCurrentConnection(connection) || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.cacheReady = prepared;
   } catch (error) {
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.lastError = error.message;
     setOffline(true);
@@ -368,7 +404,7 @@ function acceptManifest(manifest, initial) {
 
 function reevaluateCachedSchedule() {
   const manifest = runtime.manifest;
-  if (!manifest || !runtime.token || el.player.hidden) return;
+  if (!manifest || !isConnected() || el.player.hidden) return;
   if (manifest.wall) return;
   const playlist = activePlaylist(manifest);
   const queue = queueFor(playlist);
@@ -969,12 +1005,13 @@ function escapeHtml(value) {
 }
 
 async function sendHeartbeat() {
-  if (!runtime.token) return;
+  if (!isConnected()) return;
+  const connection = connectionSnapshot();
   const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/heartbeat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
+      headers: runtime.hostManaged ? { 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
       body: JSON.stringify({
         state: runtime.offline ? 'offline' : runtime.currentNode ? 'playing' : 'waiting',
         currentContentId: runtime.currentContentId,
@@ -985,22 +1022,29 @@ async function sendHeartbeat() {
       }),
     });
     if (response.status === 401) {
-      handleUnauthorized(requestToken);
+      handleUnauthorized(requestToken, connection);
       return;
     }
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     if (!response.ok) throw new Error(`heartbeat ${response.status}`);
     runtime.lastHeartbeatAt = new Date().toISOString();
   } catch {
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     setOffline(true);
   }
 }
 
-function handleUnauthorized(requestToken = runtime.token) {
-  if (requestToken !== runtime.token) return;
-  safeRemove(STORAGE.token);
-  runtime.token = null;
+function handleUnauthorized(requestToken = runtime.token, connection = null) {
+  if (connection && !isCurrentConnection(connection)) return;
+  if (runtime.hostManaged ? !runtime.deviceId : requestToken !== runtime.token) return;
+  runtime.connectionGeneration += 1;
+  if (runtime.hostManaged) {
+    runtime.deviceId = null;
+    safeRemove(STORAGE.deviceId);
+  } else {
+    safeRemove(STORAGE.token);
+    runtime.token = null;
+  }
   showPair('재생기 연결이 만료되었습니다. 관리 화면의 등록 코드를 다시 입력해 주세요.', safeGet(STORAGE.lastCode) || '');
 }
 
@@ -1079,7 +1123,13 @@ async function resolveMediaUrl(content) {
       return objectUrl;
     }
   } catch { /* fall through to network */ }
-  return content.url;
+  return mediaRouteUrl(content.url);
+}
+
+function mediaRouteUrl(url) {
+  if (!runtime.hostManaged) return url;
+  const parsed = new URL(url, location.href);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function collectContents(manifest) {
@@ -1097,7 +1147,7 @@ function collectContents(manifest) {
   return [...map.values()];
 }
 
-async function prefetchAssets(manifest, requestToken, isCurrent) {
+async function prefetchAssets(manifest, connection, isCurrent) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
   const activeIds = new Set(contents.map((content) => content.id));
@@ -1111,17 +1161,22 @@ async function prefetchAssets(manifest, requestToken, isCurrent) {
       request.onerror = () => reject(request.error);
     });
     for (const content of contents) {
-      if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
+      if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) {
         ready = false;
         break;
       }
       if (existing.has(content.id)) continue;
       try {
-        const response = await fetch(content.url, { cache: 'default' });
+        const response = await fetch(mediaRouteUrl(content.url), { cache: 'default' });
+        if (response.status === 401) {
+          handleUnauthorized(runtime.token, connection);
+          ready = false;
+          break;
+        }
         if (!response.ok) { ready = false; continue; }
         const blob = await response.blob();
         if (blob.size === 0) { ready = false; continue; }
-        if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
+        if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) {
           ready = false;
           break;
         }
@@ -1202,7 +1257,7 @@ el.pairRecover.addEventListener('click', () => {
 });
 
 el.retry.addEventListener('click', async () => {
-  if (!runtime.token) { showPair(); return; }
+  if (!isConnected()) { showPair(); return; }
   el.error.hidden = true;
   await fetchManifest({ initial: !runtime.manifest });
 });
@@ -1217,6 +1272,10 @@ el.fullscreen.addEventListener('click', async () => {
 
 el.disconnect.addEventListener('click', async () => {
   if (!confirm('이 재생기의 연결 정보와 캐시를 지울까요? 관리 화면에서 기기를 다시 연결해야 합니다.')) return;
+  runtime.connectionGeneration += 1;
+  if (runtime.hostManaged) {
+    try { await fetch('/api/player/disconnect', { method: 'POST' }); } catch { /* local state still needs to clear */ }
+  }
   safeRemove(STORAGE.token);
   safeRemove(STORAGE.manifest);
   safeRemove(STORAGE.manifestOffsetMs);
@@ -1238,7 +1297,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && runtime.manifest?.wall) renderWallFrame();
 });
 window.addEventListener('online', () => {
-  if (!runtime.token && runtime.autoReconnect) {
+  if (!isConnected() && runtime.autoReconnect) {
     void pair(runtime.reconnectCode, true, { takeover: true });
   }
   fetchManifest();
@@ -1285,20 +1344,20 @@ async function init() {
   runtime.reconnectCode = code;
   await loadPlayerConfig();
   const cached = loadCachedManifest();
-  if (cached && runtime.token) {
+  if (cached && isConnected()) {
     runtime.manifest = cached.manifest;
     showPlayer();
     applyManifest(cached.manifest, true, { serverOffsetMs: cached.serverOffsetMs });
   }
   const storedCode = safeGet(STORAGE.lastCode);
-  const codeMatchesPairedDevice = Boolean(runtime.token) && (!storedCode || storedCode === code.toUpperCase());
+  const codeMatchesPairedDevice = isConnected() && (!storedCode || storedCode === code.toUpperCase());
   if (code && !codeMatchesPairedDevice) {
     showPair('', code);
     await pair(code, true, { takeover: runtime.autoReconnect });
-    if (!runtime.token) startAutoReconnect();
+    if (!isConnected()) startAutoReconnect();
     return;
   }
-  if (runtime.token) {
+  if (isConnected()) {
     showPlayer();
     startLoops();
     await fetchManifest({ initial: !runtime.manifest });

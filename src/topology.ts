@@ -513,14 +513,23 @@ export function updateDisplay(
   const finalDeviceHeartbeatAge = Date.now() - finalDeviceLastSeen;
   const finalDeviceIsLocalHost = finalDevice?.last_host_local === 1 && Number.isFinite(finalDeviceLastSeen) &&
     finalDeviceHeartbeatAge >= 0 && finalDeviceHeartbeatAge <= heartbeatOnlineMs;
+  const report = finalDeviceId ? get<{ snapshot_json: string }>(db,
+    'SELECT snapshot_json FROM player_monitor_reports WHERE device_id = ?', finalDeviceId) : undefined;
+  let reportedBinding = false;
+  if (requestedNativeMonitorId && report) {
+    try { reportedBinding = (JSON.parse(report.snapshot_json) as Array<{ bindingId?: unknown }>).some((monitor) => monitor.bindingId === requestedNativeMonitorId); }
+    catch { reportedBinding = false; }
+  }
+  const finalDeviceOnline = Boolean(finalDevice && Number.isFinite(finalDeviceLastSeen) && finalDeviceHeartbeatAge >= 0 && finalDeviceHeartbeatAge <= heartbeatOnlineMs);
+  const canBindMonitor = finalDeviceIsLocalHost || (finalDevice?.last_host_local === 0 && finalDeviceOnline && reportedBinding);
   const sameDevice = finalDeviceId === display.device_id;
   const bindingChanged = input.nativeMonitorId !== undefined && requestedNativeMonitorId !== display.native_monitor_id;
-  if (input.nativeMonitorId && bindingChanged && !finalDeviceIsLocalHost) {
+  if (input.nativeMonitorId && bindingChanged && !canBindMonitor) {
     throw new Error('원격 Player의 모니터 배정은 해당 PC의 모니터 정보가 연결된 뒤에 지정할 수 있습니다.');
   }
   const nativeMonitorId = sameDevice
     ? (input.nativeMonitorId === undefined ? display.native_monitor_id : requestedNativeMonitorId)
-    : (input.nativeMonitorId !== undefined && finalDeviceIsLocalHost ? requestedNativeMonitorId ?? null : null);
+    : (input.nativeMonitorId !== undefined && canBindMonitor ? requestedNativeMonitorId ?? null : null);
   if (nativeMonitorId) {
     const duplicate = get<{ id: string }>(
       db,
