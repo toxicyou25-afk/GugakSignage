@@ -419,7 +419,12 @@ function Stop-VerifiedOwnedProcess {
         } while ([DateTime]::UtcNow -lt $rootDeadline)
 
         if ($stillRunning) {
-            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
+            $ownerName = "<unavailable>"
+            try {
+                $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -ErrorAction Stop
+                if ($owner.ReturnValue -eq 0) { $ownerName = "$($owner.Domain)\$($owner.User)" }
+            } catch { $ownerName = "error:$($_.Exception.Message)" }
+            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, owner=$ownerName, session=$($process.SessionId), parentPid=$($process.ParentProcessId), treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
         }
         Write-Warning "프로세스 트리 일부를 종료하지 못해 신원을 재확인한 루트 프로세스만 종료했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
     } elseif ($taskkillResult.ExitCode -ne 0) {
