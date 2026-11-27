@@ -13,9 +13,10 @@ New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 try {
     Save-WindowsShortcut -ShortcutPath $shortcutPath -TargetPath $targetPath -Arguments "--unicode-shortcut-test" -WorkingDirectory $testRoot -Description "Unicode shortcut test"
     if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "Unicode shortcut was not created: $shortcutPath" }
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
-    if ([string]$shortcut.TargetPath -ne $targetPath) { throw "Unicode shortcut target differs: $($shortcut.TargetPath)" }
-    if ([string]$shortcut.Arguments -ne "--unicode-shortcut-test") { throw "Unicode shortcut arguments differ: $($shortcut.Arguments)" }
+    $savedTarget = [GugakShortcutNative]::GetTargetPath($shortcutPath)
+    $savedArguments = [GugakShortcutNative]::GetArguments($shortcutPath)
+    if ($savedTarget -ne $targetPath) { throw "Unicode shortcut target differs: $savedTarget" }
+    if ($savedArguments -ne "--unicode-shortcut-test") { throw "Unicode shortcut arguments differ: $savedArguments" }
     [pscustomobject]@{ result = "passed"; unicodeShortcutName = $shortcutName; targetPreserved = $true } | ConvertTo-Json -Compress
 } finally {
     $resolvedRoot = [IO.Path]::GetFullPath($testRoot)
