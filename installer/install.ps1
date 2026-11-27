@@ -242,12 +242,14 @@ function New-AdminShortcut {
 function Test-AdminShortcutOwnedByInstall {
     param([string]$ShortcutPath, [string]$InstallDir)
     if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($ShortcutPath)
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\admin-launch.vbs"
-    if ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
-        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir)) { return $true }
+    if ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir)) { return $true }
     return $false
 }
 
