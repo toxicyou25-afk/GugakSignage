@@ -168,7 +168,7 @@ test('CDP opens one fullscreen window per logical display before closing the fal
   assert.equal(calls.filter((call) => call.method === 'Target.createTarget').length, 2);
   assert.equal(calls.some((call) => call.method === 'Browser.createTarget'), false);
   const bounds = calls.filter((call) => call.method === 'Browser.setWindowBounds');
-  assert.deepEqual(bounds[0].params.bounds, { left: -1920, top: 0, width: 1920, height: 1080, windowState: 'normal' });
+  assert.deepEqual(bounds[0].params.bounds, { left: -1920, top: 0, width: 1920, height: 1080 });
   assert.deepEqual(bounds[1].params.bounds, { windowState: 'fullscreen' });
   assert.equal(calls.at(-1).method, 'Target.closeTarget');
   assert.equal(calls.at(-1).params.targetId, 'fallback-canvas');
@@ -220,6 +220,35 @@ test('CDP reuses and repositions existing display windows while a disconnected t
   assert.equal(socket.messages.filter((call) => call.method === 'Target.createTarget').length, 1);
   assert.equal(socket.messages.some((call) => call.method === 'Target.closeTarget'), false);
   assert.equal(socket.closed, true);
+});
+
+test('CDP restores a fullscreen window before applying changed physical monitor bounds', async () => {
+  const socket = new FakeCdpSocket();
+  const existingUrl = new URL(wallPlayerUrl);
+  existingUrl.searchParams.set('display', 'display-a');
+  const movedTarget = {
+    ...screenTargets[0],
+    bounds: { ...screenTargets[0].bounds, x: -2560, y: 120 },
+  };
+  const result = await createFullscreenPlayerWindows({
+    webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/test',
+    basePlayerUrl: wallPlayerUrl,
+    fallbackTargetId: 'fallback-canvas',
+    screenTargets: [movedTarget],
+    existingTargets: [{ id: 'existing-display-a', url: existingUrl.toString() }],
+    closeFallback: false,
+    webSocketFactory: () => socket,
+  });
+
+  assert.equal(result.success, true);
+  const bounds = socket.messages
+    .filter((call) => call.method === 'Browser.setWindowBounds')
+    .map((call) => call.params.bounds);
+  assert.deepEqual(bounds, [
+    { windowState: 'normal' },
+    { left: -2560, top: 120, width: 1920, height: 1080 },
+    { windowState: 'fullscreen' },
+  ]);
 });
 
 test('CDP creation failure rolls back partial windows and keeps the fallback canvas', async () => {
@@ -333,3 +362,4 @@ test('watchdog state restores screen targets and old state defaults to legacy ca
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
