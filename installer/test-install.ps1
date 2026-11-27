@@ -49,7 +49,8 @@ if (-not $invalidLegacyUninstallError -or $invalidLegacyUninstallError -notmatch
 $legacyConfig.Remove("role")
 $playerShortcutDir = Join-Path $legacyRoleFixture "shortcuts"
 New-Item -ItemType Directory -Path $playerShortcutDir -Force | Out-Null
-$playerShortcutPath = Join-Path $playerShortcutDir "열린안내판 재생기.lnk"
+    $playerShortcutName = [string]::Concat([char]0xC5F4, [char]0xB9B0, [char]0xC548, [char]0xB0B4, [char]0xD310, " ", [char]0xC7AC, [char]0xC0DD, [char]0xAE30, ".lnk")
+    $playerShortcutPath = Join-Path $playerShortcutDir $playerShortcutName
 $shortcutShell = New-Object -ComObject WScript.Shell
 $ownedPlayerShortcut = $shortcutShell.CreateShortcut($playerShortcutPath)
 $ownedPlayerShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
