@@ -263,7 +263,7 @@ function Get-VerifiedInstalledProcessFromState {
                 if (-not (Test-Path -LiteralPath $instancePath -PathType Leaf)) { return $null }
                 $instance = Read-JsonFile -Path $instancePath
                 if ([int]$instance.pid -ne $ProcessId -or
-                    [string]$state.serverInstanceId -ne [string]$instance.id -or
+                    ($state.serverInstanceId -and [string]$state.serverInstanceId -ne [string]$instance.id) -or
                     -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$instance.startedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
             }
             return $nativeProcess

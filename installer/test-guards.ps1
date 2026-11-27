@@ -365,6 +365,13 @@ try {
     if (-not $verifiedFromInstallState) { throw "CIM 실행 파일 경로와 명령행이 비어 있어도 설치 상태, PID, 시작 시각으로 프로세스 신원을 확인해야 합니다." }
     $results.processIdentityFromInstallStateWhenCimMetadataUnavailable = $true
     $currentState = Read-JsonFile -Path (Join-Path $ownedLogDir "watchdog-state.json")
+    $currentState.serverInstanceId = $null
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    if (-not (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir)) {
+        throw "이전 watchdog 상태에 serverInstanceId가 없어도 서버 인스턴스 파일의 PID·시작 시각을 확인하면 소유 프로세스로 판정해야 합니다."
+    }
+    $results.legacyInstallStateProcessIdentityVerified = $true
+    $currentState.serverInstanceId = $ownedInstanceId
     $currentState.serverPid = $PID + 1
     [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
     if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir) {
