@@ -171,6 +171,10 @@ jobs:
       - name: Verify persistent profile service worker update
         if: ${{ success() }}
         run: npm run verify:sw-update
+      - name: Verify taskkill captures native errors under Stop
+        if: ${{ success() }}
+        shell: powershell
+        run: .\installer\test-taskkill-native.ps1
       - name: Verify install, upgrade, uninstall, and data preservation
         if: ${{ success() }}
         shell: powershell

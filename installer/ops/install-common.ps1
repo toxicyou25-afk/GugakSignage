@@ -322,6 +322,37 @@ function Get-VerifiedOwnedProcess {
     return $process
 }
 
+function Invoke-TaskkillProcessTree {
+    param([Parameter(Mandatory = $true)][ValidateRange(0, 2147483647)][int]$ProcessId)
+
+    $taskkillPath = Join-Path $env:SystemRoot "System32\taskkill.exe"
+    if (-not (Test-Path -LiteralPath $taskkillPath -PathType Leaf)) {
+        throw "Windows taskkill.exe를 찾을 수 없습니다: $taskkillPath"
+    }
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $taskkillPath
+    $startInfo.Arguments = "/PID $ProcessId /T /F"
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $nativeProcess = New-Object System.Diagnostics.Process
+    $nativeProcess.StartInfo = $startInfo
+    try {
+        if (-not $nativeProcess.Start()) { throw "taskkill.exe를 시작하지 못했습니다." }
+        $stdoutTask = $nativeProcess.StandardOutput.ReadToEndAsync()
+        $stderrTask = $nativeProcess.StandardError.ReadToEndAsync()
+        $nativeProcess.WaitForExit()
+        $output = @($stdoutTask.GetAwaiter().GetResult(), $stderrTask.GetAwaiter().GetResult() |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join [Environment]::NewLine
+        return [pscustomobject]@{ ExitCode = $nativeProcess.ExitCode; Output = $output }
+    } finally {
+        $nativeProcess.Dispose()
+    }
+}
+
 function Stop-VerifiedOwnedProcess {
     param(
         [int]$ProcessId,
@@ -366,11 +397,11 @@ function Stop-VerifiedOwnedProcess {
         } catch { $stateSummary = "diagnostic-error=$($_.Exception.Message)" }
         throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, nativeName=$nativeName, installState=$stateSummary"
     }
-    $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
-    $exitCode = $LASTEXITCODE
+    $taskkillResult = Invoke-TaskkillProcessTree -ProcessId $ProcessId
+    $exitCode = [int]$taskkillResult.ExitCode
     $stillRunning = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if ($exitCode -ne 0 -and $stillRunning) {
-        throw "프로세스 종료에 실패했습니다. PID=$ProcessId, exit=$exitCode, output=$($result -join ' ')"
+        throw "프로세스 종료에 실패했습니다. PID=$ProcessId, exit=$exitCode, output=$($taskkillResult.Output)"
     }
     return $true
 }
