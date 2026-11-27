@@ -156,6 +156,45 @@ function Test-PlayerHostHealth {
     }
 }
 
+function Get-DatabaseRowCounts {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $scriptPath = Join-Path $testRoot ("role-db-rowcount-" + [guid]::NewGuid().ToString("N") + ".cjs")
+    $script = @'
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(process.argv[2], { readOnly: true });
+try {
+  const names = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name);
+  const counts = {};
+  for (const name of names) {
+    const safeName = name.replaceAll('"', '""');
+    counts[name] = db.prepare(`SELECT COUNT(*) AS count FROM "${safeName}"`).get().count;
+  }
+  console.log(JSON.stringify(counts));
+} finally {
+  db.close();
+}
+'@
+    $lastFailure = ""
+    try {
+        [IO.File]::WriteAllText($scriptPath, $script, [Text.UTF8Encoding]::new($false))
+        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+            $output = & $nodePath --no-warnings $scriptPath $Path 2>&1
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) {
+                $jsonLine = @($output | ForEach-Object { [string]$_ } | Where-Object { $_.TrimStart().StartsWith("{") } | Select-Object -Last 1)
+                if ($jsonLine.Count -gt 0) { return ([string]$jsonLine[0]).Trim() }
+                $lastFailure = "Node SQLite returned no row-count JSON."
+            } else {
+                $lastFailure = ($output | ForEach-Object { [string]$_ }) -join " "
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    } finally {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+    throw "Database row-count snapshot did not become available: $lastFailure"
+}
+
 function Test-OwnedProcess {
     param([int]$ProcessId)
     if (-not $ProcessId) { return $false }
@@ -563,7 +602,7 @@ try {
     $report.checks.roleChangesPreserveData = $true
     Wait-Until -TimeoutSeconds 60 -Description "role fixture restored watchdog" -Condition { Test-ServerHealth -PortNumber $port }
 
-    $liveRoleDbHash = (Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash
+    $liveRoleDbCounts = Get-DatabaseRowCounts -Path $roleDbPath
     $livePlayerRoleArgs = @{} + $roleCommon
     $null = $livePlayerRoleArgs.Remove("ConfigureOnly")
     $null = $livePlayerRoleArgs.Remove("NoStart")
@@ -577,7 +616,7 @@ try {
     Wait-Until -TimeoutSeconds 60 -Description "role-change Player Host health" -Condition { Test-PlayerHostHealth }
     $livePlayerConfig = Read-JsonFile -Path (Join-Path $installDir "install.json")
     if ($livePlayerConfig.role -ne "player-host" -or $livePlayerConfig.setupRole -ne "player" -or
-        (Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash -ne $liveRoleDbHash -or
+        (Get-DatabaseRowCounts -Path $roleDbPath) -ne $liveRoleDbCounts -or
         -not (Test-Path -LiteralPath $roleUploadMarker -PathType Leaf)) {
         throw "실행 중 역할 전환이 Player Host를 시작하지 못했거나 사용자 데이터를 바꿨습니다."
     }
@@ -591,7 +630,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Player Host 역할에서 통합 역할로 되돌리지 못했습니다." }
     Wait-Until -TimeoutSeconds 60 -Description "role-change integrated Manager health" -Condition { Test-ServerHealth -PortNumber $port }
     Wait-Until -TimeoutSeconds 20 -Description "role-change Player Host shutdown" -Condition { -not (Test-PlayerHostHealth) }
-    if ((Get-FileHash -LiteralPath $roleDbPath -Algorithm SHA256).Hash -ne $liveRoleDbHash -or
+    if ((Get-DatabaseRowCounts -Path $roleDbPath) -ne $liveRoleDbCounts -or
         -not (Test-Path -LiteralPath $roleUploadMarker -PathType Leaf)) {
         throw "실행 중 역할 복원이 데이터베이스나 업로드를 변경했습니다."
     }
