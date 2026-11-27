@@ -387,7 +387,15 @@ try {
     if (@($task.Triggers).Count -ne 1) { throw "자동 실행 트리거 수가 예상과 다릅니다." }
     if (-not ([string]$task.Triggers[0].CimClass.CimClassName).Contains("LogonTrigger")) { throw "At log on 트리거가 아닙니다." }
     $taskLogonType = [string]$task.Principal.LogonType
-    if ($taskLogonType -notin @("Interactive", "InteractiveToken")) { throw "Interactive 사용자 작업이 아닙니다: $taskLogonType" }
+    $currentIdentityToken = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentIdentity = [string]$currentIdentityToken.Name
+    $currentIdentitySid = if ($currentIdentityToken.User) { [string]$currentIdentityToken.User.Value } else { "" }
+    if ($currentIdentity -eq "NT AUTHORITY\LOCAL SERVICE" -or $currentIdentitySid -eq "S-1-5-19") {
+        if ($taskLogonType -ne "ServiceAccount") { throw "격리 Runner 작업이 service-account 모드가 아닙니다: $taskLogonType" }
+        $report.notRun += "실제 대화형 사용자 세션에서 로그온 자동 실행 작업 시작 검증 (Runner가 LOCAL SERVICE로 실행됨)"
+    } elseif ($taskLogonType -notin @("Interactive", "InteractiveToken")) {
+        throw "Interactive 사용자 작업이 아닙니다: logonType=$taskLogonType, identity=$currentIdentity, sid=$currentIdentitySid"
+    }
     $report.checks.scheduledTaskLogonType = $taskLogonType
     $report.checks.scheduledTask = $true
 
