@@ -495,7 +495,27 @@ try {
     $tlsCertFixture = Join-Path $testRoot "manager-test-cert.pem"
     $tlsKeyFixture = Join-Path $testRoot "manager-test-key.pem"
     $caFixture = Join-Path $testRoot "manager-test-ca.pem"
-    foreach ($fixture in @($tlsCertFixture, $tlsKeyFixture, $caFixture)) { [IO.File]::WriteAllText($fixture, "fixture only") }
+    foreach ($fixture in @($tlsCertFixture, $tlsKeyFixture)) { [IO.File]::WriteAllText($fixture, "configure-only TLS fixture") }
+    $testCaRsa = [Security.Cryptography.RSACryptoServiceProvider]::new(2048)
+    $testCaCert = $null
+    try {
+        $testCaRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            "CN=manager.example",
+            $testCaRsa,
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1
+        )
+        $testCaRequest.CertificateExtensions.Add(
+            [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $true, 0, $true)
+        )
+        $testCaCert = $testCaRequest.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(2))
+        $testCaBase64 = [Convert]::ToBase64String($testCaCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert), [Base64FormattingOptions]::InsertLineBreaks)
+        $testCaPem = "-----BEGIN CERTIFICATE-----`n$testCaBase64`n-----END CERTIFICATE-----`n"
+        [IO.File]::WriteAllText($caFixture, $testCaPem, [Text.UTF8Encoding]::new($false))
+    } finally {
+        if ($testCaCert) { $testCaCert.Dispose() }
+        $testCaRsa.Dispose()
+    }
     try {
         & $installScript @roleCommon -Role all -Mode standalone *> $null
         if ($LASTEXITCODE -ne 0) { throw "Integrated role configuration failed." }
