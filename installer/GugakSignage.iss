@@ -415,9 +415,12 @@ end;
 function CreateAdminSecretFile(const Password: String): String;
 var
   SecretPath: String;
+  PasswordLines: TArrayOfString;
 begin
   SecretPath := ExpandConstant('{tmp}\gugak-admin-' + GetDateTimeString('yyyymmddhhnnsszzz', '', '') + '.txt');
-  if not SaveStringToUTF8File(SecretPath, Password, False) then
+  SetArrayLength(PasswordLines, 1);
+  PasswordLines[0] := Password;
+  if not SaveStringsToUTF8FileWithoutBOM(SecretPath, PasswordLines, False) then
     RaiseException('Could not prepare the administrator password for setup.');
   { Inno's per-setup temp directory inherits the current user's restricted ACL. }
   Result := SecretPath;
