@@ -574,7 +574,7 @@ try {
 
     $serverPidBefore = [int]$initialState.serverPid
     $serverKillAt = [DateTime]::UtcNow
-    Stop-VerifiedOwnedProcess -ProcessId $serverPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$initialState.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js") | Out-Null
+    Stop-VerifiedOwnedProcess -ProcessId $serverPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$initialState.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js") -InstallDir $installDir | Out-Null
     Wait-Until -TimeoutSeconds 40 -Description "서버 자동 재시작" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
         return ($current.serverPid -and [int]$current.serverPid -ne $serverPidBefore -and (Test-OwnedProcess -ProcessId ([int]$current.serverPid)) -and (Test-ServerHealth -PortNumber $port))
@@ -587,7 +587,7 @@ try {
 
     $browserPidBefore = [int]$serverRestartState.browserPid
     $browserKillAt = [DateTime]::UtcNow
-    Stop-VerifiedOwnedProcess -ProcessId $browserPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.browserPath) -ExpectedStartTime ([string]$serverRestartState.browserStartedAt) -CommandLineContains @([string]$configAfterUpgrade.profileDir) | Out-Null
+    Stop-VerifiedOwnedProcess -ProcessId $browserPidBefore -ExpectedExecutable ([string]$configAfterUpgrade.browserPath) -ExpectedStartTime ([string]$serverRestartState.browserStartedAt) -CommandLineContains @([string]$configAfterUpgrade.profileDir) -InstallDir $installDir | Out-Null
     Wait-Until -TimeoutSeconds 45 -Description "브라우저 자동 재시작" -Condition {
         $current = Read-WatchdogState -StatePath $statePath
         return ($current.browserPid -and [int]$current.browserPid -ne $browserPidBefore -and (Test-OwnedProcess -ProcessId ([int]$current.browserPid)))
@@ -673,7 +673,7 @@ try {
         throw "서버 단절 시험 전에 자동 재시작 작업을 비활성화하지 못했습니다."
     }
     $enabledState = Read-WatchdogState -StatePath $statePath
-    $watchdogProcess = Get-VerifiedOwnedProcess -ProcessId ([int]$enabledState.watchdogPid) -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$enabledState.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+    $watchdogProcess = Get-VerifiedOwnedProcess -ProcessId ([int]$enabledState.watchdogPid) -ExpectedExecutable ([string]$configAfterUpgrade.nodePath) -ExpectedStartTime ([string]$enabledState.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
     if (-not $watchdogProcess) { throw "강제 종료 대상 watchdog의 소유권을 확인하지 못했습니다." }
     & taskkill.exe /PID ([int]$enabledState.watchdogPid) /F *> $null
     if ($LASTEXITCODE -ne 0 -and (Test-OwnedProcess -ProcessId ([int]$enabledState.watchdogPid))) {

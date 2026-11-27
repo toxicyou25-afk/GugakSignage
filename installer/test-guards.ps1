@@ -338,6 +338,41 @@ try {
     }
     $currentProcess = $processWithPath
     $results.foreignCommandLineExecutableBlocked = $true
+    $nativeProcess = Get-Process -Id $PID -ErrorAction Stop
+    $nativeStart = $nativeProcess.StartTime.ToUniversalTime().ToString("o")
+    $ownedInstallDir = Join-Path $tempRoot "state-owned-process-app"
+    $ownedDataDir = Join-Path $tempRoot "state-owned-process-data"
+    $ownedLogDir = Join-Path $ownedDataDir "logs"
+    $ownedControlDir = Join-Path $ownedDataDir "control"
+    New-Item -ItemType Directory -Path $ownedInstallDir, $ownedLogDir, $ownedControlDir -Force | Out-Null
+    $ownedInstanceId = "state-owned-process-test"
+    [IO.File]::WriteAllText((Join-Path $ownedInstallDir "install.json"), (@{
+        product = "GugakSignage"; installDir = $ownedInstallDir; dataDir = $ownedDataDir; logDir = $ownedLogDir
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), (@{
+        serverPid = $PID; serverStartedAt = $nativeStart; serverInstanceId = $ownedInstanceId
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $ownedControlDir "server-instance.json"), (@{
+        id = $ownedInstanceId; pid = $PID; startedAt = $nativeStart
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    $testProcessId = $PID
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = ""
+        CreationDate = $nativeProcess.StartTime
+    }
+    $verifiedFromInstallState = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir
+    if (-not $verifiedFromInstallState) { throw "CIM 실행 파일 경로와 명령행이 비어 있어도 설치 상태, PID, 시작 시각으로 프로세스 신원을 확인해야 합니다." }
+    $results.processIdentityFromInstallStateWhenCimMetadataUnavailable = $true
+    $currentState = Read-JsonFile -Path (Join-Path $ownedLogDir "watchdog-state.json")
+    $currentState.serverPid = $PID + 1
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir) {
+        throw "설치 상태의 PID가 다르면 실행 파일과 시작 시각이 같아도 소유 프로세스로 판정하면 안 됩니다."
+    }
+    $results.mismatchedInstallStateBlocked = $true
+    $testProcessId = 424242
+    $currentProcess = $processWithPath
     $wrongTime = ([DateTime]$currentProcess.CreationDate).AddHours(-2).ToUniversalTime().ToString("o")
     if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
         throw "잘못된 시작 시각을 가진 PID를 소유 프로세스로 판정했습니다."

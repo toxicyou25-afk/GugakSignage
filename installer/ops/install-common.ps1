@@ -215,12 +215,81 @@ function Get-ProcessExecutableFromCommandLine {
     return $match.Groups["executable"].Value
 }
 
+function Test-ProcessStartTimeMatch {
+    param([DateTime]$ActualStartTime, [string]$ExpectedStartTime)
+    if (-not $ExpectedStartTime) { return $true }
+    $expected = [DateTimeOffset]::Parse($ExpectedStartTime).UtcDateTime
+    $actual = $ActualStartTime.ToUniversalTime()
+    return [Math]::Abs(($actual - $expected).TotalSeconds) -le 20
+}
+
+function Get-VerifiedInstalledProcessFromState {
+    param(
+        [int]$ProcessId,
+        [string]$ExpectedExecutable,
+        [string]$ExpectedStartTime,
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
+    )
+    if (-not $InstallDir) { return $null }
+    try {
+        $installRoot = Get-NormalizedPath -Path $InstallDir
+        $configPath = Join-Path $installRoot "install.json"
+        if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return $null }
+        $config = Read-JsonFile -Path $configPath
+        if ([string]$config.product -ne "GugakSignage" -or
+            -not (Test-PathEqual -Left ([string]$config.installDir) -Right $installRoot)) { return $null }
+
+        $nativeProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if (-not $nativeProcess -or -not $nativeProcess.Path -or
+            -not (Test-PathEqual -Left ([string]$nativeProcess.Path) -Right $ExpectedExecutable) -or
+            -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$nativeProcess.StartTime) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+
+        $statePath = Join-Path ([string]$config.logDir) "watchdog-state.json"
+        if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { return $null }
+        $state = Read-JsonFile -Path $statePath
+        $markers = @($CommandLineContains | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        $hasServerEntry = $markers | Where-Object { $_ -match '(^|[\\/])dist[\\/](server|player-host-main)\.js$' } | Select-Object -First 1
+        $hasWatchdogEntry = $markers | Where-Object { $_ -match '(^|[\\/])watchdog\.mjs$' } | Select-Object -First 1
+        $hasBrowserProfile = $config.profileDir -and ($markers | Where-Object { Test-PathEqual -Left ([string]$_) -Right ([string]$config.profileDir) } | Select-Object -First 1)
+
+        if ($hasServerEntry) {
+            if ([int]$state.serverPid -ne $ProcessId -or
+                -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.serverStartedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            if ($hasServerEntry -match 'player-host-main\.js$') {
+                if ([string]$config.role -ne "player-host") { return $null }
+            } else {
+                $instancePath = Join-Path (Join-Path ([string]$config.dataDir) "control") "server-instance.json"
+                if (-not (Test-Path -LiteralPath $instancePath -PathType Leaf)) { return $null }
+                $instance = Read-JsonFile -Path $instancePath
+                if ([int]$instance.pid -ne $ProcessId -or
+                    [string]$state.serverInstanceId -ne [string]$instance.id -or
+                    -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$instance.startedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            }
+            return $nativeProcess
+        }
+        if ($hasWatchdogEntry) {
+            if ([int]$state.watchdogPid -ne $ProcessId -or
+                -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.watchdogStartedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            return $nativeProcess
+        }
+        if ($hasBrowserProfile -and [int]$state.browserPid -eq $ProcessId -and
+            (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.browserStartedAt) -ExpectedStartTime $ExpectedStartTime)) {
+            return $nativeProcess
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
 function Get-VerifiedOwnedProcess {
     param(
         [int]$ProcessId,
         [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [string]$ExpectedStartTime = "",
-        [string[]]$CommandLineContains = @()
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
     )
     if ($ProcessId -le 0) { return $null }
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
@@ -228,6 +297,9 @@ function Get-VerifiedOwnedProcess {
     $actualExecutable = [string]$process.ExecutablePath
     if (-not $actualExecutable) {
         $actualExecutable = Get-ProcessExecutableFromCommandLine -CommandLine ([string]$process.CommandLine)
+        if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) {
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+        }
     }
     if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) { return $null }
     if ($ExpectedStartTime) {
@@ -238,7 +310,7 @@ function Get-VerifiedOwnedProcess {
     $commandLine = [string]$process.CommandLine
     foreach ($marker in $CommandLineContains) {
         if ($marker -and $commandLine.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-            return $null
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         }
     }
     return $process
@@ -249,7 +321,8 @@ function Stop-VerifiedOwnedProcess {
         [int]$ProcessId,
         [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [string]$ExpectedStartTime = "",
-        [string[]]$CommandLineContains = @()
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
     )
     if ($ProcessId -le 0) { return $false }
     $deadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -257,7 +330,7 @@ function Stop-VerifiedOwnedProcess {
     while ([DateTime]::UtcNow -lt $deadline) {
         $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
         if (-not $process) { return $false }
-        $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains
+        $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         if ($verified) { break }
         Start-Sleep -Milliseconds 100
     }

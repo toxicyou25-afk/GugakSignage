@@ -106,7 +106,7 @@ try {
     if ($state -and $state.watchdogPid) {
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         while ([DateTime]::UtcNow -lt $deadline) {
-            $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+            $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
             if (-not $watchdog) { break }
             Start-Sleep -Milliseconds 250
         }
@@ -126,13 +126,13 @@ try {
     }
 
     if ($state) {
-        if ($state.serverPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js"))) {
+        if ($state.serverPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js") -InstallDir $installDir)) {
             Write-Step "남아 있던 서버 프로세스 종료: $($state.serverPid)"
         }
-        if ($state.browserPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @($profileDir))) {
+        if ($state.browserPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @($profileDir) -InstallDir $installDir)) {
             Write-Step "남아 있던 재생기 프로세스 종료: $($state.browserPid)"
         }
-        if ($state.watchdogPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs"))) {
+        if ($state.watchdogPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir)) {
             Write-Step "남아 있던 watchdog 프로세스 종료: $($state.watchdogPid)"
         }
     }
