@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+﻿# SPDX-License-Identifier: Apache-2.0
 
 function Get-NormalizedPath {
     param([Parameter(Mandatory = $true)][string]$Path)
