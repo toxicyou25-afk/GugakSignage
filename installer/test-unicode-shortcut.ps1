@@ -7,7 +7,7 @@ $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $testRoot = Join-Path $tempBase ("GugakSignage-UnicodeShortcut-" + [guid]::NewGuid().ToString("N"))
 $shortcutName = [string]::Concat([char]0xC5F4, [char]0xB9B0, [char]0xC548, [char]0xB0B4, [char]0xD310, ".lnk")
 $shortcutPath = Join-Path $testRoot $shortcutName
-$targetPath = Join-Path $env:SystemRoot "System32\notepad.exe"
+$targetPath = Join-Path $env:SystemRoot "System32\cmd.exe"
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 
 try {

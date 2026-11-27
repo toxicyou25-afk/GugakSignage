@@ -337,7 +337,10 @@ try {
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyPsEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($legacyPsDataEnv))) {
         throw "PowerShell legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
     }
-    if ((Get-Acl -LiteralPath $legacyPsDataEnv).Sddl -ne $legacyPsEnvAclSddl) { throw "PowerShell legacy .env ACL을 보존하지 않았습니다." }
+    $legacyPsDataEnvAclAfter = (Get-Acl -LiteralPath $legacyPsDataEnv).Sddl
+    if ($legacyPsDataEnvAclAfter -ne $legacyPsEnvAclSddl) {
+        throw "PowerShell legacy .env ACL을 보존하지 않았습니다. expected=$legacyPsEnvAclSddl actual=$legacyPsDataEnvAclAfter"
+    }
     if ((Get-FileHash -LiteralPath $legacyPsEnv -Algorithm SHA256).Hash -ne $legacyPsEnvHashBefore -or
         (Get-FileHash -LiteralPath $legacyPsDb -Algorithm SHA256).Hash -ne $legacyPsDbHashBefore -or
         (Get-FileHash -LiteralPath $legacyPsUpload -Algorithm SHA256).Hash -ne $legacyPsUploadHashBefore) {
