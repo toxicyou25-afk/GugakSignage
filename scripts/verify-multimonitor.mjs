@@ -178,6 +178,38 @@ try {
       return originalFetch(input, ...options);
     };
   });
+  const localFallbackMonitor = {
+    stableId: 'VERIFY-LOCAL-FALLBACK',
+    bindingId: 'MONITOR\\VERIFY-LOCAL-FALLBACK',
+    deviceName: 'DISPLAY1',
+    friendlyName: 'Local fallback monitor',
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    resolution: { width: 1920, height: 1080 },
+    orientation: 'landscape',
+    primary: true,
+    attached: true,
+  };
+  await admin.evaluate((monitor) => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, ...options) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url === '/api/native-monitors') {
+        return Promise.resolve(new Response(JSON.stringify({
+          supported: true,
+          detectedAt: new Date().toISOString(),
+          monitors: [monitor],
+          changes: [],
+        }), { headers: { 'Content-Type': 'application/json' } }));
+      }
+      return originalFetch(input, ...options);
+    };
+  }, localFallbackMonitor);
+  const localFixtureDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const localFixture = localFixtureDb.prepare('SELECT device_id FROM displays WHERE device_id IS NOT NULL ORDER BY start_index LIMIT 1').get();
+  if (!localFixture?.device_id) throw new Error('현재 PC 모니터 검증용 Player가 준비되지 않았습니다.');
+  localFixtureDb.prepare('UPDATE devices SET last_host_local = 1, last_seen = ? WHERE id = ?')
+    .run(new Date().toISOString(), localFixture.device_id);
+  localFixtureDb.close();
   await admin.locator('.site-card').first().click();
   try {
     await admin.waitForSelector('.topology-config', { timeout: 10_000 });
@@ -187,12 +219,29 @@ try {
   }
   await admin.getByRole('heading', { name: 'PC별 실제 모니터' }).waitFor();
   await admin.waitForSelector('[data-topology-action="retry-monitor-inventory"]', { timeout: 10_000 });
+  const localDeviceBeforeRetry = await admin.locator('.screen-assignment').first().locator('[data-screen-device]').inputValue();
+  const localOptionsBeforeRetry = await admin.locator('.screen-assignment').first().locator('[data-screen-native-monitor] option')
+    .evaluateAll((options) => options.map((option) => option.value));
+  if (!localOptionsBeforeRetry.includes(localFallbackMonitor.bindingId)) {
+    throw new Error('모니터 인벤토리 오류 시 현재 PC의 직접 탐색 결과가 화면 선택기에서 제거되었습니다.');
+  }
+  step('인벤토리 요청 오류 중에도 현재 PC의 직접 모니터 배정 유지', { deviceId: localDeviceBeforeRetry });
   await admin.click('[data-topology-action="retry-monitor-inventory"]');
   await admin.waitForFunction(() => {
     const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
     return status.startsWith('생성 ') && document.querySelector('[data-native-monitors-list] .site-monitor-device');
   }, null, { timeout: 5_000 });
   step('모니터 인벤토리 요청 오류 뒤 재시도 복구');
+  const localDeviceId = await admin.locator('.screen-assignment').first().locator('[data-screen-device]').inputValue();
+  const localInventoryRow = admin.locator(`[data-site-monitor-device="${localDeviceId}"]`);
+  const localMonitorOptions = await admin.locator('.screen-assignment').first().locator('[data-screen-native-monitor] option')
+    .evaluateAll((options) => options.map((option) => option.value));
+  const localInventoryText = await localInventoryRow.innerText().catch(() => '');
+  if (!localMonitorOptions.includes(localFallbackMonitor.bindingId) ||
+      !localInventoryText.includes(localFallbackMonitor.friendlyName)) {
+    throw new Error(`이 PC의 직접 모니터 탐색 결과가 인벤토리와 화면 배정에서 누락되었습니다: ${JSON.stringify({ localMonitorOptions, row: localInventoryText })}`);
+  }
+  step('이 PC의 직접 모니터 탐색 결과를 화면 배정에 유지', { deviceId: localDeviceId, bindingId: localFallbackMonitor.bindingId });
   await admin.waitForFunction(() => {
     const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
     return status !== '보고 정보를 불러오는 중…';

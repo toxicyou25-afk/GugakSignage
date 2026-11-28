@@ -230,18 +230,8 @@
     await refreshNativeMonitors(view, monitorInventoryError);
   }
 
-  function disableStaleMonitorOptions(view) {
-    for (const option of view.querySelectorAll('.topology-config select[name=deviceId] option, [data-screen-device] option')) {
-      option.dataset.monitors = '[]';
-    }
-    for (const select of view.querySelectorAll('[data-screen-native-monitor]')) {
-      const selected = select.value;
-      const saved = selected
-        ? `<option value="${page(selected)}" selected disabled>저장된 모니터 ${page(selected)} · 현재 보고를 확인할 수 없음</option>`
-        : '';
-      select.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${saved}`;
-      select.disabled = !select.closest('[data-display-id]')?.querySelector('[data-screen-device]')?.value;
-    }
+  function disableStaleMonitorOptions(view, fallbackInventory = { devices: [] }) {
+    refreshAssignmentMonitorOptions(view, fallbackInventory);
   }
 
   async function refreshNativeMonitors(view, initialInventoryError = null) {
@@ -254,14 +244,56 @@
       ? `<div class="preview-plans">${monitorChangeHistory.slice().reverse().map((change) => `<div><span>${page(changeLabels[change.type])} · ${page(change.monitor.friendlyName)}</span><strong>${change.type === 'changed' ? page(change.changedAttributes.map((attribute) => changeNames[attribute]).join(', ')) : page(change.stableId)}</strong><small>${page(change.stableId)} · ${dateTime(change.detectedAt)}</small></div>`).join('')}</div>`
       : '<p class="tiny muted">아직 모니터 변경을 감지하지 않았습니다.</p>';
     let failed = false;
+    let localDeviceId = null;
+    let localMonitorInventory = null;
+    let localResult = null;
     try {
-      const localResult = await request('/api/native-monitors');
+      localResult = await request('/api/native-monitors');
       if (!list.isConnected) return;
       const changes = localResult.changes || [];
       monitorChangeHistory = [...monitorChangeHistory, ...changes.map((change) => ({ ...change, detectedAt: localResult.detectedAt }))].slice(-20);
-      if (initialInventoryError) throw initialInventoryError;
+      localDeviceId = view.querySelector('[data-local-host="true"][data-display-id]')?.dataset.deviceId ||
+        view.querySelector('[data-screen-device] option[data-local-host="true"]')?.value;
+      const hasLocalSnapshot = localResult.supported && !localResult.error && Array.isArray(localResult.monitors);
+      const localMonitors = hasLocalSnapshot ? localResult.monitors : [];
+      localMonitorInventory = localDeviceId && hasLocalSnapshot ? {
+        deviceId: localDeviceId,
+        status: 'pending',
+        online: false,
+        localHost: true,
+        siteAssigned: true,
+        name: view.querySelector('[data-screen-device] option[value="' + CSS.escape(localDeviceId) + '"]')?.textContent || '이 PC',
+        monitorReport: { reported: localResult.supported && !localResult.error, reportedAt: localResult.detectedAt, ageMs: 0, monitors: localMonitors },
+        assignments: [],
+        logicalDisplayCount: 0,
+        assignedDisplayCount: 0,
+        unassignedDisplayIds: [],
+      } : null;
+      if (initialInventoryError) {
+        if (localMonitorInventory) refreshAssignmentMonitorOptions(view, {
+          devices: [localMonitorInventory],
+          localMonitorDeviceId: localResult.supported && !localResult.error ? localDeviceId : null,
+        });
+        throw initialInventoryError;
+      }
       const inventory = await request(`/api/sites/${encodeURIComponent(active.siteId)}/monitor-inventory`);
       if (!list.isConnected) return;
+      if (localMonitorInventory) {
+        const index = inventory.devices.findIndex((device) => device.deviceId === localDeviceId);
+        if (index >= 0) inventory.devices[index] = {
+          ...inventory.devices[index],
+          localHost: true,
+          monitorReport: localMonitorInventory.monitorReport,
+          assignments: inventory.devices[index].assignments.map((assignment) => ({
+            ...assignment,
+            monitorDetected: Boolean(assignment.nativeMonitorId && localMonitorInventory.monitorReport.monitors.some(
+              (monitor) => monitor.bindingId === assignment.nativeMonitorId,
+            )),
+          })),
+        };
+        else inventory.devices.unshift(localMonitorInventory);
+      }
+      inventory.localMonitorDeviceId = hasLocalSnapshot ? localDeviceId : null;
       refreshAssignmentMonitorOptions(view, inventory);
       status.textContent = `생성 ${dateTime(inventory.generatedAt)} · 15초 간격 확인`;
       {
@@ -269,11 +301,12 @@
         const devices = inventory.devices.length ? `<div class="site-monitor-devices">${inventory.devices.map((device) => {
           const report = device.monitorReport;
           const deviceOnline = device.status === 'online';
+          const monitorSnapshotCurrent = deviceOnline || device.deviceId === inventory.localMonitorDeviceId;
           const coverage = `${device.assignedDisplayCount}/${device.logicalDisplayCount}개 화면 배정 · 미지정 ${device.unassignedDisplayIds.length}개`;
           const monitorRows = report.monitors.length ? `<div class="site-monitor-list">${report.monitors.map((monitor) => {
             const assignment = device.assignments.find((item) => item.nativeMonitorId === monitor.bindingId);
-            const selectable = deviceOnline && Boolean(monitor.bindingId);
-            return `<div class="site-monitor-row${deviceOnline ? '' : ' is-stale'}" data-site-monitor-monitor>
+            const selectable = monitorSnapshotCurrent && Boolean(monitor.bindingId);
+            return `<div class="site-monitor-row${monitorSnapshotCurrent ? '' : ' is-stale'}" data-site-monitor-monitor>
               <div class="site-monitor-name"><strong>${page(monitor.friendlyName || monitor.deviceName)}</strong><small>${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height} · ${page(monitor.orientation)}</small></div>
               <small>${monitor.primary ? '주 화면' : '보조 화면'} · ${monitor.attached ? '연결됨' : '분리됨'} · (${monitor.bounds.x}, ${monitor.bounds.y}, ${monitor.bounds.width}×${monitor.bounds.height})</small>
               <small title="${page(monitor.stableId)}">${monitor.bindingId ? `${page(monitor.bindingId)}${selectable ? ' · 선택 가능' : ''}` : '안정 식별자 없음 · 배정할 수 없음'}</small>
@@ -295,7 +328,10 @@
       }
     } catch (error) {
       failed = true;
-      disableStaleMonitorOptions(view);
+      disableStaleMonitorOptions(view, localMonitorInventory ? {
+        devices: [localMonitorInventory],
+        localMonitorDeviceId: localResult?.supported && !localResult.error ? localDeviceId : null,
+      } : { devices: [] });
       status.textContent = '장소별 모니터 보고를 확인할 수 없습니다.';
       list.innerHTML = `<div class="site-monitor-inventory-error"><p class="form-error">${page(error.message)}</p><button class="btn btn-ghost btn-sm" type="button" data-topology-action="retry-monitor-inventory">모니터 보고 다시 시도</button><h4>이 PC의 모니터 변경 이력</h4>${historyMarkup()}</div>`;
     } finally {
@@ -306,7 +342,9 @@
 
   function refreshAssignmentMonitorOptions(view, inventory) {
     const devices = new Map(inventory.devices.map((device) => [device.deviceId, device]));
-    const monitorChoices = (device) => device?.status === 'online' && device.monitorReport.reported
+    const monitorChoices = (device) => device?.deviceId === inventory.localMonitorDeviceId && device.monitorReport.reported
+      ? device.monitorReport.monitors.filter((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId))
+      : device?.status === 'online' && device.monitorReport.reported
       ? device.monitorReport.monitors.filter((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId))
       : [];
     for (const select of view.querySelectorAll('.topology-config select[name=deviceId], [data-screen-device]')) {
@@ -323,7 +361,10 @@
       }
       for (const option of select.options) {
         const device = devices.get(option.value);
-        if (!device) continue;
+        if (!device) {
+          option.dataset.monitors = '[]';
+          continue;
+        }
         option.dataset.localHost = device.localHost ? 'true' : 'false';
         option.dataset.monitors = JSON.stringify(monitorChoices(device));
       }
@@ -347,7 +388,9 @@
       monitorSelect.value = selectedExists || selected ? selected : '';
       monitorSelect.disabled = !deviceSelect.value;
       const help = row.querySelector('[data-screen-monitor-help]');
-      if (help) help.textContent = device?.status === 'offline'
+      if (help) help.textContent = device?.deviceId === inventory.localMonitorDeviceId
+        ? '이 PC에서 직접 감지한 모니터를 선택할 수 있습니다.'
+        : device?.status === 'offline'
         ? '오프라인 PC입니다. 마지막 보고는 새 배정에 사용할 수 없습니다.'
         : device?.status === 'pending' ? '대기 중인 PC는 모니터를 보고한 뒤 배정할 수 있습니다.'
           : monitors.length ? '온라인 PC가 보고한 모니터를 선택할 수 있습니다.'
