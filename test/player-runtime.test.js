@@ -156,6 +156,51 @@ test('manifest offset stays anchored to response receipt through a delayed asset
   assert.equal(playerRuntime.calculateServerOffsetMs('invalid server time', receivedAt, -250), -250);
 });
 
+test('same-device Player windows serialize registration and reuse the shared pending token', async () => {
+  assert.equal(typeof playerRuntime.withPlayerRegistrationLock, 'function');
+  assert.equal(typeof playerRuntime.selectRegistrationToken, 'function');
+  let tail = Promise.resolve();
+  const locks = {
+    request: async (_name, _options, operation) => {
+      const previous = tail;
+      let release;
+      tail = new Promise((resolve) => { release = resolve; });
+      await previous;
+      try { return await operation(); } finally { release(); }
+    },
+  };
+  const storage = { lastCode: '', activeToken: null, pendingCode: '', pendingToken: null };
+  let tokenCreates = 0;
+  const registerWindow = () => playerRuntime.withPlayerRegistrationLock(locks, async () => {
+    const selected = playerRuntime.selectRegistrationToken(storage, 'GUGAK1', () => {
+      tokenCreates += 1;
+      return 'a'.repeat(64);
+    });
+    if (selected.pending) {
+      storage.pendingCode = 'GUGAK1';
+      storage.pendingToken = selected.token;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    storage.activeToken = selected.token;
+    storage.lastCode = 'GUGAK1';
+    storage.pendingCode = '';
+    storage.pendingToken = null;
+    return selected.token;
+  });
+
+  const [first, second] = await Promise.all([registerWindow(), registerWindow()]);
+  assert.equal(first, second);
+  assert.equal(tokenCreates, 1);
+  assert.equal(storage.activeToken, first);
+  const otherDevice = playerRuntime.selectRegistrationToken(storage, 'GUGAK2', () => {
+    tokenCreates += 1;
+    return 'b'.repeat(64);
+  });
+  assert.equal(otherDevice.token, 'b'.repeat(64));
+  assert.equal(otherDevice.pending, true);
+  assert.equal(tokenCreates, 2);
+});
+
 
 test('concurrent prefetch callers share one result instead of replacing cacheReady with undefined', async () => {
   const cache = createCacheReadiness();

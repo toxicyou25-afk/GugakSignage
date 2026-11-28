@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import type { AppConfig } from '../config.js';
 import { all, get, run, transaction, type DB } from '../db.js';
 import { isDirectLoopbackRequest } from '../admin-access.js';
-import { manifestForDevice } from '../publishing.js';
+import { manifestForDevice, publishedScreenTargets } from '../publishing.js';
 import { usesTestDefaultAdminPassword } from '../admin-password.js';
 import type { NativeMonitor } from '../native-monitors.js';
 import type { DeviceRow } from '../types.js';
@@ -107,9 +107,7 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const device = playerDevice(db, req);
     if (!device) { res.status(401).json({ error: '재생기 연결이 만료되었습니다.' }); return; }
     touch(db, req, device);
-    const assignedDisplays = all<{ displayId: string; nativeMonitorId: string | null }>(db,
-      `SELECT id AS displayId, native_monitor_id AS nativeMonitorId FROM displays
-        WHERE device_id = ? AND enabled = 1 ORDER BY start_index, rowid`, device.id);
+    const assignedDisplays = publishedScreenTargets(db, device);
     const screenTargets = assignedDisplays.some(({ nativeMonitorId }) =>
       typeof nativeMonitorId !== 'string' || !/^MONITOR\\/iu.test(nativeMonitorId))
       ? []

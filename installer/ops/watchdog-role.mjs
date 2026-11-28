@@ -8,6 +8,17 @@ const HEALTH_SERVICES = {
   'player-host': 'gugak-player-host',
 };
 
+export function managerHealthCaCertificates(tlsApi, configuredCertificateBundle) {
+  const systemCertificates = typeof tlsApi.getCACertificates === 'function'
+    ? tlsApi.getCACertificates('system')
+    : [];
+  return [...new Set([
+    ...(tlsApi.rootCertificates || []),
+    ...systemCertificates,
+    configuredCertificateBundle,
+  ])];
+}
+
 function loopbackPlayerUrl(value) {
   let url;
   try { url = new URL(String(value || '')); } catch { throw new Error('Player Host install requires a valid loopback Player URL.'); }

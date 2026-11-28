@@ -130,11 +130,28 @@ function Test-ServiceRestartRequired {
         $PreviousConfig,
         [bool]$RoleWasExplicit,
         [string]$RequestedRole,
-        [string]$RequestedMode
+        [string]$RequestedMode,
+        [string]$RequestedManagerUrl = "",
+        [string]$RequestedManagerCaFile = "",
+        [string]$RequestedTlsCertFile = "",
+        [string]$RequestedTlsKeyFile = "",
+        [string]$RequestedManagerBaseUrl = ""
     )
-    if (-not $PreviousConfig -or -not $RoleWasExplicit) { return $false }
-    if ([string]$PreviousConfig.role -ne $RequestedRole) { return $true }
-    return ($RequestedRole -eq "manager" -and [string]$PreviousConfig.mode -ne $RequestedMode)
+    if (-not $PreviousConfig) { return $false }
+    if ($RoleWasExplicit -and [string]$PreviousConfig.role -ne $RequestedRole) { return $true }
+    if ($RequestedRole -eq "manager") {
+        if ([string]$PreviousConfig.mode -ne $RequestedMode) { return $true }
+        if ($RequestedMode -eq "lan" -and (
+            -not [string]::Equals([string]$PreviousConfig.tlsCertFile, $RequestedTlsCertFile, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$PreviousConfig.tlsKeyFile, $RequestedTlsKeyFile, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$PreviousConfig.managerBaseUrl, $RequestedManagerBaseUrl, [StringComparison]::OrdinalIgnoreCase)
+        )) { return $true }
+    }
+    if ($RequestedRole -in @("player", "player-host") -and (
+        -not [string]::Equals([string]$PreviousConfig.managerUrl, $RequestedManagerUrl, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$PreviousConfig.managerCaFile, $RequestedManagerCaFile, [StringComparison]::OrdinalIgnoreCase)
+    )) { return $true }
+    return $false
 }
 
 function Test-ManagerTlsCertificate {
@@ -563,7 +580,8 @@ if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
 }
 
 $roleChanged = $previousConfig -and $roleExplicit -and ([string]$previousConfig.role -ne $watchdogRole)
-$serviceRestartRequired = Test-ServiceRestartRequired -PreviousConfig $previousConfig -RoleWasExplicit $roleExplicit -RequestedRole $watchdogRole -RequestedMode $Mode
+$serviceRestartRequired = Test-ServiceRestartRequired -PreviousConfig $previousConfig -RoleWasExplicit $roleExplicit -RequestedRole $watchdogRole -RequestedMode $Mode `
+    -RequestedManagerUrl $ManagerUrl -RequestedManagerCaFile $ManagerCaFile -RequestedTlsCertFile $TlsCertFile -RequestedTlsKeyFile $TlsKeyFile -RequestedManagerBaseUrl $ManagerBaseUrl
 if ($roleChanged -and $dataDirChanged) { throw "Role changes cannot be combined with a data-folder change." }
 if ($Role -eq "manager") { $shortcutPaths = @(); $adminShortcutPaths = @($adminShortcutPaths) }
 if ($Role -eq "player") {

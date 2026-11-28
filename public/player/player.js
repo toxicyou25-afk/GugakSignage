@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { calculateServerOffsetMs, createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode } from './player-runtime.js';
+import { calculateServerOffsetMs, createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, withPlayerRegistrationLock } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v5';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -8,6 +8,8 @@ const STORAGE = {
   token: 'signage.player.token',
   hardwareId: 'signage.player.hardwareId',
   deviceId: 'signage.player.deviceId',
+  pendingPlayerToken: 'signage.player.pendingToken',
+  pendingRegistrationCode: 'signage.player.pendingCode',
   manifest: 'signage.player.manifest.v1',
   manifestSnapshot: 'signage.player.manifestSnapshot.v2',
   manifestOffsetMs: 'signage.player.manifestOffsetMs',
@@ -106,6 +108,13 @@ function safeRemove(key) {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
 }
 
+function createPlayerToken() {
+  if (!globalThis.crypto?.getRandomValues) throw new Error('재생기 인증 토큰을 안전하게 만들 수 없습니다.');
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
 function persistManifestSnapshot(manifest, serverOffsetMs, cachedAt) {
   return safeSet(STORAGE.manifestSnapshot, JSON.stringify({ manifest, serverOffsetMs, cachedAt }));
 }
@@ -191,25 +200,51 @@ async function pair(code, auto = false, options = {}) {
   el.pairRecover.hidden = true;
   el.pairError.hidden = true;
   try {
-    const response = await fetch('/api/player/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code: normalized,
-        hardwareId: hardwareId(),
-        takeover: options.takeover === true,
-        screen: { width: window.screen?.width || innerWidth, height: window.screen?.height || innerHeight },
-        userAgent: navigator.userAgent,
-      }),
+    const data = await withPlayerRegistrationLock(runtime.hostManaged ? null : navigator.locks, async () => {
+      if (attemptGeneration !== runtime.connectionGeneration) return null;
+      let requestedPlayerToken;
+      if (!runtime.hostManaged) {
+        const selected = selectRegistrationToken({
+          lastCode: safeGet(STORAGE.lastCode) || '',
+          activeToken: runtime.token || safeGet(STORAGE.token),
+          pendingCode: safeGet(STORAGE.pendingRegistrationCode) || '',
+          pendingToken: safeGet(STORAGE.pendingPlayerToken),
+        }, normalized, createPlayerToken);
+        requestedPlayerToken = selected.token;
+        if (!safeSet(STORAGE.pendingRegistrationCode, normalized) || !safeSet(STORAGE.pendingPlayerToken, requestedPlayerToken)) {
+          throw new Error('재생기 인증 정보를 로컬에 저장할 수 없습니다. 브라우저 저장 공간을 확인해 주세요.');
+        }
+      }
+      const response = await fetch('/api/player/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: normalized,
+          hardwareId: hardwareId(),
+          ...(requestedPlayerToken ? { playerToken: requestedPlayerToken } : {}),
+          takeover: options.takeover === true,
+          screen: { width: window.screen?.width || innerWidth, height: window.screen?.height || innerHeight },
+          userAgent: navigator.userAgent,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (attemptGeneration !== runtime.connectionGeneration) return null;
+      if (!response.ok) {
+        const error = new Error(data?.error || '등록 코드를 확인해 주세요.');
+        error.status = response.status;
+        error.sampleCode = data?.sampleCode || null;
+        throw error;
+      }
+      if (!runtime.hostManaged) {
+        if (data?.token !== requestedPlayerToken) throw new Error('관리 서버가 보낸 재생기 인증 토큰을 확인하지 못했습니다.');
+        if (safeSet(STORAGE.token, data.token) && safeSet(STORAGE.lastCode, normalized)) {
+          safeRemove(STORAGE.pendingPlayerToken);
+          safeRemove(STORAGE.pendingRegistrationCode);
+        }
+      }
+      return data;
     });
-    const data = await response.json().catch(() => null);
-    if (attemptGeneration !== runtime.connectionGeneration) return;
-    if (!response.ok) {
-      const error = new Error(data?.error || '등록 코드를 확인해 주세요.');
-      error.status = response.status;
-      error.sampleCode = data?.sampleCode || null;
-      throw error;
-    }
+    if (!data || attemptGeneration !== runtime.connectionGeneration) return;
     const previousDevice = runtime.deviceId;
     runtime.token = runtime.hostManaged ? null : data.token;
     runtime.deviceId = data.device?.id || null;
@@ -218,7 +253,6 @@ async function pair(code, auto = false, options = {}) {
     clearInterval(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
     if (runtime.hostManaged) safeRemove(STORAGE.token);
-    else safeSet(STORAGE.token, data.token);
     runtime.cacheReadiness.invalidate();
     runtime.cacheReady = false;
     if (runtime.deviceId) safeSet(STORAGE.deviceId, runtime.deviceId);
@@ -1373,6 +1407,8 @@ el.disconnect.addEventListener('click', async () => {
     try { await fetch('/api/player/disconnect', { method: 'POST' }); } catch { /* local state still needs to clear */ }
   }
   safeRemove(STORAGE.token);
+  safeRemove(STORAGE.pendingPlayerToken);
+  safeRemove(STORAGE.pendingRegistrationCode);
   safeRemove(STORAGE.manifest);
   safeRemove(STORAGE.manifestSnapshot);
   safeRemove(STORAGE.manifestOffsetMs);

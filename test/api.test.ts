@@ -482,13 +482,15 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(remoteMonitors.body.reported, true);
     assert.deepEqual(remoteMonitors.body.monitors.map((monitor: { bindingId: string }) => monitor.bindingId), ['MONITOR\\REMOTE-1']);
 
-    const remoteDisplay = db.prepare('SELECT id FROM displays WHERE device_id = ? ORDER BY start_index LIMIT 1').get(created.deviceId) as { id: string } | undefined;
+    const remoteDisplay = db.prepare('SELECT id, group_id FROM displays WHERE device_id = ? ORDER BY start_index LIMIT 1').get(created.deviceId) as { id: string; group_id: string } | undefined;
     assert.ok(remoteDisplay);
     const displayAssignment = await admin(`/api/displays/${remoteDisplay.id}`, {
       method: 'PUT',
-      body: { deviceId: created.deviceId, nativeMonitorId: 'MONITOR\\REMOTE-1' },
+      body: { deviceId: created.deviceId, nativeMonitorId: 'MONITOR\\REMOTE-1', playlistId: created.playlistId },
     });
     assert.equal(displayAssignment.status, 200, JSON.stringify(displayAssignment.body));
+    const publishedAssignment = await admin(`/api/groups/${remoteDisplay.group_id}/publish`, { method: 'POST' });
+    assert.equal(publishedAssignment.status, 200, JSON.stringify(publishedAssignment.body));
 
     const assignedTargets = await request('/api/player/screen-targets', {
       headers: { Authorization: `Bearer ${created.playerToken}` },
@@ -541,7 +543,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
 
     const publish = await admin(`/api/devices/${created.deviceId}/publish`, { method: 'POST' });
     assert.equal(publish.status, 200);
-    assert.equal(publish.body.version, 3);
+    assert.equal(publish.body.version, 4);
 
     const removed = await admin(`/api/contents/${created.imageId}`, { method: 'DELETE' });
     assert.equal(removed.status, 200);

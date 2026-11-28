@@ -272,6 +272,7 @@ export interface WallSnapshot {
   displays: Array<{
     id: string;
     deviceId: string | null;
+    nativeMonitorId?: string | null;
     groupId: string;
     name: string;
     resolution: { width: number; height: number };

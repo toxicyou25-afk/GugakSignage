@@ -165,6 +165,25 @@ export function latestPublication(db: DB, deviceId: string): PublicationRow | un
   );
 }
 
+export function publishedScreenTargets(db: DB, device: DeviceRow): Array<{ displayId: string; nativeMonitorId: string | null }> {
+  const publication = latestPublication(db, device.id);
+  const snapshot = publication ? safeJsonParse<Snapshot>(publication.snapshot) : null;
+  const assigned = snapshot?.wall?.displays.filter((display) => display.deviceId === device.id) ?? [];
+  if (!assigned.length) return [];
+
+  const legacyBindings = new Map(all<{ id: string; nativeMonitorId: string | null }>(
+    db,
+    'SELECT id, native_monitor_id AS nativeMonitorId FROM displays WHERE device_id = ?',
+    device.id,
+  ).map((display) => [display.id, display.nativeMonitorId]));
+  return assigned.map((display) => ({
+    displayId: display.id,
+    nativeMonitorId: display.nativeMonitorId === undefined
+      ? legacyBindings.get(display.id) ?? null
+      : display.nativeMonitorId ?? null,
+  }));
+}
+
 export function manifestForDevice(db: DB, device: DeviceRow): DeviceManifest {
   const publication = latestPublication(db, device.id);
   const snapshot = publication ? safeJsonParse<Snapshot>(publication.snapshot) : null;
@@ -176,6 +195,7 @@ export function manifestForDevice(db: DB, device: DeviceRow): DeviceManifest {
   const wall = snapshot?.wall
     ? {
         ...snapshot.wall,
+        displays: snapshot.wall.displays.map(({ nativeMonitorId: _nativeMonitorId, ...display }) => display),
         screens: snapshot.wall.screens.filter((screen) => ownDisplayIds.has(screen.displayId)),
       }
     : undefined;

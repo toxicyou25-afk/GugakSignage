@@ -149,6 +149,7 @@ export function buildWallSnapshot(
     displays: displays.map((display, index) => ({
       id: display.id,
       deviceId: display.device_id,
+      nativeMonitorId: display.native_monitor_id,
       groupId: display.group_id,
       name: display.name,
       resolution: { width: display.width, height: display.height },

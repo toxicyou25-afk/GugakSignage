@@ -665,12 +665,14 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const frozen = get<{ snapshot: string }>(db, 'SELECT snapshot FROM publications WHERE device_id = ? AND version = 1', device.body.device.id)!.snapshot;
     assert(frozen.includes('"schemaVersion":2'));
     assert(frozen.includes('"playlistId":"playlist-2"'));
-    assert.equal(frozen.includes('MONITOR\\DISCONNECTED-SAVED'), false);
-    assert.equal(frozen.includes('nativeMonitorId'), false);
+    assert.equal(frozen.includes('nativeMonitorId'), true);
     assert.equal(frozen.includes('native_monitor_id'), false);
     const frozenWall = JSON.parse(frozen).wall;
     const frozenDisplay = frozenWall.displays.find((display: any) => display.id === displays[3].id);
+    const frozenPrimaryDisplay = frozenWall.displays.find((display: any) => display.id === displays[0].id);
     const frozenScreen = frozenWall.screens.find((screen: any) => screen.displayId === displays[3].id);
+    assert.equal(frozenDisplay.nativeMonitorId, null);
+    assert.equal(frozenPrimaryDisplay.nativeMonitorId, 'MONITOR\\PRIMARY');
     assert.equal(frozenDisplay.fit, 'cover');
     assert.equal(Object.hasOwn(frozenScreen.playlist.items[0], 'fitMode'), false);
     assert.equal(get<{ hardware_id: string | null }>(db, 'SELECT hardware_id FROM devices WHERE id = ?', device.body.device.id)?.hardware_id, null);
@@ -753,15 +755,20 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' },
     });
     assert.equal(explicitSecondPc.status, 200, JSON.stringify(explicitSecondPc.body));
+    const draftRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
+    assert.equal(draftRemoteTargets.status, 200, JSON.stringify(draftRemoteTargets.body));
+    assert.deepEqual(draftRemoteTargets.body.screenTargets, []);
+    const remoteTargetsPublished = await request(`/api/groups/${groupId}/publish`, { method: 'POST' });
+    assert.equal(remoteTargetsPublished.status, 200, JSON.stringify(remoteTargetsPublished.body));
     const remoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
     assert.equal(remoteTargets.status, 200, JSON.stringify(remoteTargets.body));
     assert.deepEqual(remoteTargets.body.screenTargets, [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' }]);
     run(db, 'UPDATE displays SET device_id = ?, native_monitor_id = NULL WHERE id = ?', secondDevice.body.device.id, displays[0].id);
     const partialRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
-    assert.deepEqual(partialRemoteTargets.body.screenTargets, []);
+    assert.deepEqual(partialRemoteTargets.body.screenTargets, remoteTargets.body.screenTargets);
     run(db, 'UPDATE displays SET enabled = 0 WHERE id = ?', displays[0].id);
     const disabledRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
-    assert.deepEqual(disabledRemoteTargets.body.screenTargets, [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' }]);
+    assert.deepEqual(disabledRemoteTargets.body.screenTargets, remoteTargets.body.screenTargets);
     run(db, 'UPDATE displays SET device_id = ?, enabled = 1 WHERE id = ?', device.body.device.id, displays[0].id);
     run(db, 'UPDATE displays SET enabled = 1 WHERE id = ?', displays[1].id);
     const mappingBeforeGroupSave = all<{ id: string; device_id: string | null }>(

@@ -7,7 +7,17 @@ import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveWatchdogHealthTarget, resolveWatchdogRole } from './ops/watchdog-role.mjs';
+import * as watchdogRole from './ops/watchdog-role.mjs';
 import { readScreenTargetAssignment, writePlayerState, writeScreenTargetAssignment } from './ops/player-state.mjs';
+
+test('Manager LAN watchdog health trust includes system CA roots', () => {
+  assert.equal(typeof watchdogRole.managerHealthCaCertificates, 'function');
+  const trust = watchdogRole.managerHealthCaCertificates({
+    rootCertificates: ['bundled-root'],
+    getCACertificates: (type) => type === 'system' ? ['system-root', 'bundled-root'] : [],
+  }, 'configured-manager-chain');
+  assert.deepEqual(trust, ['bundled-root', 'system-root', 'configured-manager-chain']);
+});
 
 test('remote screen assignments persist atomically and an empty Manager result clears them', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-screen-assignment-'));

@@ -15,6 +15,21 @@ export function calculateServerOffsetMs(serverTime, receivedAt, fallback) {
   return Number.isFinite(serverMs) ? serverMs - receivedAt : fallback;
 }
 
+export function selectRegistrationToken(storage, code, createToken) {
+  if (storage.lastCode === code && storage.activeToken) {
+    return { token: storage.activeToken, pending: false };
+  }
+  if (storage.pendingCode === code && storage.pendingToken) {
+    return { token: storage.pendingToken, pending: true };
+  }
+  return { token: createToken(), pending: true };
+}
+
+export async function withPlayerRegistrationLock(lockManager, operation) {
+  if (!lockManager || typeof lockManager.request !== 'function') return operation();
+  return lockManager.request('gugak-signage-player-registration', { mode: 'exclusive' }, operation);
+}
+
 export async function promotePreparedManifest({ isCurrent, prepareAssets, persistManifest, activateManifest }) {
   if (!isCurrent()) return false;
   const prepared = await prepareAssets();

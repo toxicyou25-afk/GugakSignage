@@ -15,7 +15,7 @@ import {
 import { classifyPlayerState } from './watchdog-health.mjs';
 import { openAdminOnStartup } from './admin-startup.mjs';
 import { verifyAdoptedPlayerStillOwned, verifyPlayerProcessIdentity } from './player-adoption.mjs';
-import { resolveWatchdogHealthTarget, resolveWatchdogRole } from './watchdog-role.mjs';
+import { managerHealthCaCertificates, resolveWatchdogHealthTarget, resolveWatchdogRole } from './watchdog-role.mjs';
 import {
   clearPlayerCommand,
   desiredAfterBrowserExit,
@@ -1079,7 +1079,7 @@ async function checkServerHealth() {
   const data = healthTarget.caFile
     ? await new Promise((resolve, reject) => {
       const request = https.get(healthTarget.url, {
-        ca: [...tls.rootCertificates, fs.readFileSync(healthTarget.caFile)],
+        ca: managerHealthCaCertificates(tls, fs.readFileSync(healthTarget.caFile, 'utf8')),
         servername: healthTarget.servername,
         timeout: 2500,
       }, (response) => {

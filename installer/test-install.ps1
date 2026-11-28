@@ -189,6 +189,19 @@ if (env.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("Windows certif
             -not (Test-ServiceRestartRequired $previousManager $true "player-host" "lan")) {
             throw "Service restart predicate did not distinguish Manager mode changes, unchanged mode, and role changes."
         }
+        $previousPlayer = [pscustomobject]@{
+            role = "player-host"; mode = "lan"; managerUrl = "https://old-manager.example"; managerCaFile = "C:\old-ca.pem"
+        }
+        if (-not (Test-ServiceRestartRequired -PreviousConfig $previousPlayer -RoleWasExplicit $false -RequestedRole "player-host" -RequestedMode "lan" -RequestedManagerUrl "https://new-manager.example" -RequestedManagerCaFile "C:\old-ca.pem") -or
+            (Test-ServiceRestartRequired -PreviousConfig $previousPlayer -RoleWasExplicit $false -RequestedRole "player-host" -RequestedMode "lan" -RequestedManagerUrl "https://old-manager.example" -RequestedManagerCaFile "C:\old-ca.pem")) {
+            throw "Player Host service restart predicate did not distinguish changed and unchanged Manager URLs when role is inherited."
+        }
+        $previousLanManager = [pscustomobject]@{
+            role = "manager"; mode = "lan"; managerBaseUrl = "https://manager.example:3000"; tlsCertFile = "C:\old-cert.pem"; tlsKeyFile = "C:\old-key.pem"
+        }
+        if (-not (Test-ServiceRestartRequired -PreviousConfig $previousLanManager -RoleWasExplicit $false -RequestedRole "manager" -RequestedMode "lan" -RequestedTlsCertFile "C:\new-cert.pem" -RequestedTlsKeyFile "C:\old-key.pem" -RequestedManagerBaseUrl "https://manager.example:3000")) {
+            throw "Manager service restart predicate did not detect changed TLS identity when role is inherited."
+        }
         $certificateFunction = $installAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq "Test-ManagerTlsCertificate" }, $true)
         if (-not $certificateFunction) { throw "Manager TLS certificate validation function is missing." }
         . ([scriptblock]::Create($certificateFunction.Extent.Text))

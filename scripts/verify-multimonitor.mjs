@@ -505,6 +505,50 @@ try {
   }
   step('같은 PC에서 원격 모니터 배정 해제 요청 확인', { requestBody: clearMonitorBody });
 
+  await player.evaluate(() => {
+    for (const key of [
+      'signage.player.token', 'signage.player.pendingToken', 'signage.player.pendingCode',
+      'signage.player.lastCode', 'signage.player.deviceId', 'signage.player.manifest.v1',
+      'signage.player.manifestSnapshot.v2', 'signage.player.manifestOffsetMs', 'signage.player.manifestCachedAt',
+    ]) localStorage.removeItem(key);
+  });
+  await player.close();
+  const concurrentPages = [await context.newPage(), await context.newPage()];
+  const registrationTokens = [];
+  let registrationsInFlight = 0;
+  let maxRegistrationsInFlight = 0;
+  const registrationRoute = async (route) => {
+    const body = route.request().postDataJSON();
+    registrationTokens.push(body.playerToken || null);
+    registrationsInFlight += 1;
+    maxRegistrationsInFlight = Math.max(maxRegistrationsInFlight, registrationsInFlight);
+    try {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await route.fulfill({ response });
+    } finally {
+      registrationsInFlight -= 1;
+    }
+  };
+  await context.route('**/api/player/register', registrationRoute);
+  try {
+    await Promise.all(concurrentPages.map((page) => page.goto(`${base}/player/?code=GUGAK1&reconnect=1`, { waitUntil: 'domcontentloaded' })));
+    await Promise.all(concurrentPages.map((page) => page.waitForFunction(() => {
+      const state = window.__signagePlayer?.getState?.();
+      return state?.deviceId === 'dev-sample-lobby' && state.manifestVersion !== null && !state.offline;
+    }, null, { timeout: 30_000 })));
+    const sharedTokens = await Promise.all(concurrentPages.map((page) => page.evaluate(() => localStorage.getItem('signage.player.token'))));
+    const playerStates = await Promise.all(concurrentPages.map((page) => page.evaluate(() => window.__signagePlayer.getState())));
+    if (registrationTokens.length !== 2 || new Set(registrationTokens).size !== 1 || maxRegistrationsInFlight !== 1 ||
+        !registrationTokens[0] || sharedTokens[0] !== registrationTokens[0] || sharedTokens[1] !== registrationTokens[0]) {
+      throw new Error(`동시 Player 창 등록이 하나의 인증 토큰으로 직렬화되지 않았습니다: ${JSON.stringify({ registrationTokens, sharedTokens, maxRegistrationsInFlight })}`);
+    }
+    step('동일 PC의 Player 창 동시 등록이 인증 토큰을 공유', { registrations: registrationTokens.length, maxRegistrationsInFlight, playerStates });
+  } finally {
+    await context.unroute('**/api/player/register', registrationRoute).catch(() => {});
+    await Promise.all(concurrentPages.map((page) => page.close().catch(() => {})));
+  }
+
   if (report.adminPreview.displays !== 4 || report.player.screenCount !== 4 || report.perMonitorWindow.screenCount !== 1) {
     throw new Error('브라우저 화면 수가 예상과 다릅니다.');
   }
