@@ -189,22 +189,36 @@ try {
     primary: true,
     attached: true,
   };
-  await admin.evaluate((monitor) => {
+  const localUnboundMonitor = {
+    stableId: 'VERIFY-LOCAL-UNBOUND',
+    bindingId: null,
+    deviceName: 'DISPLAY2',
+    friendlyName: 'Local monitor without binding',
+    bounds: { x: 1920, y: 0, width: 1280, height: 720 },
+    resolution: { width: 1280, height: 720 },
+    orientation: 'landscape',
+    primary: false,
+    attached: true,
+  };
+  await admin.evaluate(({ monitor, unbound }) => {
     const originalFetch = window.fetch.bind(window);
     window.__gugakLocalMonitorSnapshot = monitor;
+    window.__gugakLocalUnboundMonitor = unbound;
     window.fetch = (input, ...options) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url === '/api/native-monitors') {
         return Promise.resolve(new Response(JSON.stringify({
           supported: true,
           detectedAt: new Date().toISOString(),
-          monitors: window.__gugakLocalMonitorSnapshot ? [window.__gugakLocalMonitorSnapshot] : [],
+          monitors: window.__gugakLocalMonitorSnapshot
+            ? [window.__gugakLocalMonitorSnapshot, window.__gugakLocalUnboundMonitor]
+            : [],
           changes: [],
         }), { headers: { 'Content-Type': 'application/json' } }));
       }
       return originalFetch(input, ...options);
     };
-  }, localFallbackMonitor);
+  }, { monitor: localFallbackMonitor, unbound: localUnboundMonitor });
   const localFixtureDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
   const localFixture = localFixtureDb.prepare('SELECT device_id FROM displays WHERE device_id IS NOT NULL ORDER BY start_index LIMIT 1').get();
   if (!localFixture?.device_id) throw new Error('현재 PC 모니터 검증용 Player가 준비되지 않았습니다.');
@@ -238,9 +252,13 @@ try {
   const localMonitorOptions = await admin.locator('.screen-assignment').first().locator('[data-screen-native-monitor] option')
     .evaluateAll((options) => options.map((option) => option.value));
   const localInventoryText = await localInventoryRow.innerText().catch(() => '');
+  const unboundLocalText = await localInventoryRow.locator('[data-site-monitor-monitor]').nth(1).innerText();
   if (!localMonitorOptions.includes(localFallbackMonitor.bindingId) ||
       !localInventoryText.includes(localFallbackMonitor.friendlyName)) {
     throw new Error(`이 PC의 직접 모니터 탐색 결과가 인벤토리와 화면 배정에서 누락되었습니다: ${JSON.stringify({ localMonitorOptions, row: localInventoryText })}`);
+  }
+  if (!unboundLocalText.includes('화면 배정 없음')) {
+    throw new Error('bindingId가 없는 모니터가 논리 화면에 잘못 연결되어 표시됩니다: ' + unboundLocalText);
   }
   step('이 PC의 직접 모니터 탐색 결과를 화면 배정에 유지', { deviceId: localDeviceId, bindingId: localFallbackMonitor.bindingId });
   await admin.waitForFunction(() => {
@@ -508,6 +526,7 @@ try {
     throw new Error(`로컬 Player의 연결 상태 또는 온라인 원격 모니터 선택이 잘못되었습니다: ${JSON.stringify({ localStatusBefore, staleRemoteBefore })}`);
   }
   await refreshTestScreen.locator('[data-screen-device]').selectOption(deviceValue);
+  await refreshTestScreen.evaluate((row, remoteDeviceId) => { row.dataset.deviceId = remoteDeviceId; }, secondDeviceId);
   const refreshedLocalMonitor = {
     ...localFallbackMonitor,
     stableId: 'VERIFY-LOCAL-REFRESHED',

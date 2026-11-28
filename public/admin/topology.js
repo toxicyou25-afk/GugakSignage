@@ -252,8 +252,9 @@
       if (!list.isConnected) return;
       const changes = localResult.changes || [];
       monitorChangeHistory = [...monitorChangeHistory, ...changes.map((change) => ({ ...change, detectedAt: localResult.detectedAt }))].slice(-20);
-      localDeviceId = view.querySelector('[data-local-host="true"][data-display-id]')?.dataset.deviceId ||
-        view.querySelector('[data-screen-device] option[data-local-host="true"]')?.value;
+      const localDevice = view.querySelector('.topology-config select[name=deviceId] option[data-local-host="true"]') ||
+        view.querySelector('[data-screen-device] option[data-local-host="true"]');
+      localDeviceId = localDevice?.value || null;
       const hasLocalSnapshot = localResult.supported && !localResult.error && Array.isArray(localResult.monitors);
       const localMonitors = hasLocalSnapshot ? localResult.monitors : [];
       localMonitorInventory = localDeviceId && hasLocalSnapshot ? {
@@ -304,7 +305,9 @@
           const monitorSnapshotCurrent = deviceOnline || device.deviceId === inventory.localMonitorDeviceId;
           const coverage = `${device.assignedDisplayCount}/${device.logicalDisplayCount}개 화면 배정 · 미지정 ${device.unassignedDisplayIds.length}개`;
           const monitorRows = report.monitors.length ? `<div class="site-monitor-list">${report.monitors.map((monitor) => {
-            const assignment = device.assignments.find((item) => item.nativeMonitorId === monitor.bindingId);
+            const assignment = monitor.bindingId
+              ? device.assignments.find((item) => item.nativeMonitorId === monitor.bindingId)
+              : null;
             const selectable = monitorSnapshotCurrent && Boolean(monitor.bindingId);
             return `<div class="site-monitor-row${monitorSnapshotCurrent ? '' : ' is-stale'}" data-site-monitor-monitor>
               <div class="site-monitor-name"><strong>${page(monitor.friendlyName || monitor.deviceName)}</strong><small>${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height} · ${page(monitor.orientation)}</small></div>
