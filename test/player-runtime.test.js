@@ -471,6 +471,39 @@ test('a previous manifest prefetch cannot overwrite readiness for a newer manife
   assert.equal(cache.ready, false);
 });
 
+test('removing corrupt playback media invalidates readiness so the same manifest can refill it', async () => {
+  const cache = createCacheReadiness();
+  const playerState = { cacheReady: false };
+  const manifestKey = 'device-1:manifest-4:sha256';
+  const persistentMedia = new Map([['poster-1', 'verified-bytes']]);
+  const firstToken = cache.begin(manifestKey);
+  playerState.cacheReady = await cache.prepare(firstToken, async () => persistentMedia.has('poster-1'));
+  assert.equal(cache.ready, true);
+  assert.equal(playerState.cacheReady, true);
+
+  persistentMedia.delete('poster-1');
+  assert.equal(typeof playerRuntime.invalidateCacheReadinessAfterAssetRemoval, 'function');
+  playerRuntime.invalidateCacheReadinessAfterAssetRemoval(cache, playerState);
+
+  assert.equal(cache.ready, false);
+  assert.equal(playerState.cacheReady, false);
+  const retryToken = cache.begin(manifestKey);
+  assert.notEqual(retryToken, firstToken);
+  let downloadCount = 0;
+  playerState.cacheReady = await cache.prepare(retryToken, async () => {
+    if (!persistentMedia.has('poster-1')) {
+      downloadCount += 1;
+      persistentMedia.set('poster-1', 'verified-replacement');
+    }
+    return persistentMedia.has('poster-1');
+  });
+
+  assert.equal(downloadCount, 1);
+  assert.equal(persistentMedia.get('poster-1'), 'verified-replacement');
+  assert.equal(cache.ready, true);
+  assert.equal(playerState.cacheReady, true);
+});
+
 test('re-pair invalidation prevents old in-flight cache results from becoming ready', async () => {
   const cache = createCacheReadiness();
   const oldToken = cache.begin();

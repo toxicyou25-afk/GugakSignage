@@ -290,3 +290,8 @@ export function createCacheReadiness() {
     },
   };
 }
+
+export function invalidateCacheReadinessAfterAssetRemoval(cacheReadiness, playerState) {
+  cacheReadiness.invalidate();
+  playerState.cacheReady = false;
+}

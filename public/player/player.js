@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { assetIntegrityFingerprint, calculateServerOffsetMs, createCacheReadiness, manifestContentChecksum, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, verifyAssetBlob, withPlayerRegistrationLock } from './player-runtime.js';
+import { assetIntegrityFingerprint, calculateServerOffsetMs, createCacheReadiness, invalidateCacheReadinessAfterAssetRemoval, manifestContentChecksum, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, verifyAssetBlob, withPlayerRegistrationLock } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v7';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -1186,11 +1186,13 @@ async function getCachedBlob(id) {
   return value?.blob || null;
 }
 
-async function putCachedBlob(id, blob, content) {
+async function putCachedBlob(id, blob, content, canWrite = () => true) {
   const db = await openCacheDb();
+  if (!canWrite()) return false;
   const tx = db.transaction('media', 'readwrite');
   tx.objectStore('media').put({ id, blob, mime: content.mime || blob.type, url: content.url, cachedAt: new Date().toISOString() });
   await transactionPromise(tx);
+  return true;
 }
 
 function stagedMediaId(batchId, contentId) {
@@ -1233,6 +1235,7 @@ async function promoteStagedBlobs(db, stagedItems) {
 
 async function resolveMediaUrl(content) {
   if (content.kind === 'url') return content.url;
+  const requestGeneration = runtime.manifestRequestGeneration;
   let checksum;
   try {
     checksum = manifestContentChecksum(content);
@@ -1240,6 +1243,7 @@ async function resolveMediaUrl(content) {
     throw new Error('콘텐츠 무결성 정보를 확인하지 못했습니다.');
   }
   const checksumKey = checksum ? `${content.id}:${checksum}` : '';
+  let removedCorruptCache = false;
   const cachedObjectUrl = runtime.objectUrls.get(content.id);
   if (cachedObjectUrl && (runtime.objectUrlChecksums.get(content.id) || '') === checksumKey) {
     // Object URLs retain the already-verified immutable Blob; they are not a shortcut to IndexedDB bytes.
@@ -1253,6 +1257,8 @@ async function resolveMediaUrl(content) {
   try {
     let blob = await getCachedBlob(content.id);
     if (blob && !(await verifyCachedAsset(content, blob))) {
+      removedCorruptCache = true;
+      invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
       await deleteCachedIds(await openCacheDb(), [content.id]);
       blob = null;
     }
@@ -1270,6 +1276,27 @@ async function resolveMediaUrl(content) {
   if (blob.size === 0) throw new Error('재생할 콘텐츠가 비어 있습니다.');
   if (!(await verifyAssetBlob(content, blob))) {
     throw new Error('콘텐츠 무결성 검사를 통과하지 못했습니다.');
+  }
+  if (removedCorruptCache) {
+    const replacementIsCurrent = () => {
+      if (runtime.prefetching || runtime.manifestRequestGeneration !== requestGeneration) return false;
+      try {
+        return collectContents(runtime.manifest).some((candidate) =>
+          candidate.id === content.id && manifestContentChecksum(candidate) === checksum
+        );
+      } catch {
+        return false;
+      }
+    };
+    try {
+      const saved = await putCachedBlob(content.id, blob, content, replacementIsCurrent);
+      if (saved && !replacementIsCurrent()) {
+        invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
+      }
+    } catch (error) {
+      console.warn('[signage] 검증된 미디어를 오프라인 캐시에 저장하지 못했습니다.', error);
+      invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
+    }
   }
   const objectUrl = URL.createObjectURL(blob);
   runtime.objectUrls.set(content.id, objectUrl);
