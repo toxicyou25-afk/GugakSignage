@@ -6,6 +6,7 @@ import multer from 'multer';
 import { imageSize } from 'image-size';
 import { restrictAdminToLoopback } from './admin-access.js';
 import { requireAdmin } from './auth.js';
+import { requireAdminRequestIntent } from './csrf.js';
 import { adminSessionEpoch, initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import type { AppConfig } from './config.js';
 import { get, getMeta, setMeta, type DB } from './db.js';
@@ -57,7 +58,11 @@ export function createApp(db: DB, config: AppConfig) {
   // Read the stored password state per request. Once the test default is replaced,
   // the same server process may accept administrator requests from the LAN.
   const localOnlyAdmin = restrictAdminToLoopback(() => usesTestDefaultAdminPassword(db));
-  const admin = [localOnlyAdmin, requireAdmin(config.sessionSecret, () => adminSessionEpoch(db))];
+  const admin = [
+    localOnlyAdmin,
+    requireAdmin(config.sessionSecret, () => adminSessionEpoch(db)),
+    requireAdminRequestIntent,
+  ];
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'gugak-signage', time: new Date().toISOString() });

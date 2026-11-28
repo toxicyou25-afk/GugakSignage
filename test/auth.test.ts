@@ -7,6 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import type { Request, Response } from 'express';
 import { isDirectLoopbackRequest, isLoopbackAddress, isLoopbackBindHost, restrictAdminToLoopback } from '../src/admin-access.js';
+import { hashPlayerToken } from '../src/util.js';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { getMeta, openDatabase, type DB } from '../src/db.js';
@@ -66,6 +67,7 @@ async function request(
   const headers: Record<string, string> = { ...(options.headers || {}) };
   if (options.cookie) headers.Cookie = options.cookie;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) headers['X-Gugak-Request'] = '1';
   const response = await fetch(`${app.baseUrl}${route}`, {
     method: options.method || 'GET',
     headers,
@@ -86,6 +88,7 @@ async function requestFromLanAddress(
   const headers: Record<string, string> = { ...(options.headers || {}) };
   if (options.cookie) headers.Cookie = options.cookie;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) headers['X-Gugak-Request'] = '1';
   return new Promise((resolve, reject) => {
     const req = http.request({
       hostname: address,
@@ -263,6 +266,68 @@ test('administrator login failures are rate-limited and produce redacted audit r
   assert.equal(audit.body.events[0].outcome, 'success');
   assert.match(audit.body.events[0].clientKey, /^[a-f0-9]{64}$/);
   assert.equal(audit.body.events.some((event: { clientKey?: string }) => event.clientKey?.includes('192.168.')), false);
+});
+
+test('cookie-authenticated admin writes require same-origin request intent', async (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-auth-csrf-'));
+  const apps: RunningApp[] = [];
+  t.after(async () => {
+    await Promise.all(apps.map((app) => app.close()));
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const app = await startApp(tempDir, 'csrf-test-password');
+  apps.push(app);
+  const loginWithoutIntent = await fetch(`${app.baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'csrf-test-password' }),
+  });
+  assert.equal(loginWithoutIntent.status, 403);
+  const session = await login(app, 'csrf-test-password');
+  assert.equal(session.response.status, 200);
+
+  const missingIntent = await fetch(`${app.baseUrl}/api/settings/institution`, {
+    method: 'PUT',
+    headers: { Cookie: session.cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ name: 'Blocked without intent' }),
+  });
+  assert.equal(missingIntent.status, 403);
+  assert.equal(getMeta(app.db, 'institution_name'), undefined);
+
+  const foreignOrigin = await fetch(`${app.baseUrl}/api/settings/institution`, {
+    method: 'PUT',
+    headers: {
+      Cookie: session.cookie,
+      'Content-Type': 'application/json',
+      'X-Gugak-Request': '1',
+      Origin: 'https://attacker.example',
+    },
+    body: JSON.stringify({ name: 'Blocked foreign origin' }),
+  });
+  assert.equal(foreignOrigin.status, 403);
+  assert.equal(getMeta(app.db, 'institution_name'), undefined);
+
+  const sameOrigin = await request(app, '/api/settings/institution', {
+    method: 'PUT',
+    cookie: session.cookie,
+    headers: { Origin: new URL(app.baseUrl).origin },
+    body: { name: 'Accepted same-origin request' },
+  });
+  assert.equal(sameOrigin.status, 200);
+  assert.equal(getMeta(app.db, 'institution_name'), 'Accepted same-origin request');
+
+  const playerToken = 'csrf-player-token';
+  app.db.prepare(`INSERT INTO devices(id, name, orientation, width, height, pairing_code, hardware_id,
+      player_token_hash, created_at, updated_at)
+    VALUES('csrf-player', 'CSRF Player', 'landscape', 1920, 1080, 'CSRF01', 'csrf-hardware', ?, datetime('now'), datetime('now'))`)
+    .run(hashPlayerToken(playerToken));
+  const playerHeartbeat = await fetch(`${app.baseUrl}/api/player/heartbeat`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${playerToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: 'playing' }),
+  });
+  assert.equal(playerHeartbeat.status, 200);
 });
 
 test('an existing pre-credential database keeps its prior development password when the environment is empty', async (t) => {

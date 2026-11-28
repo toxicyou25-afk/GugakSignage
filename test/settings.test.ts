@@ -21,6 +21,7 @@ async function request(
   options: { method?: string; body?: unknown; cookieValue?: string } = {},
 ) {
   const headers: Record<string, string> = {};
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) headers['X-Gugak-Request'] = '1';
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.cookieValue) headers.Cookie = options.cookieValue;
   const response = await fetch(`${baseUrl}${route}`, {

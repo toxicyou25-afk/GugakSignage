@@ -52,6 +52,8 @@ class ApiError extends Error {
 
 async function api(path, options = {}) {
   const request = { ...options, headers: { ...(options.headers || {}) } };
+  const method = (options.method || 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) request.headers['X-Gugak-Request'] = '1';
   if (options.body && !(options.body instanceof FormData) && typeof options.body !== 'string') {
     request.body = JSON.stringify(options.body);
     request.headers['Content-Type'] = 'application/json';
@@ -721,6 +723,7 @@ function uploadOne(file, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('POST', '/api/contents');
+    request.setRequestHeader('X-Gugak-Request', '1');
     request.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
     });

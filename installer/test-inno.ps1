@@ -282,6 +282,7 @@ try {
     $httpHandler = [System.Net.Http.HttpClientHandler]::new()
     $httpHandler.CookieContainer = $cookieContainer
     $adminApiClient = [System.Net.Http.HttpClient]::new($httpHandler)
+    $adminApiClient.DefaultRequestHeaders.Add("X-Gugak-Request", "1")
     $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
     $loginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
     if (-not $loginResponse.IsSuccessStatusCode) { throw "Inno 설치의 테스트 관리자 비밀번호 0000 로그인이 실패했습니다." }
@@ -451,6 +452,7 @@ try {
     Wait-Until -TimeoutSeconds 90 -Description "legacy 업그레이드 후 서버 health" -Condition { Test-ServerHealth -PortNumber $port }
     $loginClient = [System.Net.Http.HttpClient]::new()
     try {
+        $loginClient.DefaultRequestHeaders.Add("X-Gugak-Request", "1")
         $loginContent = [System.Net.Http.StringContent]::new('{"password":"0000"}', [Text.Encoding]::UTF8, "application/json")
         $loginResponse = $loginClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
         if (-not $loginResponse.IsSuccessStatusCode) { throw "legacy 업그레이드 후 0000 로그인이 실패했습니다." }

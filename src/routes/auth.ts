@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { clearSessionCookie, isAdminRequest, setSessionCookie } from '../auth.js';
 import { adminSessionEpoch, changeAdminPassword, usesTestDefaultAdminPassword, verifyAdminPassword } from '../admin-password.js';
+import { requireAdminRequestIntent } from '../csrf.js';
 import {
   adminClientKeyHash,
   adminLoginRetryAfterSeconds,
@@ -15,6 +16,7 @@ import type { DB } from '../db.js';
 
 export function authRoutes(db: DB, config: AppConfig): Router {
   const router = Router();
+  router.use(requireAdminRequestIntent);
 
   router.get('/audit', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');

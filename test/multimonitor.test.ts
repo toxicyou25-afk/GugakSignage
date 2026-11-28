@@ -430,6 +430,13 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     const headers: Record<string, string> = {};
     if (cookie) headers.Cookie = cookie;
     if (options.token) headers.Authorization = `Bearer ${options.token}`;
+    const method = (options.method || 'GET').toUpperCase();
+    const path = route.split('?', 1)[0] || route;
+    const playerControl = ['/api/player/launch', '/api/player/stop'].includes(path);
+    const adminRoute = path.startsWith('/api/auth/') || (path.startsWith('/api/') && (!path.startsWith('/api/player/') || playerControl));
+    if (!options.token && adminRoute && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      headers['X-Gugak-Request'] = '1';
+    }
     let body: string | undefined;
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';

@@ -38,7 +38,7 @@ test('manager media accepts admin sessions while Player media stays publication-
   assert.equal(badCookie.status, 401);
 
   const login = await fetch(`${base}/api/auth/login`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
     body: JSON.stringify({ password: 'media-admin-test' }),
   });
   assert.equal(login.status, 200);

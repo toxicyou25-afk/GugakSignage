@@ -139,7 +139,7 @@ try {
   }
   const oldPasswordResponse = await fetch(`${base}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
     body: JSON.stringify({ password: '0000' }),
   });
   if (oldPasswordResponse.status !== 401) throw new Error('이전 비밀번호가 거부되지 않았습니다.');
