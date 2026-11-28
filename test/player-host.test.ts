@@ -7,6 +7,9 @@ import path from 'node:path';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import test from 'node:test';
 import type { PlayerCredentialStore } from '../src/player-credentials.js';
+import { createApp } from '../src/app.js';
+import { loadConfig } from '../src/config.js';
+import { openDatabase } from '../src/db.js';
 import { createPlayerHostApp } from '../src/player-host.js';
 
 const token = 'a'.repeat(64);
@@ -360,6 +363,198 @@ test('reports connected monitor changes to the Manager after successful Player h
   assert.equal(secondHeartbeat.status, 200);
   await changedReport;
   assert.equal((reports[1]?.[0] as { bindingId: string }).bindingId, 'MONITOR\\REMOTE-2');
+});
+
+test('two LAN Player Hosts report monitors and receive only their assigned published screen', { timeout: 10_000 }, async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-intranet-e2e-'));
+  const config = loadConfig({
+    rootDir: path.resolve(import.meta.dirname, '..'),
+    dataDir: temp,
+    dbPath: path.join(temp, 'manager.sqlite'),
+    uploadDir: path.join(temp, 'uploads'),
+    seedSamples: false,
+    adminPassword: 'intranet-admin-test-password',
+    sessionSecret: 'intranet-admin-test-session-secret',
+    heartbeatOnlineMs: 60_000,
+    role: 'manager',
+    mode: 'lan',
+  });
+  fs.mkdirSync(config.uploadDir, { recursive: true });
+  const db = openDatabase(config.dbPath);
+  const now = new Date().toISOString();
+  const addPlaylist = (playlistId: string, contentId: string, label: string) => {
+    db.prepare(`INSERT INTO contents(id,name,kind,mime,stored_name,external_url,file_size,width,height,checksum,created_at)
+      VALUES(?, ?, 'image', 'image/png', ?, NULL, 128, 1920, 1080, NULL, ?)`).run(contentId, `${label} poster`, `${contentId}.png`, now);
+    db.prepare('INSERT INTO playlists(id,name,description,created_at,updated_at) VALUES(?,?,NULL,?,?)')
+      .run(playlistId, `${label} playlist`, now, now);
+    db.prepare(`INSERT INTO playlist_items(id,playlist_id,content_id,position,duration_seconds,fit_mode,
+        fit_mode_override,transition_ms,enabled) VALUES(?,?,?,1,10,'contain','contain',300,1)`)
+      .run(`item-${contentId}`, playlistId, contentId);
+  };
+  addPlaylist('playlist-player-a', 'content-player-a', 'Player A');
+  addPlaylist('playlist-player-b', 'content-player-b', 'Player B');
+
+  const managerServer = createServer(createApp(db, config));
+  const managerUrl = await listen(managerServer);
+  const hosts: Array<{ server: Server; url: string; assignmentPath: string; upstreamOrigins: string[] }> = [];
+  t.after(async () => {
+    await Promise.all(hosts.map(({ server }) => close(server)));
+    await close(managerServer);
+    db.close();
+    fs.rmSync(temp, { recursive: true, force: true });
+  });
+
+  let cookie = '';
+  const managerCall = async (route: string, options: { method?: string; body?: unknown } = {}) => {
+    const method = options.method ?? 'GET';
+    const headers: Record<string, string> = {};
+    if (cookie) headers.Cookie = cookie;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) headers['X-Gugak-Request'] = '1';
+    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const response = await fetch(new URL(route, managerUrl), { method, headers, body });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
+  };
+
+  const login = await managerCall('/api/auth/login', { method: 'POST', body: { password: 'intranet-admin-test-password' } });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  cookie = login.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
+  assert.match(cookie, /^signage_session=/);
+
+  const createDevice = async (name: string, playlistId: string) => {
+    const response = await managerCall('/api/devices', {
+      method: 'POST',
+      body: { name, orientation: 'landscape', width: 1920, height: 1080, playlistId },
+    });
+    assert.equal(response.status, 201, JSON.stringify(response.body));
+    return response.body.device as { id: string; pairingCode: string };
+  };
+  const deviceA = await createDevice('Remote Player A', 'playlist-player-a');
+  const deviceB = await createDevice('Remote Player B', 'playlist-player-b');
+
+  const startRemotePlayer = async (suffix: 'A' | 'B', device: { id: string; pairingCode: string }) => {
+    const stableId = `MONITOR\\INTRANET-${suffix}`;
+    const monitor = {
+      stableId,
+      bindingId: stableId,
+      deviceName: `\\\\.\\DISPLAY${suffix === 'A' ? '1' : '2'}`,
+      friendlyName: `Remote monitor ${suffix}`,
+      bounds: { x: suffix === 'A' ? 0 : 1920, y: 0, width: 1920, height: 1080 },
+      resolution: { width: 1920, height: 1080 },
+      orientation: 'landscape' as const,
+      primary: suffix === 'A',
+      attached: true,
+    };
+    const creds = credentials();
+    const assignmentPath = path.join(temp, `player-${suffix}`, 'control', 'screen-targets.json');
+    const upstreamOrigins: string[] = [];
+    const hostApp = createPlayerHostApp({
+      managerUrl,
+      credentialStore: creds.store,
+      identityStore: { async getOrCreateHardwareId() { return `intranet-hardware-${suffix}-0001`; } },
+      monitorProvider: async () => ({ supported: true, detectedAt: new Date().toISOString(), monitors: [monitor] }),
+      assignmentPath,
+      fetchImpl: async (input, init) => {
+        const target = new URL(String(input));
+        assert.equal(target.origin, managerUrl, 'a Player Host must contact only its configured local Manager');
+        upstreamOrigins.push(target.origin);
+        return fetch(target, init);
+      },
+    });
+    const server = hostApp.listen(0, '127.0.0.1');
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const url = `http://127.0.0.1:${address.port}`;
+    const registration = await fetch(`${url}/api/player/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: device.pairingCode }),
+    });
+    assert.equal(registration.status, 200, await registration.clone().text());
+    const registered = await registration.json() as { device: { id: string } };
+    assert.equal(registered.device.id, device.id);
+    hosts.push({ server, url, assignmentPath, upstreamOrigins });
+    return { server, url, assignmentPath, monitor, upstreamOrigins };
+  };
+
+  const playerA = await startRemotePlayer('A', deviceA);
+  const playerB = await startRemotePlayer('B', deviceB);
+  db.prepare('UPDATE devices SET last_host_local = 0 WHERE id IN (?, ?)').run(deviceA.id, deviceB.id);
+
+  const siteResponse = await managerCall('/api/sites', {
+    method: 'POST', body: { name: 'Offline LAN integration', timezone: 'Asia/Seoul' },
+  });
+  assert.equal(siteResponse.status, 201, JSON.stringify(siteResponse.body));
+  const siteId = siteResponse.body.site.id as string;
+  const groupId = siteResponse.body.group.id as string;
+  const configuration = await managerCall(`/api/groups/${groupId}/configuration`, {
+    method: 'PUT',
+    body: {
+      displayCount: 2,
+      width: 1920,
+      height: 1080,
+      orientation: 'landscape',
+      rotation: 0,
+      layoutType: 'row',
+      columns: 2,
+      rows: 1,
+      gap: 0.01,
+      deviceId: deviceA.id,
+      playlistId: 'playlist-player-a',
+      playbackMode: 'individual',
+      dwellMs: 10_000,
+      fitMode: 'contain',
+      resetEpoch: true,
+    },
+  });
+  assert.equal(configuration.status, 200, JSON.stringify(configuration.body));
+  const displays = db.prepare('SELECT id FROM displays WHERE group_id = ? ORDER BY start_index, created_at, rowid').all(groupId) as Array<{ id: string }>;
+  assert.equal(displays.length, 2);
+
+  for (const assignment of [
+    { displayId: displays[0]!.id, deviceId: deviceA.id, nativeMonitorId: playerA.monitor.bindingId, playlistId: 'playlist-player-a' },
+    { displayId: displays[1]!.id, deviceId: deviceB.id, nativeMonitorId: playerB.monitor.bindingId, playlistId: 'playlist-player-b' },
+  ]) {
+    const response = await managerCall(`/api/displays/${assignment.displayId}`, {
+      method: 'PUT',
+      body: { deviceId: assignment.deviceId, nativeMonitorId: assignment.nativeMonitorId, playlistId: assignment.playlistId },
+    });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+  }
+
+  const inventory = await managerCall(`/api/sites/${siteId}/monitor-inventory`);
+  assert.equal(inventory.status, 200, JSON.stringify(inventory.body));
+  for (const [device, expectedMonitor] of [[deviceA, playerA.monitor], [deviceB, playerB.monitor]] as const) {
+    const entry = inventory.body.devices.find((item: any) => item.deviceId === device.id);
+    assert.equal(entry?.localHost, false);
+    assert.equal(entry?.monitorReport.reported, true);
+    assert.deepEqual(entry.monitorReport.monitors.map((item: any) => item.bindingId), [expectedMonitor.bindingId]);
+    assert.equal(entry.assignedDisplayCount, 1);
+  }
+
+  const published = await managerCall(`/api/groups/${groupId}/publish`, { method: 'POST' });
+  assert.equal(published.status, 200, JSON.stringify(published.body));
+  for (const [player, device, expectedDisplay, expectedPlaylist, expectedContent] of [
+    [playerA, deviceA, displays[0]!.id, 'playlist-player-a', 'content-player-a'],
+    [playerB, deviceB, displays[1]!.id, 'playlist-player-b', 'content-player-b'],
+  ] as const) {
+    const response = await fetch(`${player.url}/api/player/manifest`);
+    assert.equal(response.status, 200);
+    const manifest = (await response.json() as { manifest: { device: { id: string }; wall: { screens: Array<{ displayId: string; playlist: { id: string; items: Array<{ content: { id: string } }> } }> } } }).manifest;
+    assert.equal(manifest.device.id, device.id);
+    assert.equal(manifest.wall.screens.length, 1);
+    assert.equal(manifest.wall.screens[0]?.displayId, expectedDisplay);
+    assert.equal(manifest.wall.screens[0]?.playlist.id, expectedPlaylist);
+    assert.equal(manifest.wall.screens[0]?.playlist.items[0]?.content.id, expectedContent);
+    assert.deepEqual(JSON.parse(fs.readFileSync(player.assignmentPath, 'utf8')), {
+      deviceId: device.id,
+      screenTargets: [{ displayId: expectedDisplay, nativeMonitorId: player.monitor.bindingId }],
+    });
+    assert.ok(player.upstreamOrigins.length > 0);
+    assert.ok(player.upstreamOrigins.every((origin) => origin === managerUrl));
+  }
 });
 
 test('fetches and atomically persists Manager screen targets without exposing them to the Player renderer', async (t) => {
