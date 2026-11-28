@@ -15,6 +15,10 @@ export function calculateServerOffsetMs(serverTime, receivedAt, fallback) {
   return Number.isFinite(serverMs) ? serverMs - receivedAt : fallback;
 }
 
+export function playerMediaHeaders(hostManaged, token) {
+  return !hostManaged && token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function selectRegistrationToken(storage, code, createToken) {
   if (storage.lastCode === code && storage.activeToken) {
     return { token: storage.activeToken, pending: false };

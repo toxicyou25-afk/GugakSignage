@@ -452,8 +452,12 @@ begin
   try
     if (GetRoleArg('') = 'manager') and (GetModeArg('') = 'lan') then
     begin
-      AdminSecretFile := CreateAdminSecretFile(TlsPage.Values[3]);
-      Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '" -AdminPasswordFile "' + AdminSecretFile + '"';
+      Parameters := Parameters + ' -TlsCertFile "' + TlsPage.Values[0] + '" -TlsKeyFile "' + TlsPage.Values[1] + '" -ManagerBaseUrl "' + TlsPage.Values[2] + '"';
+      if TlsPage.Values[3] <> '' then
+      begin
+        AdminSecretFile := CreateAdminSecretFile(TlsPage.Values[3]);
+        Parameters := Parameters + ' -AdminPasswordFile "' + AdminSecretFile + '"';
+      end;
     end;
     if (GetRoleArg('') = 'player') and (GetModeArg('') = 'lan') then
       Parameters := Parameters + ' -ManagerUrl "' + PlayerLanPage.Values[0] + '" -ManagerCaFile "' + PlayerLanPage.Values[1] + '"';

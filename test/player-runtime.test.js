@@ -156,6 +156,12 @@ test('manifest offset stays anchored to response receipt through a delayed asset
   assert.equal(playerRuntime.calculateServerOffsetMs('invalid server time', receivedAt, -250), -250);
 });
 
+test('browser-managed LAN media requests carry the Player token while Player Host requests do not', () => {
+  assert.equal(typeof playerRuntime.playerMediaHeaders, 'function');
+  assert.deepEqual(playerRuntime.playerMediaHeaders(false, 'player-token'), { Authorization: 'Bearer player-token' });
+  assert.deepEqual(playerRuntime.playerMediaHeaders(true, null), {});
+});
+
 test('same-device Player windows serialize registration and reuse the shared pending token', async () => {
   assert.equal(typeof playerRuntime.withPlayerRegistrationLock, 'function');
   assert.equal(typeof playerRuntime.selectRegistrationToken, 'function');

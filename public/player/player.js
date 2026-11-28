@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { calculateServerOffsetMs, createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, withPlayerRegistrationLock } from './player-runtime.js';
+import { calculateServerOffsetMs, createCacheReadiness, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, withPlayerRegistrationLock } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v5';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -1239,7 +1239,15 @@ async function resolveMediaUrl(content) {
       return objectUrl;
     }
   } catch { /* fall through to network */ }
-  return mediaRouteUrl(content.url);
+  const url = mediaRouteUrl(content.url);
+  if (runtime.hostManaged) return url;
+  const response = await fetch(url, { cache: 'default', headers: playerMediaHeaders(false, runtime.token) });
+  if (!response.ok) throw new Error(`media ${response.status}`);
+  const blob = await response.blob();
+  if (blob.size === 0) throw new Error('재생할 콘텐츠가 비어 있습니다.');
+  const objectUrl = URL.createObjectURL(blob);
+  runtime.objectUrls.set(content.id, objectUrl);
+  return objectUrl;
 }
 
 function mediaRouteUrl(url) {
@@ -1284,7 +1292,10 @@ async function prefetchAssets(manifest, connection, isCurrent) {
       isCurrent: () => isConnected() && isCurrentConnection(connection) && isCurrent(),
       hasCachedContent: (contentId) => existing.has(contentId),
       fetchAsset: async (content) => {
-        const response = await fetch(mediaRouteUrl(content.url), { cache: 'default' });
+        const response = await fetch(mediaRouteUrl(content.url), {
+          cache: 'default',
+          headers: playerMediaHeaders(runtime.hostManaged, runtime.token),
+        });
         if (response.status === 401) {
           handleUnauthorized(runtime.token, connection);
           return null;

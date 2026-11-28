@@ -18,6 +18,7 @@ if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup 
 $innoSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "GugakSignage.iss"))
 if ($innoSource -notmatch 'SaveStringsToUTF8FileWithoutBOM\(SecretPath, PasswordLines, False\)' -or
     $innoSource -notmatch 'PasswordLines\[0\] := Password' -or
+    -not $innoSource.Contains("if TlsPage.Values[3] <> '' then") -or
     $innoSource -notmatch '-AdminPasswordFile "' -or $innoSource -match '-AdminPassword "') {
     throw "Inno setup must transfer the Manager password through its temporary UTF-8 file, not a process argument."
 }

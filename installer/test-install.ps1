@@ -696,6 +696,14 @@ try {
             $roleConfig.adminAutoOpen.enabled -ne $true) { throw "Manager LAN role mapping/TLS paths/admin URL/autostart are incorrect." }
         if (@($roleConfig.shortcuts).Count -ne 0 -or @($roleConfig.adminShortcuts).Count -ne 2) { throw "Manager role shortcuts are incorrect." }
         $report.checks.managerLanRoleContract = $true
+        $savedManagerPassword = Get-EnvValue -EnvFile (Join-Path $dataDir ".env") -Name "ADMIN_PASSWORD"
+        $managerUpgradeWithoutPassword = @{} + $managerRoleCommon
+        $null = $managerUpgradeWithoutPassword.Remove("AdminPassword")
+        & $installScript @managerUpgradeWithoutPassword -Role manager -Mode lan -TlsCertFile $tlsCertFixture -TlsKeyFile $tlsKeyFixture -ManagerBaseUrl "https://gugak.internal:$port" *> $null
+        if ($LASTEXITCODE -ne 0 -or (Get-EnvValue -EnvFile (Join-Path $dataDir ".env") -Name "ADMIN_PASSWORD") -ne $savedManagerPassword) {
+            throw "An unattended Manager LAN reconfiguration without a new password did not preserve the saved credential."
+        }
+        $report.checks.managerLanUpgradeWithoutPasswordPreservesCredential = $true
         $managerEnvPath = Join-Path $dataDir ".env"
         $parseEnvProbe = Join-Path $testRoot "parse-manager-env.cjs"
         [IO.File]::WriteAllText($parseEnvProbe, @'
