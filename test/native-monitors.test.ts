@@ -25,6 +25,38 @@ test('parses multiple displays including negative desktop positions and portrait
   assert.equal(result.monitors[1].orientation, 'portrait');
 });
 
+test('qualifies identical monitor IDs with unique Windows DeviceKeys and detects an identity change', () => {
+  const first = { ...monitor, stableId: 'MONITOR\\SAME-MODEL', bindingId: 'MONITOR\\SAME-MODEL', deviceId: 'MONITOR\\SAME-MODEL', deviceKey: 'OUTPUT-KEY-A' };
+  const second = { ...first, deviceName: '\\\\.\\DISPLAY2', deviceKey: 'OUTPUT-KEY-B', primary: false };
+  const initial = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [first, second] }));
+
+  assert.equal(initial.monitors.length, 2);
+  assert.equal(initial.monitors[0]?.identityStatus, 'supplement-qualified');
+  assert.equal(initial.monitors[1]?.identityStatus, 'supplement-qualified');
+  assert.notEqual(initial.monitors[0]?.stableId, initial.monitors[1]?.stableId);
+  assert.notEqual(initial.monitors[0]?.bindingId, initial.monitors[1]?.bindingId);
+  assert.ok(initial.monitors.every((entry) => entry.bindingId?.startsWith('MONITOR\\SAME-MODEL|KEY-')));
+
+  const changedIdentity = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [
+    { ...first, deviceKey: 'OUTPUT-KEY-C' }, second,
+  ] }));
+  const changes = compareMonitorSnapshots(initial.monitors, changedIdentity.monitors);
+  assert.ok(changes.some((change) => change.type === 'disconnected'));
+  assert.ok(changes.some((change) => change.type === 'connected'));
+});
+
+test('marks same-model monitors ambiguous when Windows exposes no unique output key', () => {
+  const first = { ...monitor, stableId: 'MONITOR\\SAME-MODEL', bindingId: 'MONITOR\\SAME-MODEL', deviceId: 'MONITOR\\SAME-MODEL', deviceKey: 'SHARED-KEY' };
+  const second = { ...first, deviceName: '\\\\.\\DISPLAY2', primary: false };
+  const result = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [first, second] }));
+
+  assert.equal(result.monitors.length, 2);
+  assert.ok(result.monitors.every((entry) => entry.identityStatus === 'ambiguous'));
+  assert.ok(result.monitors.every((entry) => entry.bindingId?.startsWith('MONITOR\\SAME-MODEL|OUTPUT-')));
+  assert.equal(new Set(result.monitors.map((entry) => entry.stableId)).size, 2);
+  assert.equal(new Set(result.monitors.map((entry) => entry.bindingId)).size, 2);
+});
+
 test('malformed native output returns a clear discovery error', () => {
   for (const output of ['', 'not json', '{"supported":true}']) {
     assert.equal(parseNativeMonitorOutput(output).error, 'Windows display discovery returned no monitor data.');
@@ -83,6 +115,14 @@ test('reports bounds, resolution, orientation, and primary changes for the same 
     bounds: { x: 1920, y: 0, width: 1080, height: 1920 }, resolution: { width: 1080, height: 1920 } }];
   assert.deepEqual(compareMonitorSnapshots(previous, current), [{
     type: 'changed', stableId: 'MONITOR\\ABC', monitor: current[0], changedAttributes: ['bounds', 'resolution', 'orientation', 'primary'],
+  }]);
+});
+
+test('reports output-number and identity-confidence changes for manual monitor remapping', () => {
+  const previous = [{ ...monitor, identityStatus: 'supplement-qualified' as const }];
+  const current = [{ ...monitor, deviceName: '\\\\.\\DISPLAY2', bindingId: 'MONITOR\\ABC|OUTPUT-2', identityStatus: 'ambiguous' as const }];
+  assert.deepEqual(compareMonitorSnapshots(previous, current), [{
+    type: 'changed', stableId: monitor.stableId, monitor: current[0], changedAttributes: ['deviceName', 'identity'],
   }]);
 });
 

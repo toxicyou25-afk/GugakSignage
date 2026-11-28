@@ -14,6 +14,7 @@ export interface PlayerHostOptions {
   credentialStore: PlayerCredentialStore;
   identityStore: PlayerIdentityStore;
   monitorProvider?: () => Promise<NativeMonitorResult>;
+  now?: () => number;
   fetchImpl?: typeof fetch;
   assignmentPath?: string;
 }
@@ -55,6 +56,7 @@ const passthroughHeaders = ['content-type', 'content-length', 'cache-control', '
 export function createPlayerHostApp(options: PlayerHostOptions) {
   const base = managerBase(options.managerUrl);
   const fetcher = options.fetchImpl ?? fetch;
+  const now = options.now ?? Date.now;
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '256kb' }));
@@ -151,7 +153,7 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
   let lastMonitorReportAt = 0;
   let monitorReportInFlight: Promise<void> | null = null;
   async function reportNativeMonitors(): Promise<void> {
-    if (!options.monitorProvider || Date.now() - lastMonitorReportAt < 15_000) return;
+    if (!options.monitorProvider || now() - lastMonitorReportAt < 15_000) return;
     if (monitorReportInFlight) return monitorReportInFlight;
     monitorReportInFlight = (async () => {
       const token = await options.credentialStore.readToken();
@@ -169,7 +171,7 @@ export function createPlayerHostApp(options: PlayerHostOptions) {
         else if (await options.credentialStore.readToken() === token) await options.credentialStore.clear();
       }
       await response.text();
-      if (response.ok) lastMonitorReportAt = Date.now();
+      if (response.ok) lastMonitorReportAt = now();
     })().catch(() => {}).finally(() => { monitorReportInFlight = null; });
     await monitorReportInFlight;
   }

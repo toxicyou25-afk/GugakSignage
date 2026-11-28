@@ -6,7 +6,7 @@ import { all, get, run, transaction, type DB } from '../db.js';
 import { isDirectLoopbackRequest } from '../admin-access.js';
 import { manifestForDevice, publishedScreenTargets } from '../publishing.js';
 import { usesTestDefaultAdminPassword } from '../admin-password.js';
-import type { NativeMonitor } from '../native-monitors.js';
+import { normalizeNativeMonitorIdentities, type NativeMonitor, type NativeMonitorCandidate } from '../native-monitors.js';
 import type { DeviceRow } from '../types.js';
 import {
   asTrimmed,
@@ -74,14 +74,17 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
     const input = req.body?.monitors;
     const validId = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 512 && /^MONITOR\\/iu.test(value);
     if (!Array.isArray(input) || input.length > 32) { res.status(400).json({ error: '모니터 정보는 최대 32개까지 보고할 수 있습니다.' }); return; }
-    const monitors: NativeMonitor[] = [];
+    const monitors: NativeMonitorCandidate[] = [];
     for (const raw of input) {
       if (!raw || typeof raw !== 'object') { res.status(400).json({ error: '모니터 정보 형식이 올바르지 않습니다.' }); return; }
       const m = raw as Record<string, unknown>;
       const bounds = m.bounds as Record<string, unknown> | null;
       const dims = bounds && ['x', 'y', 'width', 'height'].every((key) => typeof bounds[key] === 'number' && Number.isSafeInteger(bounds[key]));
       if (typeof m.stableId !== 'string' || !m.stableId.trim() || m.stableId.length > 512 ||
-          (m.bindingId !== null && !validId(m.bindingId)) ||
+          (m.bindingId !== undefined && m.bindingId !== null && !validId(m.bindingId)) ||
+          (m.identityStatus !== undefined && !['supplement-qualified', 'ambiguous', 'unavailable'].includes(String(m.identityStatus))) ||
+          (m.deviceId !== undefined && m.deviceId !== null && (typeof m.deviceId !== 'string' || m.deviceId.length > 256)) ||
+          (m.deviceKey !== undefined && m.deviceKey !== null && (typeof m.deviceKey !== 'string' || m.deviceKey.length > 256)) ||
           typeof m.deviceName !== 'string' || !m.deviceName.trim() || m.deviceName.length > 128 ||
           typeof m.friendlyName !== 'string' || m.friendlyName.length > 256 || !bounds || !dims ||
           (bounds.width as number) <= 0 || (bounds.height as number) <= 0 || Math.abs(bounds.x as number) > 1_000_000 || Math.abs(bounds.y as number) > 1_000_000 ||
@@ -89,17 +92,22 @@ export function playerRoutes(db: DB, config: AppConfig): Router {
           !['landscape', 'portrait'].includes(String(m.orientation)) || typeof m.primary !== 'boolean' || typeof m.attached !== 'boolean') {
         res.status(400).json({ error: '모니터 ID, 화면 경계 또는 방향이 올바르지 않습니다.' }); return;
       }
-      monitors.push({ stableId: m.stableId.trim(), bindingId: typeof m.bindingId === 'string' ? m.bindingId : null, deviceName: m.deviceName.trim(), friendlyName: (m.friendlyName as string).trim(),
+      monitors.push({ stableId: m.stableId.trim(), bindingId: typeof m.bindingId === 'string' ? m.bindingId : null,
+        deviceId: typeof m.deviceId === 'string' && m.deviceId.trim() ? m.deviceId.trim() : m.stableId.trim(),
+        deviceKey: typeof m.deviceKey === 'string' ? m.deviceKey : undefined,
+        ...(typeof m.identityStatus === 'string' ? { identityStatus: m.identityStatus as NativeMonitor['identityStatus'] } : {}),
+        deviceName: m.deviceName.trim(), friendlyName: (m.friendlyName as string).trim(),
         bounds: { x: bounds.x as number, y: bounds.y as number, width: bounds.width as number, height: bounds.height as number },
         resolution: { width: bounds.width as number, height: bounds.height as number }, orientation: m.orientation as NativeMonitor['orientation'], primary: m.primary, attached: m.attached });
     }
-    const bindingIds = monitors.map((m) => m.bindingId).filter((bindingId): bindingId is string => Boolean(bindingId));
-    if (new Set(monitors.map((m) => m.stableId)).size !== monitors.length || new Set(bindingIds).size !== bindingIds.length) {
+    const normalizedMonitors = normalizeNativeMonitorIdentities(monitors);
+    const bindingIds = normalizedMonitors.map((m) => m.bindingId).filter((bindingId): bindingId is string => Boolean(bindingId));
+    if (new Set(normalizedMonitors.map((m) => m.stableId)).size !== normalizedMonitors.length || new Set(bindingIds).size !== bindingIds.length) {
       res.status(400).json({ error: '모니터 ID는 서로 달라야 합니다.' }); return;
     }
     const reportedAt = nowIso();
     run(db, `INSERT INTO player_monitor_reports(device_id, snapshot_json, reported_at) VALUES (?, ?, ?)
-      ON CONFLICT(device_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, reported_at = excluded.reported_at`, device.id, JSON.stringify(monitors), reportedAt);
+      ON CONFLICT(device_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, reported_at = excluded.reported_at`, device.id, JSON.stringify(normalizedMonitors), reportedAt);
     res.json({ ok: true, reportedAt });
   });
 

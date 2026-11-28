@@ -913,6 +913,22 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       ).map((display) => display.device_id),
       mappingBeforeGroupSave.map((display) => display.device_id),
     );
+
+    const duplicateMonitorReport = await request('/api/player/native-monitors', {
+      method: 'PUT',
+      token: secondRegistration.body.token,
+      body: { monitors: [
+        { ...reportedMonitors[0], stableId: 'MONITOR\\IDENTICAL', bindingId: 'MONITOR\\IDENTICAL', deviceName: '\\\\.\\DISPLAY11' },
+        { ...reportedMonitors[0], stableId: 'MONITOR\\IDENTICAL', bindingId: 'MONITOR\\IDENTICAL', deviceName: '\\\\.\\DISPLAY12', primary: false },
+      ] },
+    });
+    assert.equal(duplicateMonitorReport.status, 200, JSON.stringify(duplicateMonitorReport.body));
+    const storedAmbiguousReport = get<{ snapshot_json: string }>(db, 'SELECT snapshot_json FROM player_monitor_reports WHERE device_id = ?', secondDevice.body.device.id);
+    assert.ok(storedAmbiguousReport);
+    const ambiguousMonitors = JSON.parse(storedAmbiguousReport.snapshot_json) as any[];
+    assert.deepEqual(ambiguousMonitors.map((monitor) => monitor.identityStatus), ['ambiguous', 'ambiguous']);
+    assert.equal(new Set(ambiguousMonitors.map((monitor) => monitor.stableId)).size, 2);
+    assert.equal(new Set(ambiguousMonitors.map((monitor) => monitor.bindingId)).size, 2);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     db.close();
