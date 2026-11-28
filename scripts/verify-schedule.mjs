@@ -91,14 +91,14 @@ try {
     if (!playlist) throw new Error('샘플 재생목록을 찾지 못했습니다.');
     const deviceResponse = await fetch('/api/devices', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({ name: '시간표 검증 화면', location: '검증실' }),
     });
     const device = await deviceResponse.json();
     if (!deviceResponse.ok) throw new Error(device.error || '기기 생성 실패');
     const assignmentResponse = await fetch(`/api/devices/${device.device.id}/assignment`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({
         playlistId: null,
         schedules: [
@@ -121,7 +121,9 @@ try {
     });
     const assignment = await assignmentResponse.json();
     if (!assignmentResponse.ok) throw new Error(assignment.error || '시간표 저장 실패');
-    const publishResponse = await fetch(`/api/devices/${device.device.id}/publish`, { method: 'POST' });
+    const publishResponse = await fetch(`/api/devices/${device.device.id}/publish`, {
+      method: 'POST', headers: { 'X-Gugak-Request': '1' },
+    });
     const publish = await publishResponse.json();
     if (!publishResponse.ok) throw new Error(publish.error || '게시 실패');
     return { code: device.device.pairingCode, playlistId: playlist.id, version: publish.version };

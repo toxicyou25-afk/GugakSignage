@@ -18,6 +18,7 @@ let cookie = '';
 
 async function request(route: string, options: { method?: string; body?: unknown; cookieValue?: string } = {}) {
   const headers: Record<string, string> = {};
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) headers['X-Gugak-Request'] = '1';
   let body: BodyInit | undefined;
   if (options.body instanceof FormData) body = options.body;
   else if (options.body !== undefined) {

@@ -40,6 +40,12 @@ async function request(
 ): Promise<JsonResponse> {
   const headers: Record<string, string> = { ...(options.headers || {}) };
   if (options.cookieValue) headers.Cookie = options.cookieValue;
+  const method = (options.method || 'GET').toUpperCase();
+  const playerBearer = Object.entries(headers).some(([name, value]) => name.toLowerCase() === 'authorization' && value.startsWith('Bearer '));
+  const path = route.split('?', 1)[0] || route;
+  const playerControl = ['/api/player/launch', '/api/player/stop'].includes(path);
+  const adminRoute = path.startsWith('/api/auth/') || (path.startsWith('/api/') && (!path.startsWith('/api/player/') || playerControl));
+  if (!playerBearer && adminRoute && !['GET', 'HEAD', 'OPTIONS'].includes(method)) headers['X-Gugak-Request'] = '1';
   let body: BodyInit | undefined;
   if (options.body instanceof FormData) {
     body = options.body;

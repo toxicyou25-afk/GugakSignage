@@ -872,6 +872,7 @@ if (parsed.GUGAK_TLS_CERT_FILE !== process.argv[4]) throw new Error("GUGAK_TLS_C
     $httpHandler = [System.Net.Http.HttpClientHandler]::new()
     $httpHandler.CookieContainer = $cookieContainer
     $adminApiClient = [System.Net.Http.HttpClient]::new($httpHandler)
+    $adminApiClient.DefaultRequestHeaders.Add("X-Gugak-Request", "1")
     $loginContent = [System.Net.Http.StringContent]::new((@{ password = $freshInstallPassword } | ConvertTo-Json -Compress), [Text.Encoding]::UTF8, "application/json")
     $loginResponse = $adminApiClient.PostAsync("http://127.0.0.1:$port/api/auth/login", $loginContent).GetAwaiter().GetResult()
     if (-not $loginResponse.IsSuccessStatusCode) { throw "Fresh integrated test password login failed: HTTP $([int]$loginResponse.StatusCode)" }

@@ -48,6 +48,7 @@ async function postJson(url: string, body: unknown, cookie?: string): Promise<Re
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-Gugak-Request': '1',
       ...(cookie ? { Cookie: cookie } : {}),
     },
     body: JSON.stringify(body),

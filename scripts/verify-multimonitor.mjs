@@ -124,13 +124,13 @@ try {
     const image = contents.find((content) => content.kind === 'image' && content.height > content.width) || contents.find((content) => content.kind === 'image');
     const createdResponse = await fetch('/api/playlists', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({ name: '4번 화면 전용 이미지', description: '다중 모니터 브라우저 검증용' }),
     });
     const created = await createdResponse.json();
     const updatedResponse = await fetch(`/api/playlists/${created.playlist.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({
         name: created.playlist.name,
         description: created.playlist.description,
@@ -142,13 +142,13 @@ try {
     if (!url) throw new Error('검증용 URL 콘텐츠가 준비되지 않았습니다.');
     const urlPlaylistResponse = await fetch('/api/playlists', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({ name: '4번 화면 URL 단독', description: '다중 모니터 URL 브라우저 검증용' }),
     });
     const urlPlaylist = (await urlPlaylistResponse.json()).playlist;
     const urlPlaylistUpdate = await fetch(`/api/playlists/${urlPlaylist.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({
         name: urlPlaylist.name,
         description: urlPlaylist.description,
@@ -294,7 +294,7 @@ try {
   const secondDevice = await admin.evaluate(async () => {
     const response = await fetch('/api/devices', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Gugak-Request': '1' },
       body: JSON.stringify({ name: '브라우저 검증용 PC B <script>test</script>', orientation: 'landscape', width: 1920, height: 1080 }),
     });
     const data = await response.json();

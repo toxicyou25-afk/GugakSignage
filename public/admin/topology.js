@@ -12,6 +12,8 @@
 
   async function request(path, options = {}) {
     const requestOptions = { ...options, headers: { ...(options.headers || {}) } };
+    const method = (options.method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) requestOptions.headers['X-Gugak-Request'] = '1';
     if (options.body && typeof options.body !== 'string' && !(options.body instanceof FormData)) {
       requestOptions.body = JSON.stringify(options.body);
       requestOptions.headers['Content-Type'] = 'application/json';

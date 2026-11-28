@@ -25,12 +25,17 @@ test('LAN pairing codes expire, are single-use, and rate-limit failures without 
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const base = `http://127.0.0.1:${address.port}`;
   const call = async (route: string, options: { method?: string; body?: unknown; cookie?: string; ip?: string } = {}) => {
+    const method = options.method ?? 'GET';
+    const routePath = route.split('?', 1)[0] || route;
+    const playerControl = ['/api/player/launch', '/api/player/stop'].includes(routePath);
+    const adminRoute = routePath.startsWith('/api/auth/') || (routePath.startsWith('/api/') && (!routePath.startsWith('/api/player/') || playerControl));
     const response = await fetch(base + route, {
-      method: options.method ?? 'GET',
+      method,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...(options.cookie ? { Cookie: options.cookie } : {}),
         ...(options.ip ? { 'X-Forwarded-For': options.ip } : {}),
+        ...(adminRoute && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) ? { 'X-Gugak-Request': '1' } : {}),
       },
       ...(options.body ? { body: JSON.stringify(options.body) } : {}),
     });
