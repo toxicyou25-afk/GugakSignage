@@ -12,9 +12,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-sw-update-'));
 const profileDir = path.join(tempDir, 'persistent-profile');
 const evidenceDir = path.join(root, 'docs', 'verification');
 const baseFiles = new Map();
+const currentPlayerShellVersion = readPlayerShellVersion(fs.readFileSync(path.join(root, 'public', 'player', 'player.js'), 'utf8'));
+const currentWorkerCacheVersion = readWorkerCacheVersion(fs.readFileSync(path.join(root, 'public', 'player', 'sw.js'), 'utf8'));
 let server = null;
 let context = null;
 let mode = 'base';
+let basePlayerShellVersion = null;
+let baseWorkerCacheVersion = null;
 
 const report = {
   startedAt: new Date().toISOString(),
@@ -41,6 +45,18 @@ function step(name, details = {}) {
   report.steps ??= [];
   report.steps.push({ name, at: new Date().toISOString(), ...details });
   process.stdout.write('[sw-update] ' + name + '\n');
+}
+
+function readPlayerShellVersion(source) {
+  const match = String(source).match(/const PLAYER_SHELL_VERSION = ['"](v\d+)['"]/);
+  if (!match) throw new Error('player.js 셸 버전을 읽지 못했습니다.');
+  return match[1];
+}
+
+function readWorkerCacheVersion(source) {
+  const match = String(source).match(/const CACHE = ['"]gugak-signage-shell-(v\d+)['"]/);
+  if (!match) throw new Error('서비스 워커 캐시 버전을 읽지 못했습니다.');
+  return match[1];
 }
 
 function urlForPath(repoPath) {
@@ -132,11 +148,19 @@ async function waitForShellVersion(page, version, timeoutMs = 30_000) {
 
 try {
   loadBaseFiles();
+  basePlayerShellVersion = readPlayerShellVersion(baseFiles.get('/player/player.js'));
+  baseWorkerCacheVersion = readWorkerCacheVersion(baseFiles.get('/player/sw.js'));
+  if (basePlayerShellVersion !== baseWorkerCacheVersion) {
+    throw new Error(`기준 Player 셸(${basePlayerShellVersion})과 서비스 워커 캐시(${baseWorkerCacheVersion}) 버전이 다릅니다.`);
+  }
+  if (currentPlayerShellVersion !== currentWorkerCacheVersion) {
+    throw new Error(`HEAD Player 셸(${currentPlayerShellVersion})과 서비스 워커 캐시(${currentWorkerCacheVersion}) 버전이 다릅니다.`);
+  }
   const port = await startServer();
   const base = 'http://127.0.0.1:' + port;
   report.base = base;
   report.baseFileCount = baseFiles.size;
-  step('v4 기준 자산과 동일 origin 정적 서버 준비', { files: baseFiles.size, base });
+  step(`${basePlayerShellVersion} 기준 자산과 동일 origin 정적 서버 준비`, { files: baseFiles.size, base });
 
   context = await chromium.launchPersistentContext(profileDir, {
     channel: 'msedge',
@@ -149,7 +173,7 @@ try {
   await page.goto(base + '/player/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(window.__signagePlayer), null, { timeout: 20_000 });
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 20_000 });
-  report.baseState = await page.evaluate(async () => {
+  report.baseState = await page.evaluate(async ({ currentPlayerShellVersion }) => {
     const registration = await navigator.serviceWorker.ready;
     const keys = await caches.keys();
     const cachedPlayer = await caches.match('/player/player.js', { ignoreSearch: true });
@@ -158,33 +182,33 @@ try {
       controller: navigator.serviceWorker.controller?.scriptURL ?? null,
       active: registration.active?.scriptURL ?? null,
       playerShellVersion: window.__signagePlayer.getState().shellVersion ?? null,
-      cachedPlayerIncludesV5: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v5'")),
+      cachedPlayerIncludesCurrentVersion: Boolean((await cachedPlayer?.text())?.includes(`PLAYER_SHELL_VERSION = '${currentPlayerShellVersion}'`)),
     };
-  });
-  if (!report.baseState.cacheKeys.includes('gugak-signage-shell-v4')) {
-    throw new Error('기준 v4 셸 캐시가 생성되지 않았습니다: ' + JSON.stringify(report.baseState.cacheKeys));
+  }, { currentPlayerShellVersion });
+  if (!report.baseState.cacheKeys.includes(`gugak-signage-shell-${baseWorkerCacheVersion}`)) {
+    throw new Error(`기준 ${baseWorkerCacheVersion} 셸 캐시가 생성되지 않았습니다: ` + JSON.stringify(report.baseState.cacheKeys));
   }
-  if (report.baseState.playerShellVersion !== 'v4' || report.baseState.cachedPlayerIncludesV5) {
+  if (report.baseState.playerShellVersion !== basePlayerShellVersion || report.baseState.cachedPlayerIncludesCurrentVersion) {
     throw new Error('기준 프로필이 예상보다 새 player.js를 사용했습니다.');
   }
-  step('같은 persistent profile에 v4 셸 캐시 확인', report.baseState);
+  step(`같은 persistent profile에 ${basePlayerShellVersion} 셸 캐시 확인`, report.baseState);
 
   mode = 'head';
   report.deployedHeadState = {
-    directHeadFetchedV5: false,
-    activeWorkerStillServesV4: false,
+    directHeadFetchedCurrentVersion: false,
+    activeWorkerStillServesBaseVersion: false,
   };
   const directHead = await fetch(base + '/player/player.js?deploy=' + Date.now(), {
     headers: { 'Cache-Control': 'no-cache' },
   });
   const directHeadText = await directHead.text();
-  report.deployedHeadState.directHeadFetchedV5 = directHead.ok && directHeadText.includes("PLAYER_SHELL_VERSION = 'v5'");
+  report.deployedHeadState.directHeadFetchedCurrentVersion = directHead.ok && directHeadText.includes(`PLAYER_SHELL_VERSION = '${currentPlayerShellVersion}'`);
   const staleFetchText = await page.evaluate(async () => (await fetch('/player/player.js', { cache: 'no-store' })).text());
-  report.deployedHeadState.activeWorkerStillServesV4 = staleFetchText.includes("PLAYER_SHELL_VERSION = 'v4'");
-  if (!report.deployedHeadState.directHeadFetchedV5 || !report.deployedHeadState.activeWorkerStillServesV4) {
-    throw new Error('HEAD 배포 전후의 v4 재현 상태가 올바르지 않습니다: ' + JSON.stringify(report.deployedHeadState));
+  report.deployedHeadState.activeWorkerStillServesBaseVersion = staleFetchText.includes(`PLAYER_SHELL_VERSION = '${basePlayerShellVersion}'`);
+  if (!report.deployedHeadState.directHeadFetchedCurrentVersion || !report.deployedHeadState.activeWorkerStillServesBaseVersion) {
+    throw new Error(`HEAD 배포 전후의 ${basePlayerShellVersion} 재현 상태가 올바르지 않습니다: ` + JSON.stringify(report.deployedHeadState));
   }
-  step('같은 origin에 HEAD 배포 후 기존 v4 워커가 stale 자산 반환', report.deployedHeadState);
+  step(`같은 origin에 HEAD 배포 후 기존 ${basePlayerShellVersion} 워커가 stale 자산 반환`, report.deployedHeadState);
 
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
@@ -192,8 +216,8 @@ try {
   }).catch((error) => {
     if (!String(error.message).includes('Execution context was destroyed')) throw error;
   });
-  const updatedPlayerState = await waitForShellVersion(page, 'v5');
-  report.updatedState = await page.evaluate(async () => {
+  const updatedPlayerState = await waitForShellVersion(page, currentPlayerShellVersion);
+  report.updatedState = await page.evaluate(async ({ currentPlayerShellVersion }) => {
     const registration = await navigator.serviceWorker.ready;
     const keys = await caches.keys();
     const cachedPlayer = await caches.match('/player/player.js', { ignoreSearch: true });
@@ -203,24 +227,24 @@ try {
       controller: navigator.serviceWorker.controller?.scriptURL ?? null,
       active: registration.active?.scriptURL ?? null,
       playerShellVersion: window.__signagePlayer.getState().shellVersion,
-      cachedPlayerIncludesV5: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v5'")),
+      cachedPlayerIncludesCurrentVersion: Boolean((await cachedPlayer?.text())?.includes(`PLAYER_SHELL_VERSION = '${currentPlayerShellVersion}'`)),
       cachedWallInputIncludesUrlKinds: Boolean((await cachedWallInput?.text())?.includes('kind: item.content.kind')),
     };
-  });
+  }, { currentPlayerShellVersion });
   report.updatedState.playerShellVersion = updatedPlayerState.shellVersion;
-  if (report.updatedState.playerShellVersion !== 'v5') {
+  if (report.updatedState.playerShellVersion !== currentPlayerShellVersion) {
     throw new Error('등록 갱신 뒤에도 이전 player.js가 실행 중입니다.');
   }
-  if (!report.updatedState.cacheKeys.includes('gugak-signage-shell-v5') || report.updatedState.cacheKeys.includes('gugak-signage-shell-v4')) {
-    throw new Error('셸 캐시 v5 전환이 올바르지 않습니다: ' + JSON.stringify(report.updatedState.cacheKeys));
+  if (!report.updatedState.cacheKeys.includes(`gugak-signage-shell-${currentWorkerCacheVersion}`) || report.updatedState.cacheKeys.includes(`gugak-signage-shell-${baseWorkerCacheVersion}`)) {
+    throw new Error(`셸 캐시 ${currentWorkerCacheVersion} 전환이 올바르지 않습니다: ` + JSON.stringify(report.updatedState.cacheKeys));
   }
-  if (!report.updatedState.cachedPlayerIncludesV5 || !report.updatedState.cachedWallInputIncludesUrlKinds) {
-    throw new Error('새 player.js 또는 URL 지원 engine 자산이 v5 캐시에 없습니다.');
+  if (!report.updatedState.cachedPlayerIncludesCurrentVersion || !report.updatedState.cachedWallInputIncludesUrlKinds) {
+    throw new Error(`새 player.js 또는 URL 지원 engine 자산이 ${currentWorkerCacheVersion} 캐시에 없습니다.`);
   }
   if (!report.updatedState.controller?.endsWith('/player/sw.js')) {
     throw new Error('새 서비스 워커가 page controller가 되지 않았습니다.');
   }
-  step('registration.update 뒤 새 워커가 v5 자산으로 1회 갱신', report.updatedState);
+  step(`registration.update 뒤 새 워커가 ${currentWorkerCacheVersion} 자산으로 1회 갱신`, report.updatedState);
   report.result = 'passed';
 } catch (error) {
   report.result = 'failed';
