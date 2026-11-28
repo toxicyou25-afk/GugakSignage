@@ -191,13 +191,14 @@ try {
   };
   await admin.evaluate((monitor) => {
     const originalFetch = window.fetch.bind(window);
+    window.__gugakLocalMonitorSnapshot = monitor;
     window.fetch = (input, ...options) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url === '/api/native-monitors') {
         return Promise.resolve(new Response(JSON.stringify({
           supported: true,
           detectedAt: new Date().toISOString(),
-          monitors: [monitor],
+          monitors: window.__gugakLocalMonitorSnapshot ? [window.__gugakLocalMonitorSnapshot] : [],
           changes: [],
         }), { headers: { 'Content-Type': 'application/json' } }));
       }
@@ -481,6 +482,39 @@ try {
   await admin.waitForFunction((deviceId) =>
     document.querySelector(`[data-site-monitor-device="${CSS.escape(deviceId)}"] .site-monitor-state`)?.textContent === '온라인',
   secondDeviceId, { timeout: 10_000 });
+  await admin.evaluate((monitor) => {
+    const originalFetch = window.fetch.bind(window);
+    window.__gugakLocalMonitorSnapshot = monitor;
+    window.fetch = (input, ...options) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url === '/api/native-monitors') {
+        return Promise.resolve(new Response(JSON.stringify({
+          supported: true,
+          detectedAt: new Date().toISOString(),
+          monitors: window.__gugakLocalMonitorSnapshot ? [window.__gugakLocalMonitorSnapshot] : [],
+          changes: [],
+        }), { headers: { 'Content-Type': 'application/json' } }));
+      }
+      return originalFetch(input, ...options);
+    };
+  }, localFallbackMonitor);
+  const localStatusBefore = await localInventoryRow.locator('.site-monitor-state').innerText();
+  const refreshTestScreen = admin.locator('.screen-assignment').nth(0);
+  await refreshTestScreen.locator('[data-screen-device]').selectOption(secondDeviceId);
+  const staleRemoteBefore = await refreshTestScreen.locator('[data-screen-native-monitor] option')
+    .evaluateAll((options) => options.map((option) => ({ value: option.value, disabled: option.disabled })));
+  if (!localStatusBefore.includes('대기') ||
+      !staleRemoteBefore.some((option) => option.value === remoteMonitor.bindingId && !option.disabled)) {
+    throw new Error(`로컬 Player의 연결 상태 또는 온라인 원격 모니터 선택이 잘못되었습니다: ${JSON.stringify({ localStatusBefore, staleRemoteBefore })}`);
+  }
+  await refreshTestScreen.locator('[data-screen-device]').selectOption(deviceValue);
+  const refreshedLocalMonitor = {
+    ...localFallbackMonitor,
+    stableId: 'VERIFY-LOCAL-REFRESHED',
+    bindingId: 'MONITOR\\VERIFY-LOCAL-REFRESHED',
+    friendlyName: 'Local monitor after refresh',
+  };
+  await admin.evaluate((monitor) => { window.__gugakLocalMonitorSnapshot = monitor; }, refreshedLocalMonitor);
   const refreshedRemoteMonitor = {
     ...remoteMonitors[0],
     stableId: 'VERIFY-REMOTE-REFRESHED',
@@ -493,11 +527,29 @@ try {
     body: JSON.stringify({ monitors: [refreshedRemoteMonitor, remoteMonitors[1]] }),
   });
   if (!updateMonitorReport.ok) throw new Error('모니터 새 보고를 저장하지 못했습니다: ' + await updateMonitorReport.text());
-  await admin.waitForFunction((deviceId) => {
-    const option = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')]
-      .find((item) => item.value === deviceId);
-    return option?.dataset.monitors?.includes('VERIFY-REMOTE-REFRESHED');
-  }, secondDeviceId, { timeout: 20_000 });
+  await admin.waitForFunction(({ localDeviceId, localBindingId, remoteDeviceId, remoteBindingId }) => {
+    const options = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')];
+    const local = options.find((item) => item.value === localDeviceId);
+    const remote = options.find((item) => item.value === remoteDeviceId);
+    try {
+      return JSON.parse(local?.dataset.monitors || '[]').some((monitor) => monitor.bindingId === localBindingId) &&
+        JSON.parse(remote?.dataset.monitors || '[]').some((monitor) => monitor.bindingId === remoteBindingId);
+    } catch { return false; }
+  }, {
+    localDeviceId,
+    localBindingId: refreshedLocalMonitor.bindingId,
+    remoteDeviceId: secondDeviceId,
+    remoteBindingId: refreshedRemoteMonitor.bindingId,
+  }, { timeout: 25_000 });
+  const refreshedLocalBindings = await admin.locator('.screen-assignment').nth(0).locator('[data-screen-device] option')
+    .evaluateAll((options) => {
+      const local = options.find((option) => option.selected);
+      return JSON.parse(local?.dataset.monitors || '[]').map((monitor) => monitor.bindingId);
+    });
+  if (!refreshedLocalBindings.includes(refreshedLocalMonitor.bindingId) ||
+      refreshedLocalBindings.includes(localFallbackMonitor.bindingId)) {
+    throw new Error('열린 편집기의 로컬 모니터 목록이 주기 갱신되지 않았습니다: ' + JSON.stringify(refreshedLocalBindings));
+  }
   await admin.locator('.screen-assignment').nth(0).locator('[data-screen-device]').selectOption(secondDeviceId);
   const refreshedBindings = await admin.locator('.screen-assignment').nth(0).locator('[data-screen-native-monitor] option')
     .evaluateAll((options) => options.map((option) => option.value));
@@ -507,17 +559,46 @@ try {
     throw new Error('Player의 새 모니터 보고가 열린 화면 배정 선택기에 반영되지 않았습니다: ' + JSON.stringify(refreshedBindings));
   }
   await admin.locator('.screen-assignment').nth(0).locator('[data-screen-device]').selectOption(deviceValue);
+  const staleRemoteAt = new Date(Date.now() - 120_000).toISOString();
+  const staleRemoteDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  staleRemoteDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(staleRemoteAt, secondDeviceId);
+  staleRemoteDb.prepare('UPDATE player_monitor_reports SET snapshot_json = ?, reported_at = ? WHERE device_id = ?')
+    .run(JSON.stringify(remoteMonitors), staleRemoteAt, secondDeviceId);
+  staleRemoteDb.close();
+  await admin.waitForFunction(({ localDeviceId, localBindingId, remoteDeviceId }) => {
+    const localRow = document.querySelector(`[data-site-monitor-device="${CSS.escape(localDeviceId)}"]`);
+    const remoteRow = document.querySelector(`[data-site-monitor-device="${CSS.escape(remoteDeviceId)}"]`);
+    const options = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')];
+    const localOption = options.find((option) => option.value === localDeviceId);
+    const remoteOption = options.find((option) => option.value === remoteDeviceId);
+    try {
+      const localBindings = JSON.parse(localOption?.dataset.monitors || '[]').map((monitor) => monitor.bindingId);
+      const remoteBindings = JSON.parse(remoteOption?.dataset.monitors || '[]');
+      return localRow?.querySelector('.site-monitor-state')?.textContent === '대기' &&
+        remoteRow?.querySelector('.site-monitor-state')?.textContent?.startsWith('오프라인') &&
+        localBindings.includes(localBindingId) && remoteBindings.length === 0 &&
+        !localRow.querySelector('[data-site-monitor-monitor]')?.classList.contains('is-stale');
+    } catch { return false; }
+  }, { localDeviceId, localBindingId: refreshedLocalMonitor.bindingId, remoteDeviceId: secondDeviceId },
+  { timeout: 25_000 });
+  step('주기 갱신에서 로컬 탐색은 유지하고 오프라인 Player 선택지는 비활성화');
   const restoreFreshReport = await fetch(base + '/api/player/native-monitors', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + registration.token },
     body: JSON.stringify({ monitors: remoteMonitors }),
   });
   if (!restoreFreshReport.ok) throw new Error('원래 검증 모니터 보고를 복원하지 못했습니다: ' + await restoreFreshReport.text());
-  step('열린 편집기에서 최신 Player 모니터 보고가 배정 선택기에 반영됨', { bindingId: refreshedRemoteMonitor.bindingId });
+  step('열린 편집기에서 로컬 및 원격 Player의 최신 모니터 보고가 배정 선택기에 반영됨', {
+    localBindingId: refreshedLocalMonitor.bindingId,
+    remoteBindingId: refreshedRemoteMonitor.bindingId,
+  });
   const onlineDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
-  onlineDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), secondDeviceId);
-  onlineDb.prepare('UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?').run(new Date().toISOString(), secondDeviceId);
+  const onlineAt = new Date().toISOString();
+  onlineDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(onlineAt, secondDeviceId);
+  onlineDb.prepare('UPDATE player_monitor_reports SET snapshot_json = ?, reported_at = ? WHERE device_id = ?')
+    .run(JSON.stringify(remoteMonitors), onlineAt, secondDeviceId);
   onlineDb.close();
+  await admin.evaluate((monitor) => { window.__gugakLocalMonitorSnapshot = monitor; }, localFallbackMonitor);
   await admin.reload();
   await admin.waitForSelector('.topology-config');
   await admin.click('.topology-config button[type=submit]');
