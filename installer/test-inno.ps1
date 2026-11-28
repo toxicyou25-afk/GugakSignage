@@ -372,9 +372,8 @@ try {
     }
     if (-not (Test-PathEqual -Left ([string]$upgradedConfig.envFile) -Right $dataEnvPath)) { throw "legacy .env를 데이터 폴더로 이전하지 않았습니다." }
     if (-not (Test-PathEqual -Left (Get-EnvValue -EnvFile $legacyEnvPath -Name "DATA_DIR") -Right $dataDir)) { throw "escaped .env DATA_DIR를 복원하지 못했습니다." }
-    $upgradedEnv = [IO.File]::ReadAllText($dataEnvPath)
-    if ($upgradedEnv -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
-    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=true\s*$") { throw "legacy 업그레이드가 .env의 SEED_SAMPLES 값을 변경했습니다." }
+    if ((Get-EnvValue -EnvFile $dataEnvPath -Name "ADMIN_PASSWORD") -ne "0000") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
+    if ((Get-EnvValue -EnvFile $dataEnvPath -Name "SEED_SAMPLES") -ne "true") { throw "legacy 업그레이드가 .env의 SEED_SAMPLES 값을 변경했습니다." }
     if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($dataEnvPath))) {
         throw "legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
     }
