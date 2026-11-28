@@ -80,9 +80,9 @@
 
 ### v1.0 사이트별 모니터 인벤토리
 
-GET /api/sites/:id/monitor-inventory는 관리자 세션 전용이며 site에 연결된 PC만 반환한다. 기존 player_monitor_reports snapshot과 devices, displays, display_groups, playlists 행을 조합한다. 새 테이블이나 외부 서비스는 추가하지 않는다.
+GET /api/sites/:id/monitor-inventory는 관리자 세션 전용이며 site에 연결된 PC와, 어느 site나 화면에도 아직 배정되지 않은 등록 PC 후보를 반환한다. 다른 site에 배정된 PC는 제외한다. 기존 player_monitor_reports snapshot과 devices, displays, display_groups, playlists 행을 조합한다. 새 테이블이나 외부 서비스는 추가하지 않는다.
 
-응답은 siteId와 generatedAt, 그리고 PC별 deviceId/name/localHost/online/lastSeen/publishedVersion, monitorReport(reported/reportedAt/ageMs/monitors), assignments(displayId/displayName/groupId/groupName/playlistId/playlistName/nativeMonitorId/monitorDetected), logicalDisplayCount, assignedDisplayCount, unassignedDisplayIds를 포함한다.
+응답은 siteId와 generatedAt, 그리고 PC별 deviceId/name/siteAssigned/localHost/status/online/lastSeen/publishedVersion, monitorReport(reported/reportedAt/ageMs/monitors), assignments(displayId/displayName/groupId/groupName/playlistId/playlistName/nativeMonitorId/monitorDetected), logicalDisplayCount, assignedDisplayCount, unassignedDisplayIds를 포함한다. status는 기존 deviceStatus의 online/offline/pending 구분을 보존하고 online은 status가 online인지 나타낸다.
 
 Assignments는 저장된 초안 설정이며 활성 게시본을 바꾸지 않는다. monitorDetected는 저장된 binding ID가 최신 보고 목록에 있는지 나타낸다. offline PC의 마지막 report는 조사 목적으로 표시하지만 새 배정 선택지로 사용하지 않는다. 보고가 한 번도 없었던 상태(reported=false)와 성공한 빈 보고(reported=true, monitors=[])를 구분한다. 없는 site는 404를 반환한다.
 

@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - No database migration, new dependency, or external service.
-- Only PCs connected to the requested site may be returned.
+- Return PCs attached to this site plus registered PCs with no site or display assignment, matching the existing selector pool; exclude PCs assigned elsewhere and mark candidates siteAssigned=false.
 - Assignments describe the saved draft, not the active publication.
 - Offline snapshots remain visible with their age; existing server checks still reject new offline assignments.
 - Escape server-provided strings and preserve existing topology and playback behavior.
@@ -35,9 +35,9 @@
 
 **Interface:** monitorInventoryForSite(db: DB, siteId: string, heartbeatOnlineMs: number): SiteMonitorInventory | null.
 
-The returned object is { siteId, generatedAt, devices }. Each device has { deviceId, name, localHost, online, lastSeen, publishedVersion, monitorReport, assignments, logicalDisplayCount, assignedDisplayCount, unassignedDisplayIds }. monitorReport is { reported, reportedAt, ageMs, monitors }. Each assignment is { displayId, displayName, groupId, groupName, playlistId, playlistName, nativeMonitorId, monitorDetected }. Devices are scoped by the site; assignments include enabled draft displays only. A missing report has reported=false, reportedAt=null, ageMs=null, monitors=[]; an empty successful report has reported=true and monitors=[].
+The returned object is { siteId, generatedAt, devices }. Each device has { deviceId, name, siteAssigned, localHost, status, online, lastSeen, publishedVersion, monitorReport, assignments, logicalDisplayCount, assignedDisplayCount, unassignedDisplayIds }. status preserves the existing online/offline/pending distinction, and online is true only for status online. monitorReport is { reported, reportedAt, ageMs, monitors }. Each assignment is { displayId, displayName, groupId, groupName, playlistId, playlistName, nativeMonitorId, monitorDetected }. Devices include site members and unassigned candidates (site_id NULL with no displays elsewhere); candidates are marked siteAssigned=false; devices attached to other sites are excluded. Assignments include enabled draft displays only. A missing report has reported=false, reportedAt=null, ageMs=null, monitors=[]; an empty successful report has reported=true and monitors=[].
 
-- [ ] Add the API regression in the existing topology integration test, named “site monitor inventory keeps each Player report and assignment coverage separate”. Use its two Player devices: the first has no monitor report; the second reports MONITOR\\REMOTE-PRIMARY and an unbound monitor, has one enabled display assigned to the primary, and is then marked offline with an older report timestamp. Assert 2 devices for the requested site, the first report is absent, the second report retains both monitors and a positive age, second display coverage is 1 assigned of 1 with the display ID and monitorDetected=true, and an unknown site returns 404. A request without the admin cookie must return 401.
+- [ ] Extend the topology integration test “site monitor inventory keeps each Player report and assignment coverage separate”. Create an unassigned online PC with one monitor report and a PC on another site; assert the response includes the two site PCs plus the unassigned candidate with siteAssigned=false and excludes the other-site PC. Assert the first site PC has a missing report, the second has two reported monitors and 1/1 coverage, unknown-site returns 404, and unauthenticated requests return 401. Temporarily make the first PC pending with an empty successful report; assert status=pending, online=false, reported=true, monitors=[]. Restore the fixture.
 - [ ] Run the focused API test and confirm the route is absent.
 - [ ] Implement the read model and admin route without changing assignment or publish behavior.
 - [ ] Verify the focused test passes and unauthenticated requests remain rejected.
@@ -46,7 +46,7 @@ The returned object is { siteId, generatedAt, devices }. Each device has { devic
 
 **Files:** Modify public/admin/topology.js, public/admin/styles.css, and scripts/verify-multimonitor.mjs.
 
-- [ ] Add a failing browser assertion to scripts/verify-multimonitor.mjs named “site monitor inventory shows each Player and last report”. Assert two device rows, the offline row's stale label, its two monitor rows, and the assigned/unassigned coverage text.
+- [ ] Add a failing browser assertion to scripts/verify-multimonitor.mjs named “site monitor inventory shows each Player and last report”. Assert site devices and an unassigned candidate, online/offline/pending text, the offline row's stale label, its two monitor rows, and the assigned/unassigned coverage text.
 - [ ] Run the focused browser verifier and confirm the current UI does not yet expose the per-site inventory rows.
 - [ ] Replace repeated per-device monitor reads with the site inventory response; render per-PC state and preserve local monitor-change history.
 - [ ] Keep offline monitor IDs out of selectable options while showing their last-known state.

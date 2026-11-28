@@ -8,7 +8,12 @@ import { chromium } from 'playwright-core';
 
 const root = path.resolve(import.meta.dirname, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-multimonitor-verify-'));
-const evidenceDir = path.join(root, 'docs', 'verification', 'evidence');
+// Use MULTIMONITOR_ARTIFACT_DIR=temporary to keep screenshots and run logs
+// inside the disposable fixture directory instead of the tracked repo folder.
+const artifactDir = process.env.MULTIMONITOR_ARTIFACT_DIR === 'temporary'
+  ? path.join(tempDir, 'verification')
+  : path.join(root, 'docs', 'verification');
+const evidenceDir = path.join(artifactDir, 'evidence');
 const port = Number(process.env.VERIFY_PORT || 3141);
 const base = `http://127.0.0.1:${port}`;
 fs.mkdirSync(evidenceDir, { recursive: true });
@@ -161,12 +166,36 @@ try {
   });
   step('격리된 검증용 이미지·URL 화면 재생목록 생성', playlist);
 
+  await admin.evaluate(() => {
+    const originalFetch = window.fetch.bind(window);
+    let rejectInventoryRequest = true;
+    window.fetch = (input, ...options) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (rejectInventoryRequest && url.includes('/monitor-inventory')) {
+        rejectInventoryRequest = false;
+        return Promise.reject(new TypeError('Simulated temporary inventory request failure'));
+      }
+      return originalFetch(input, ...options);
+    };
+  });
   await admin.locator('.site-card').first().click();
-  await admin.waitForSelector('.topology-config');
-  await admin.getByRole('heading', { name: '이 PC에 연결된 실제 모니터' }).waitFor();
+  try {
+    await admin.waitForSelector('.topology-config', { timeout: 10_000 });
+  } catch (error) {
+    const editorFailure = await admin.locator('.empty').innerText().catch(() => '편집기가 표시되지 않았습니다.');
+    throw new Error(`장소 편집기를 열지 못했습니다: ${editorFailure}; ${error.message}`);
+  }
+  await admin.getByRole('heading', { name: 'PC별 실제 모니터' }).waitFor();
+  await admin.waitForSelector('[data-topology-action="retry-monitor-inventory"]', { timeout: 10_000 });
+  await admin.click('[data-topology-action="retry-monitor-inventory"]');
   await admin.waitForFunction(() => {
     const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
-    return status !== '감지 정보를 불러오는 중…';
+    return status.startsWith('생성 ') && document.querySelector('[data-native-monitors-list] .site-monitor-device');
+  }, null, { timeout: 5_000 });
+  step('모니터 인벤토리 요청 오류 뒤 재시도 복구');
+  await admin.waitForFunction(() => {
+    const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
+    return status !== '보고 정보를 불러오는 중…';
   });
   step('현재 PC의 물리 모니터 감지 상태 표시', {
     detectedMonitors: await admin.locator('[data-native-monitors-list] .screen-assignment').count(),
@@ -194,27 +223,49 @@ try {
     previewScreens: await admin.locator('.preview-screen').count(),
   });
 
-  const secondDeviceId = await admin.evaluate(async () => {
+  const secondDevice = await admin.evaluate(async () => {
     const response = await fetch('/api/devices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '브라우저 검증용 PC B', orientation: 'landscape', width: 1920, height: 1080 }),
+      body: JSON.stringify({ name: '브라우저 검증용 PC B <script>test</script>', orientation: 'landscape', width: 1920, height: 1080 }),
     });
     const data = await response.json();
     if (!response.ok || !data.device?.id) throw new Error(data.error || '검증용 PC B를 만들지 못했습니다.');
-    return data.device.id;
+    return { id: data.device.id, pairingCode: data.device.pairingCode };
   });
+  const secondDeviceId = secondDevice.id;
   const remoteMonitor = {
     stableId: 'VERIFY-REMOTE-STABLE', bindingId: 'MONITOR\\VERIFY-REMOTE-STABLE',
-    deviceName: '\\\\.\\DISPLAY7', friendlyName: 'Reported remote monitor',
+    deviceName: '\\\\.\\DISPLAY7', friendlyName: 'Reported <monitor> & "quoted"',
     bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
     orientation: 'landscape', primary: true, attached: true,
   };
+  const remoteMonitors = [remoteMonitor, {
+    stableId: 'VERIFY-REMOTE-SECONDARY', bindingId: 'MONITOR\\VERIFY-REMOTE-SECONDARY',
+    deviceName: '\\\\.\\DISPLAY8', friendlyName: 'Reported secondary monitor',
+    bounds: { x: 1920, y: 0, width: 1280, height: 720 }, resolution: { width: 1280, height: 720 },
+    orientation: 'landscape', primary: false, attached: true,
+  }];
+  const registrationResponse = await fetch(`${base}/api/player/register`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: secondDevice.pairingCode, hardwareId: 'VERIFY-REMOTE-HARDWARE-0001' }),
+  });
+  const registration = await registrationResponse.json();
+  if (!registrationResponse.ok || !registration.token) {
+    throw new Error(`검증용 원격 Player를 등록하지 못했습니다: ${JSON.stringify(registration)}`);
+  }
+  const monitorReportResponse = await fetch(`${base}/api/player/native-monitors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${registration.token}` },
+    body: JSON.stringify({ monitors: remoteMonitors }),
+  });
+  const monitorReport = await monitorReportResponse.json();
+  if (!monitorReportResponse.ok) throw new Error(`원격 Player 모니터 보고를 저장하지 못했습니다: ${JSON.stringify(monitorReport)}`);
+  // This verifier uses a disposable database under the OS temp directory.
+  // Mark the fixture Player as remote; finally removes the whole fixture on
+  // both success and failure, so no saved report or heartbeat is left behind.
   const seedDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
-  const reportedAt = new Date().toISOString();
-  seedDb.prepare('UPDATE devices SET last_host_local = 0, last_seen = ? WHERE id = ?').run(reportedAt, secondDeviceId);
-  seedDb.prepare(`INSERT INTO player_monitor_reports (device_id, snapshot_json, reported_at)
-    VALUES (?, ?, ?)`).run(secondDeviceId, JSON.stringify([remoteMonitor]), reportedAt);
+  seedDb.prepare('UPDATE devices SET last_host_local = 0 WHERE id = ?').run(secondDeviceId);
   seedDb.close();
   const remoteInventory = await admin.evaluate(async (deviceId) => {
     const response = await fetch(`/api/native-monitors?deviceId=${encodeURIComponent(deviceId)}`);
@@ -226,6 +277,200 @@ try {
   }
   // Device creation adds a migration display; saving the current 4-screen
   // draft removes that temporary extra screen and refreshes the PC choices.
+  await admin.click('.topology-config button[type=submit]');
+  await admin.waitForSelector('.preview-canvas');
+  const fixtureDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  fixtureDb.prepare('UPDATE displays SET device_id = NULL WHERE device_id = ?').run(secondDeviceId);
+  fixtureDb.prepare('UPDATE devices SET site_id = NULL WHERE id = ?').run(secondDeviceId);
+  fixtureDb.close();
+  await admin.click('.topology-config button[type=submit]');
+  await admin.waitForFunction((deviceId) => {
+    const option = [...document.querySelectorAll('.topology-config select[name=deviceId] option')]
+      .find((item) => item.value === deviceId);
+    return option?.textContent?.includes('장소 미배정') && option.textContent.includes('온라인');
+  }, secondDeviceId, { timeout: 10_000 });
+  const onlineCandidate = await admin.evaluate(async (deviceId) => {
+    const siteId = (await (await fetch('/api/sites')).json()).sites[0].id;
+    const devices = (await (await fetch(`/api/sites/${encodeURIComponent(siteId)}/monitor-inventory`)).json()).devices;
+    return devices.find((device) => device.deviceId === deviceId) || null;
+  }, secondDeviceId);
+  const secondDeviceOption = admin.locator(`.topology-config select[name=deviceId] option[value="${secondDeviceId}"]`);
+  const candidateInventoryRow = admin.locator(`[data-site-monitor-device="${secondDeviceId}"]`);
+  if (!onlineCandidate || onlineCandidate.siteAssigned !== false || onlineCandidate.status !== 'online' ||
+      !onlineCandidate.monitorReport.reported || await secondDeviceOption.count() !== 1 ||
+      !(await secondDeviceOption.innerText()).includes('장소 미배정') ||
+      !(await secondDeviceOption.innerText()).includes('온라인') ||
+      !(await candidateInventoryRow.locator('.site-monitor-state').getAttribute('class'))?.includes('badge-online')) {
+    throw new Error(`온라인 장소 미배정 후보가 올바르게 표시되지 않았습니다: ${JSON.stringify({ onlineCandidate, option: await secondDeviceOption.innerText().catch(() => '') })}`);
+  }
+  const unassignedBindingId = onlineCandidate.monitorReport.monitors[0]?.bindingId;
+  if (!unassignedBindingId) throw new Error('온라인 장소 미배정 후보에 보고된 모니터가 없습니다.');
+  const candidateScreen = admin.locator('.screen-assignment').nth(0);
+  await candidateScreen.locator('[data-screen-device]').selectOption(secondDeviceId);
+  const candidateMonitorSelect = candidateScreen.locator('[data-screen-native-monitor]');
+  if (await candidateMonitorSelect.isDisabled()) throw new Error('온라인 장소 미배정 후보 모니터 선택기가 비활성화되었습니다.');
+  await candidateMonitorSelect.selectOption(unassignedBindingId);
+  await candidateScreen.locator('[data-screen-device]').selectOption(deviceValue);
+  step('장소 미배정 온라인 후보와 보고 모니터를 화면 배정에서 선택', { deviceId: secondDeviceId, bindingId: unassignedBindingId });
+  const staleAt = new Date(Date.now() - 120_000).toISOString();
+  const staleDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  staleDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(staleAt, secondDeviceId);
+  staleDb.prepare('UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?').run(staleAt, secondDeviceId);
+  staleDb.close();
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
+  const inventoryRows = admin.locator('[data-site-monitor-device]');
+  const localRow = admin.locator(`[data-site-monitor-device="${deviceValue}"]`);
+  const offlineRow = admin.locator(`[data-site-monitor-device="${secondDeviceId}"]`);
+  await admin.waitForFunction((deviceId) => {
+    const status = document.querySelector('[data-native-monitors-status]')?.textContent || '';
+    const offlineStatus = document.querySelector(`[data-site-monitor-device="${CSS.escape(deviceId)}"] .site-monitor-state`)?.textContent || '';
+    return status !== '보고 정보를 불러오는 중…' && document.querySelectorAll('[data-site-monitor-device]').length === 2 &&
+      offlineStatus.startsWith('오프라인');
+  }, secondDeviceId, { timeout: 10_000 });
+  const inventoryDeviceCount = await inventoryRows.count();
+  const offlineText = inventoryDeviceCount === 2 ? await offlineRow.innerText() : '';
+  const offlineMonitorCount = inventoryDeviceCount === 2 ? await offlineRow.locator('[data-site-monitor-monitor]').count() : 0;
+  const localCoverage = inventoryDeviceCount === 2 ? await localRow.locator('.site-monitor-coverage').innerText() : '';
+  const offlineBadgeClass = inventoryDeviceCount === 2 ? await offlineRow.locator('.site-monitor-state').getAttribute('class') : '';
+  await candidateScreen.locator('[data-screen-device]').selectOption(secondDeviceId);
+  const staleMonitorChoices = await candidateScreen.locator('[data-screen-native-monitor] option').evaluateAll((options) =>
+    options.map((option) => ({ value: option.value, disabled: option.disabled })),
+  );
+  await candidateScreen.locator('[data-screen-device]').selectOption(deviceValue);
+  const currentSiteInventory = await admin.evaluate(async () => {
+    const siteId = (await (await fetch('/api/sites')).json()).sites[0].id;
+    return (await (await fetch(`/api/sites/${encodeURIComponent(siteId)}/monitor-inventory`)).json()).devices;
+  });
+  const offlineDeviceInventory = currentSiteInventory.find((device) => device.deviceId === secondDeviceId);
+  const localDeviceInventory = currentSiteInventory.find((device) => device.deviceId === deviceValue);
+  const coverageText = (device) => `${device.assignedDisplayCount}/${device.logicalDisplayCount}개 화면 배정 · 미지정 ${device.unassignedDisplayIds.length}개`;
+  const expectedOfflineCoverage = offlineDeviceInventory ? coverageText(offlineDeviceInventory) : '';
+  const expectedLocalCoverage = localDeviceInventory ? coverageText(localDeviceInventory) : '';
+  const renderedOfflineCoverage = inventoryDeviceCount === 2 ? await offlineRow.locator('.site-monitor-coverage').innerText() : '';
+  if (inventoryDeviceCount !== 2 || !offlineText.includes('오프라인') ||
+      !offlineText.includes('마지막 보고') || offlineMonitorCount !== 2 ||
+      !offlineBadgeClass?.includes('badge-offline') ||
+      staleMonitorChoices.some((option) => option.value && !option.disabled) ||
+      offlineDeviceInventory?.status !== 'offline' ||
+      !renderedOfflineCoverage.includes(expectedOfflineCoverage) || !localCoverage.includes(expectedLocalCoverage)) {
+    throw new Error(`site monitor inventory shows each Player and last report: ${JSON.stringify({
+      deviceRows: inventoryDeviceCount, offlineRow: offlineText, monitorRows: offlineMonitorCount,
+      expectedOfflineCoverage, renderedOfflineCoverage, expectedLocalCoverage, localCoverage,
+      offlineBadgeClass, staleMonitorChoices,
+    })}`);
+  }
+  step('site monitor inventory shows each Player and last report', {
+    deviceRows: inventoryDeviceCount, offlineMonitorRows: offlineMonitorCount,
+    offlineCoverage: renderedOfflineCoverage, localCoverage,
+  });
+  if (!offlineText.includes('브라우저 검증용 PC B <script>test</script>') ||
+      await offlineRow.locator('script').count() !== 0 ||
+      !offlineText.includes('Reported <monitor> & "quoted"')) {
+    throw new Error(`인벤토리 텍스트가 HTML로 해석되거나 이스케이프되지 않았습니다: ${offlineText}`);
+  }
+  await admin.setViewportSize({ width: 375, height: 900 });
+  const narrowInventory = await offlineRow.evaluate((row) => ({
+    width: row.getBoundingClientRect().width,
+    scrollWidth: row.scrollWidth,
+    clientWidth: row.clientWidth,
+  }));
+  if (narrowInventory.scrollWidth > narrowInventory.clientWidth + 1) {
+    throw new Error(`좁은 화면에서 PC 인벤토리가 가로로 넘칩니다: ${JSON.stringify(narrowInventory)}`);
+  }
+  await admin.setViewportSize({ width: 1600, height: 1000 });
+  const desktopInventory = await offlineRow.evaluate((row) => ({
+    width: row.getBoundingClientRect().width,
+    scrollWidth: row.scrollWidth,
+    clientWidth: row.clientWidth,
+  }));
+  if (desktopInventory.scrollWidth > desktopInventory.clientWidth + 1) {
+    throw new Error(`데스크톱 화면에서 PC 인벤토리가 가로로 넘칩니다: ${JSON.stringify(desktopInventory)}`);
+  }
+
+  const pendingStateDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const pendingIdentity = pendingStateDb.prepare(`SELECT hardware_id, player_token, player_token_hash
+    FROM devices WHERE id = ?`).get(secondDeviceId);
+  pendingStateDb.close();
+  const emptyReportResponse = await fetch(`${base}/api/player/native-monitors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${registration.token}` },
+    body: JSON.stringify({ monitors: [] }),
+  });
+  if (!emptyReportResponse.ok) throw new Error(`빈 모니터 보고를 저장하지 못했습니다: ${await emptyReportResponse.text()}`);
+  const pendingAt = new Date().toISOString();
+  const pendingDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  pendingDb.prepare('UPDATE devices SET hardware_id = NULL, player_token = NULL, player_token_hash = NULL, last_seen = NULL WHERE id = ?')
+    .run(secondDeviceId);
+  pendingDb.close();
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
+  const pendingRow = admin.locator(`[data-site-monitor-device="${secondDeviceId}"]`);
+  await admin.waitForFunction((deviceId) => {
+    const row = document.querySelector(`[data-site-monitor-device="${CSS.escape(deviceId)}"]`);
+    return row?.querySelector('.site-monitor-state')?.textContent === '대기';
+  }, secondDeviceId, { timeout: 10_000 });
+  const pendingText = await pendingRow.innerText();
+  if (!pendingText.includes('대기') || pendingText.includes('오프라인') ||
+      !pendingText.includes('보고된 모니터가 없습니다.') ||
+      !(await pendingRow.locator('.site-monitor-state').getAttribute('class'))?.includes('badge-pending')) {
+    throw new Error(`대기 상태와 성공한 빈 모니터 보고가 구분되지 않습니다: ${pendingText}`);
+  }
+  step('대기 Player와 성공한 빈 모니터 보고 구분', { pendingAt, text: pendingText });
+  const restorePendingDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  restorePendingDb.prepare('UPDATE devices SET hardware_id = ?, player_token = ?, player_token_hash = ?, last_seen = ? WHERE id = ?')
+    .run(pendingIdentity.hardware_id, pendingIdentity.player_token, pendingIdentity.player_token_hash, new Date().toISOString(), secondDeviceId);
+  restorePendingDb.close();
+  const restoredMonitorResponse = await fetch(`${base}/api/player/native-monitors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${registration.token}` },
+    body: JSON.stringify({ monitors: remoteMonitors }),
+  });
+  if (!restoredMonitorResponse.ok) throw new Error(`검증용 Player 상태를 복원하지 못했습니다: ${await restoredMonitorResponse.text()}`);
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
+  await admin.waitForFunction((deviceId) =>
+    document.querySelector(`[data-site-monitor-device="${CSS.escape(deviceId)}"] .site-monitor-state`)?.textContent === '온라인',
+  secondDeviceId, { timeout: 10_000 });
+  const refreshedRemoteMonitor = {
+    ...remoteMonitors[0],
+    stableId: 'VERIFY-REMOTE-REFRESHED',
+    bindingId: 'MONITOR\\VERIFY-REMOTE-REFRESHED',
+    friendlyName: 'Reported after editor opened',
+  };
+  const updateMonitorReport = await fetch(base + '/api/player/native-monitors', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + registration.token },
+    body: JSON.stringify({ monitors: [refreshedRemoteMonitor, remoteMonitors[1]] }),
+  });
+  if (!updateMonitorReport.ok) throw new Error('모니터 새 보고를 저장하지 못했습니다: ' + await updateMonitorReport.text());
+  await admin.waitForFunction((deviceId) => {
+    const option = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')]
+      .find((item) => item.value === deviceId);
+    return option?.dataset.monitors?.includes('VERIFY-REMOTE-REFRESHED');
+  }, secondDeviceId, { timeout: 20_000 });
+  await admin.locator('.screen-assignment').nth(0).locator('[data-screen-device]').selectOption(secondDeviceId);
+  const refreshedBindings = await admin.locator('.screen-assignment').nth(0).locator('[data-screen-native-monitor] option')
+    .evaluateAll((options) => options.map((option) => option.value));
+  if (!refreshedBindings.includes(refreshedRemoteMonitor.bindingId) ||
+      refreshedBindings.includes(remoteMonitors[0].bindingId) ||
+      !refreshedBindings.includes(remoteMonitors[1].bindingId)) {
+    throw new Error('Player의 새 모니터 보고가 열린 화면 배정 선택기에 반영되지 않았습니다: ' + JSON.stringify(refreshedBindings));
+  }
+  await admin.locator('.screen-assignment').nth(0).locator('[data-screen-device]').selectOption(deviceValue);
+  const restoreFreshReport = await fetch(base + '/api/player/native-monitors', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + registration.token },
+    body: JSON.stringify({ monitors: remoteMonitors }),
+  });
+  if (!restoreFreshReport.ok) throw new Error('원래 검증 모니터 보고를 복원하지 못했습니다: ' + await restoreFreshReport.text());
+  step('열린 편집기에서 최신 Player 모니터 보고가 배정 선택기에 반영됨', { bindingId: refreshedRemoteMonitor.bindingId });
+  const onlineDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  onlineDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(new Date().toISOString(), secondDeviceId);
+  onlineDb.prepare('UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?').run(new Date().toISOString(), secondDeviceId);
+  onlineDb.close();
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
   await admin.click('.topology-config button[type=submit]');
   await admin.waitForFunction(({ deviceId, bindingId }) => {
     const option = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')].find((item) => item.value === deviceId);
@@ -277,6 +522,53 @@ try {
   }
   report.deviceMapping = { initialMapping, explicitMapping, savedMapping, remoteMonitorPickerDisabled, remoteMonitorBindingId: remoteMonitor.bindingId };
   step('화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존', report.deviceMapping);
+
+  const undetectedDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const undetectedAt = new Date(Date.now() - 120_000).toISOString();
+  undetectedDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(undetectedAt, secondDeviceId);
+  undetectedDb.prepare('UPDATE player_monitor_reports SET snapshot_json = ?, reported_at = ? WHERE device_id = ?')
+    .run(JSON.stringify(remoteMonitors.slice(1)), undetectedAt, secondDeviceId);
+  undetectedDb.close();
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
+  await admin.waitForFunction(({ displayIndex, bindingId }) => {
+    const select = document.querySelectorAll('.screen-assignment')[displayIndex]?.querySelector('[data-screen-native-monitor]');
+    const option = [...(select?.options || [])].find((item) => item.value === bindingId);
+    return option?.disabled === true && option.textContent?.includes('오프라인 PC의 마지막 보고');
+  }, { displayIndex: 3, bindingId: remoteMonitor.bindingId }, { timeout: 10_000 });
+  const savedBindingSelect = admin.locator('.screen-assignment').nth(3).locator('[data-screen-native-monitor]');
+  const savedBindingState = await savedBindingSelect.evaluate((select, bindingId) => {
+    const options = [...select.options].filter((option) => option.value === bindingId);
+    return { value: select.value, options: options.map((option) => ({ text: option.textContent, disabled: option.disabled })) };
+  }, remoteMonitor.bindingId);
+  if (savedBindingState.options.length !== 1 || !savedBindingState.options[0].disabled ||
+      savedBindingState.value !== remoteMonitor.bindingId) {
+    const currentInventory = await admin.evaluate(async () => {
+      const siteId = (await (await fetch('/api/sites')).json()).sites[0].id;
+      return (await (await fetch(`/api/sites/${encodeURIComponent(siteId)}/monitor-inventory`)).json()).devices;
+    });
+    throw new Error(`저장됐지만 현재 감지되지 않는 오프라인 모니터가 선택 불가 상태로 보존되지 않았습니다: ${JSON.stringify({
+      savedBindingState, currentInventory: currentInventory.map(({ deviceId, online, monitorReport }) => ({
+        deviceId, online, reportedAt: monitorReport.reportedAt, monitors: monitorReport.monitors.map((monitor) => monitor.bindingId),
+      })),
+    })}`);
+  }
+  step('저장됐지만 감지되지 않은 오프라인 모니터 배정은 비활성으로 표시', { bindingId: remoteMonitor.bindingId });
+  const restoreReportDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const restoredReportAt = new Date().toISOString();
+  restoreReportDb.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(restoredReportAt, secondDeviceId);
+  restoreReportDb.prepare('UPDATE player_monitor_reports SET snapshot_json = ?, reported_at = ? WHERE device_id = ?')
+    .run(JSON.stringify(remoteMonitors), restoredReportAt, secondDeviceId);
+  restoreReportDb.close();
+  await admin.reload();
+  await admin.waitForSelector('.topology-config');
+  await admin.waitForFunction(({ deviceId, bindingId }) => {
+    const row = document.querySelectorAll('.screen-assignment')[3];
+    const option = [...(row?.querySelector('[data-screen-native-monitor]')?.options || [])]
+      .find((item) => item.value === bindingId);
+    return row?.querySelector('[data-screen-device]')?.value === deviceId && option && !option.disabled &&
+      document.querySelector(`[data-site-monitor-device="${CSS.escape(deviceId)}"] .site-monitor-state`)?.textContent === '온라인';
+  }, { deviceId: secondDeviceId, bindingId: remoteMonitor.bindingId }, { timeout: 10_000 });
 
   const refreshedFourth = admin.locator('.screen-assignment').nth(3);
   await refreshedFourth.locator('[data-screen-device]').selectOption(deviceValue);
@@ -333,7 +625,7 @@ try {
     throw new Error(`${error.message}; screen save state=${JSON.stringify(report.screenSaveFailureState)}`);
   }
   await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
-  const adminUrlHeading = await admin.frameLocator('.preview-screen iframe').locator('h1').innerText({ timeout: 10_000 });
+  const adminUrlHeading = await admin.frameLocator(`.preview-screen[data-display-id="${screenDisplayId}"] iframe`).locator('h1').innerText({ timeout: 10_000 });
   if (!adminUrlHeading.includes('오늘의 안내')) throw new Error(`관리 미리보기 URL iframe이 표시되지 않았습니다: ${adminUrlHeading}`);
   await admin.screenshot({ path: path.join(evidenceDir, 'multimonitor-02-admin-plan-preview.png'), fullPage: true });
   report.adminPreview = await admin.evaluate(async () => {
@@ -375,7 +667,7 @@ try {
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 30_000 });
   await player.waitForFunction(() => document.querySelectorAll('.wall-screen').length === 4, null, { timeout: 10_000 });
   await player.waitForSelector('.wall-screen iframe', { timeout: 20_000 });
-  const wallUrlHeading = await player.frameLocator('.wall-screen iframe').locator('h1').innerText({ timeout: 10_000 });
+  const wallUrlHeading = await player.frameLocator('.wall-screen iframe').nth(0).locator('h1').innerText({ timeout: 10_000 });
   if (!wallUrlHeading.includes('오늘의 안내')) throw new Error(`wall URL iframe이 표시되지 않았습니다: ${wallUrlHeading}`);
   await player.waitForTimeout(2_500);
   await player.screenshot({ path: path.join(evidenceDir, 'multimonitor-03-player-four-screens.png') });
@@ -566,8 +858,8 @@ try {
   await stopServer();
   report.base = sanitize(report.base);
   report.serverLog = sanitize(report.serverLog);
-  const jsonPath = path.join(root, 'docs', 'verification', 'multimonitor-run.json');
-  const textPath = path.join(root, 'docs', 'verification', 'multimonitor-run.txt');
+  const jsonPath = path.join(artifactDir, 'multimonitor-run.json');
+  const textPath = path.join(artifactDir, 'multimonitor-run.txt');
   fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   fs.writeFileSync(textPath, `${JSON.stringify(report, null, 2)}\n\n${report.serverLog}`);
   fs.rmSync(tempDir, { recursive: true, force: true });
