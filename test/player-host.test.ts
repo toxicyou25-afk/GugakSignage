@@ -266,6 +266,102 @@ test('reports the Host OS monitor snapshot to the authenticated Manager after re
   assert.equal(calls[1]?.authorization, `Bearer ${token}`);
 });
 
+test('reports connected monitor changes to the Manager after successful Player heartbeats', { timeout: 5_000 }, async (t) => {
+  let now = 1_000_000;
+  const reports: unknown[][] = [];
+  const managerPaths: string[] = [];
+  let monitorProviderReads = 0;
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-player-host-monitor-refresh-'));
+  const assignmentPath = path.join(dataDir, 'control', 'screen-targets.json');
+  let targetRefreshes = 0;
+  let firstTargetRefreshResolve!: () => void;
+  const firstTargetRefresh = new Promise<void>((resolve) => { firstTargetRefreshResolve = resolve; });
+  const reportWaiters = new Map<number, () => void>();
+  let monitors = [{
+    stableId: 'DISPLAY-REMOTE-1', bindingId: 'MONITOR\\REMOTE-1', deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Remote monitor 1',
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
+    orientation: 'landscape', primary: true, attached: true,
+  }];
+  const waitForReports = (count: number) => reports.length >= count
+    ? Promise.resolve()
+    : new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`monitor report ${count} timeout: ${JSON.stringify({ reports, managerPaths, monitorProviderReads, now })}`)), 1_000);
+      reportWaiters.set(count, () => { clearTimeout(timeout); resolve(); });
+    });
+  const manager = createServer((req, res) => {
+    managerPaths.push(req.url ?? '');
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on('end', () => {
+      assert.equal(req.headers.authorization, `Bearer ${token}`);
+      if (req.url === '/api/player/heartbeat') {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.url === '/api/player/native-monitors') {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { monitors: unknown[] };
+        reports.push(body.monitors);
+        for (const [count, resolve] of reportWaiters) {
+          if (reports.length >= count) { reportWaiters.delete(count); resolve(); }
+        }
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.url === '/api/player/screen-targets') {
+        targetRefreshes += 1;
+        if (targetRefreshes === 1) firstTargetRefreshResolve();
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ deviceId: 'device-1', screenTargets: [] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end('{}');
+    });
+  });
+  const managerUrl = await listen(manager);
+  const hostServer = createPlayerHostApp({
+    managerUrl,
+    credentialStore: credentials(token).store,
+    identityStore,
+    assignmentPath,
+    now: () => now,
+    monitorProvider: async () => { monitorProviderReads += 1; return { supported: true, detectedAt: new Date(now).toISOString(), monitors }; },
+  }).listen(0, '127.0.0.1');
+  t.after(async () => {
+    await close(hostServer);
+    await close(manager);
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+  const hostUrl = await new Promise<string>((resolve) => hostServer.once('listening', () => {
+    const address = hostServer.address();
+    assert.ok(address && typeof address !== 'string');
+    resolve(`http://127.0.0.1:${address.port}`);
+  }));
+  const heartbeat = () => fetch(`${hostUrl}/api/player/heartbeat`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: 'playing' }),
+  });
+
+  const firstReport = waitForReports(1);
+  const firstHeartbeat = await heartbeat();
+  assert.equal(firstHeartbeat.status, 200);
+  await firstReport;
+  await firstTargetRefresh;
+  assert.equal((reports[0]?.[0] as { bindingId: string }).bindingId, 'MONITOR\\REMOTE-1');
+
+  now += 15_001;
+  monitors = [{
+    ...monitors[0]!,
+    stableId: 'DISPLAY-REMOTE-2', bindingId: 'MONITOR\\REMOTE-2', friendlyName: 'Remote monitor 2',
+  }];
+  const changedReport = waitForReports(2);
+  const secondHeartbeat = await heartbeat();
+  assert.equal(secondHeartbeat.status, 200);
+  await changedReport;
+  assert.equal((reports[1]?.[0] as { bindingId: string }).bindingId, 'MONITOR\\REMOTE-2');
+});
+
 test('fetches and atomically persists Manager screen targets without exposing them to the Player renderer', async (t) => {
   const targets = [{ displayId: 'display-remote-1', nativeMonitorId: 'MONITOR\\REMOTE-1' }];
   let managerAvailable = true;

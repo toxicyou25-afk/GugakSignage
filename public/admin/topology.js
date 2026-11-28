@@ -149,6 +149,9 @@
     const nativeMonitorOptions = (selected, deviceId) => {
       const monitors = nativeMonitorsFor(deviceId);
       const inventory = inventoryByDevice.get(deviceId);
+      const identityHint = (monitor) => monitor.identityStatus === 'ambiguous'
+        ? ' · 식별 모호 · 화면 번호를 확인해 수동 배정'
+        : monitor.identityStatus === 'supplement-qualified' ? ' · 보조 식별자로 구분' : '';
       const selectedExists = monitors.some((monitor) => monitor.bindingId === selected);
       const savedBindingStatus = selected && !/^MONITOR\\/iu.test(selected)
         ? '안정 식별자가 아니므로 다시 배정해야 함'
@@ -159,7 +162,7 @@
       const savedOption = selected && !selectedExists
         ? `<option value="${page(selected)}" selected ${!inventory || inventory.status !== 'online' ? 'disabled' : ''}>저장된 모니터 ${page(selected)} · ${inventory ? savedBindingStatus : '모니터 보고를 확인할 수 없음'}</option>`
         : '';
-      return `<option value="">물리 모니터 지정 안 함</option>${savedOption}${monitors.map((monitor) => monitor.bindingId ? `<option value="${page(monitor.bindingId)}" ${monitor.bindingId === selected ? 'selected' : ''}>${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>` : '').join('')}`;
+      return `<option value="">물리 모니터 지정 안 함</option>${savedOption}${monitors.map((monitor) => monitor.bindingId ? `<option value="${page(monitor.bindingId)}" ${monitor.bindingId === selected ? 'selected' : ''}>${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}${page(identityHint(monitor))}</option>` : '').join('')}`;
     };
     const assignedDevice = group.displays.find((display) => display.device_id)?.device_id || '';
 
@@ -238,7 +241,7 @@
     const list = view.querySelector('[data-native-monitors-list]');
     const status = view.querySelector('[data-native-monitors-status]');
     if (!list || !status || !view.isConnected) return;
-    const changeNames = { bounds: '위치·영역', resolution: '해상도', orientation: '방향', primary: '주 디스플레이' };
+    const changeNames = { bounds: '위치·영역', resolution: '해상도', orientation: '방향', primary: '주 디스플레이', deviceName: 'Windows 출력 번호', identity: '모니터 식별 방식' };
     const changeLabels = { connected: '연결됨', disconnected: '연결 해제됨', changed: '정보 변경됨' };
     const historyMarkup = () => monitorChangeHistory.length
       ? `<div class="preview-plans">${monitorChangeHistory.slice().reverse().map((change) => `<div><span>${page(changeLabels[change.type])} · ${page(change.monitor.friendlyName)}</span><strong>${change.type === 'changed' ? page(change.changedAttributes.map((attribute) => changeNames[attribute]).join(', ')) : page(change.stableId)}</strong><small>${page(change.stableId)} · ${dateTime(change.detectedAt)}</small></div>`).join('')}</div>`
@@ -312,7 +315,7 @@
             return `<div class="site-monitor-row${monitorSnapshotCurrent ? '' : ' is-stale'}" data-site-monitor-monitor>
               <div class="site-monitor-name"><strong>${page(monitor.friendlyName || monitor.deviceName)}</strong><small>${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height} · ${page(monitor.orientation)}</small></div>
               <small>${monitor.primary ? '주 화면' : '보조 화면'} · ${monitor.attached ? '연결됨' : '분리됨'} · (${monitor.bounds.x}, ${monitor.bounds.y}, ${monitor.bounds.width}×${monitor.bounds.height})</small>
-              <small title="${page(monitor.stableId)}">${monitor.bindingId ? `${page(monitor.bindingId)}${selectable ? ' · 선택 가능' : ''}` : '안정 식별자 없음 · 배정할 수 없음'}</small>
+              <small title="${page(monitor.stableId)}">${monitor.identityStatus === 'ambiguous' ? `식별 모호 · ${page(monitor.deviceName)} 번호로 수동 배정${monitor.bindingId ? ` · ${page(monitor.bindingId)}` : ''}` : monitor.identityStatus === 'supplement-qualified' ? `보조 식별자로 구분 · ${page(monitor.bindingId || monitor.stableId)}${selectable ? ' · 선택 가능' : ''}` : monitor.bindingId ? `${page(monitor.bindingId)}${selectable ? ' · 선택 가능' : ''}` : '안정 식별자 없음 · 배정할 수 없음'}</small>
               <small>${assignment ? `${page(assignment.displayName)} · ${page(assignment.playlistName || '그룹 기본 재생목록')}` : '화면 배정 없음'}</small>
             </div>`;
           }).join('')}</div>` : `<p class="tiny muted">${report.reported ? '보고된 모니터가 없습니다.' : '아직 모니터 보고가 없습니다.'}</p>`;
@@ -345,6 +348,9 @@
 
   function refreshAssignmentMonitorOptions(view, inventory) {
     const devices = new Map(inventory.devices.map((device) => [device.deviceId, device]));
+    const identityHint = (monitor) => monitor.identityStatus === 'ambiguous'
+      ? ' · 식별 모호 · 번호 확인 후 수동 배정'
+      : monitor.identityStatus === 'supplement-qualified' ? ' · 보조 식별자로 구분' : '';
     const monitorChoices = (device) => device?.deviceId === inventory.localMonitorDeviceId && device.monitorReport.reported
       ? device.monitorReport.monitors.filter((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId))
       : device?.status === 'online' && device.monitorReport.reported
@@ -386,7 +392,7 @@
         ? `<option value="${page(selected)}" selected disabled>저장된 모니터 ${page(selected)} · ${device ? staleLabel : '모니터 보고를 확인할 수 없음'}</option>`
         : '';
       monitorSelect.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${saved}${monitors.map((monitor) =>
-        `<option value="${page(monitor.bindingId)}" ${monitor.bindingId === selected ? 'selected' : ''}>${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>`,
+        `<option value="${page(monitor.bindingId)}" ${monitor.bindingId === selected ? 'selected' : ''}>${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}${page(identityHint(monitor))}</option>`,
       ).join('')}`;
       monitorSelect.value = selectedExists || selected ? selected : '';
       monitorSelect.disabled = !deviceSelect.value;
@@ -575,8 +581,11 @@
     monitorSelect.value = '';
     let monitors = [];
     try { monitors = JSON.parse(selected?.dataset.monitors || '[]'); } catch { monitors = []; }
+    const identityHint = (monitor) => monitor.identityStatus === 'ambiguous'
+      ? ' · 식별 모호 · 번호 확인 후 수동 배정'
+      : monitor.identityStatus === 'supplement-qualified' ? ' · 보조 식별자로 구분' : '';
     monitorSelect.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${monitors.map((monitor) =>
-      `<option value="${page(monitor.bindingId)}">${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>`,
+      `<option value="${page(monitor.bindingId)}">${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}${page(identityHint(monitor))}</option>`,
     ).join('')}`;
     const hasStableMonitors = monitors.some((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId));
     monitorSelect.disabled = !hasStableMonitors;

@@ -304,6 +304,7 @@ try {
   const secondDeviceId = secondDevice.id;
   const remoteMonitor = {
     stableId: 'VERIFY-REMOTE-STABLE', bindingId: 'MONITOR\\VERIFY-REMOTE-STABLE',
+    identityStatus: 'ambiguous',
     deviceName: '\\\\.\\DISPLAY7', friendlyName: 'Reported <monitor> & "quoted"',
     bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
     orientation: 'landscape', primary: true, attached: true,
@@ -373,11 +374,20 @@ try {
   }
   const unassignedBindingId = onlineCandidate.monitorReport.monitors[0]?.bindingId;
   if (!unassignedBindingId) throw new Error('온라인 장소 미배정 후보에 보고된 모니터가 없습니다.');
+  const ambiguousMonitorLabel = await candidateInventoryRow.innerText();
+  if (!ambiguousMonitorLabel.includes('식별 모호') || !ambiguousMonitorLabel.includes('수동 배정')) {
+    throw new Error(`모호한 모니터 ID가 관리자 화면에서 수동 배정으로 표시되지 않았습니다: ${ambiguousMonitorLabel}`);
+  }
   const candidateScreen = admin.locator('.screen-assignment').nth(0);
   await candidateScreen.locator('[data-screen-device]').selectOption(secondDeviceId);
   const candidateMonitorSelect = candidateScreen.locator('[data-screen-native-monitor]');
   if (await candidateMonitorSelect.isDisabled()) throw new Error('온라인 장소 미배정 후보 모니터 선택기가 비활성화되었습니다.');
   await candidateMonitorSelect.selectOption(unassignedBindingId);
+  const ambiguousOptionLabel = await candidateMonitorSelect.evaluate((select, bindingId) =>
+    [...select.options].find((option) => option.value === bindingId)?.textContent || '', unassignedBindingId);
+  if (!ambiguousOptionLabel.includes('식별 모호') || !ambiguousOptionLabel.includes('수동 배정')) {
+    throw new Error(`모호한 모니터 선택지에 수동 배정 경고가 없습니다: ${ambiguousOptionLabel}`);
+  }
   await candidateScreen.locator('[data-screen-device]').selectOption(deviceValue);
   step('장소 미배정 온라인 후보와 보고 모니터를 화면 배정에서 선택', { deviceId: secondDeviceId, bindingId: unassignedBindingId });
   const staleAt = new Date(Date.now() - 120_000).toISOString();
@@ -863,9 +873,17 @@ try {
         cacheReady: state.cacheReady,
         lastError: state.lastError,
         wallPlanCount: Object.keys(state.wallPlans || {}).length,
+        plans: Object.entries(state.wallPlans || {}).map(([displayId, plan]) => ({ displayId, kind: plan.kind, contentId: plan.contentId, imageId: plan.imageId })),
         wallMediaCount: document.querySelectorAll('.wall-screen .wall-media').length,
         urlFallbackCount: document.querySelectorAll('.wall-screen .wall-url-offline').length,
         urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,
+        screens: Array.from(document.querySelectorAll('.wall-screen')).map((screen) => ({
+          mediaCount: screen.querySelectorAll('.wall-media').length,
+          fallbackCount: screen.querySelectorAll('.wall-url-offline').length,
+          frameCount: screen.querySelectorAll('iframe').length,
+          renderReady: screen.querySelector('.wall-screen-canvas')?.dataset.renderReady || null,
+          text: screen.textContent?.trim().slice(0, 100) || '',
+        })),
       };
     }).catch(() => null);
     throw new Error(`${error.message}; offline debug=${JSON.stringify(offlineDebug)}`);

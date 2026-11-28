@@ -37,6 +37,10 @@ sites
 
 한 모니터 수를 코드에 고정하지 않는다. API는 정수 모니터 수를 받아 엔진이 슬롯을 생성하며, 테스트는 1·2·4·8대와 0·1·3·10장 조합을 확인한다. 운영 안전 범위는 요청당 1~256개 모니터다.
 
+### 물리 모니터 식별
+
+Windows `DeviceID`가 보고 안에서 유일하면 기존 ID를 유지한다. 동일 `DeviceID`가 반복되면 서로 다른 `DeviceKey`의 SHA-256 지문을 ID에 더해 보고 항목을 구분한다. 이 키도 반복되거나 없으면 `DISPLAYn` 출력 번호를 붙인 `ambiguous` ID로 보고를 보존하고 관리자 UI에 수동 배정 안내를 표시한다. ID가 바뀌면 이전 배정은 감지되지 않은 상태로 남아 관리자가 현재 보고에서 다시 지정해야 한다. DeviceKey 기반 구분과 ambiguous fallback은 소프트웨어 식별 규칙이며, 실제 장비에서 포트 교체와 모니터 교체가 올바르게 감지되는지는 별도 검증한다.
+
 ## 3. 관리 API
 
 | 메서드·경로 | 역할 |
@@ -132,12 +136,13 @@ npm run verify:multimonitor
 - 4모니터 API 저장 → 4번 화면 다른 재생목록 → 미리보기 → 게시 → 재생기 manifest
 - 4화면을 두 PC로 나누고 각 manifest가 자기 화면 배정만 받는지 확인
 - 화면별 PC 선택 UI에서 4번 화면만 다른 PC로 명시 재배정하고, 그룹 설정을 다시 저장해도 `[A,A,A,B]` 매핑이 유지되는지 확인
+- 동일 `DeviceID`의 모니터 보고는 고유 `DeviceKey`가 있으면 구분하고, 키도 모호하면 보고를 보존해 관리자 화면에서 수동 배정 상태로 표시
 - 4→2모니터 변경 뒤 기존 게시 JSON과 버전 불변 확인
 - 5기기 레거시 DB 20회 마이그레이션에서 장치→슬롯 매핑 동일성, 새 기기 추가 후 기존 slot/start index 보존
 - 항목 fit 미지정 + 화면 fit `cover` → RenderPlan `cover`, 항목 fit `contain` → RenderPlan `contain`
 - 샘플 이미지 3·동영상 1·URL 1이 공유 wall 입력에 모두 남고 URL이 40초 경계에서 `kind: "url"` RenderPlan이 되는지 확인
 - Edge 실제 브라우저: 관리자 로그인, 장소, 4화면, 2×2, 1280×720, 화면별 PC·재생목록, URL 단독 `iframe`, 게시, 한 PC 4화면, 3초 전환, 오프라인 URL 대체 화면, 오프라인 재로드 offset, 한 화면 분리 창
-- 같은 persistent Edge profile에서 기준 `3556b02`의 v3 셸을 먼저 캐시하고, 같은 origin에 HEAD를 배포한 뒤 `registration.update()`가 v4 캐시·새 player.js·URL 지원 engine을 적용하는지 확인
+- 같은 persistent Edge profile에서 기준 `8eed9e1`의 v4 셸을 먼저 캐시하고, 같은 origin에 HEAD를 배포한 뒤 `registration.update()`가 v7 캐시·새 player.js·URL 지원 engine을 적용하는지 확인
 
 브라우저 스크린샷과 콘솔 로그는 `docs/verification/evidence/multimonitor-*.png`, `docs/verification/multimonitor-run.json`에 있다.
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -8,16 +9,91 @@ const execFileAsync = promisify(execFile);
 export interface NativeMonitor {
   stableId: string; bindingId: string | null; deviceName: string; friendlyName: string; bounds: { x: number; y: number; width: number; height: number };
   resolution: { width: number; height: number }; orientation: 'landscape' | 'portrait'; primary: boolean; attached: boolean;
+  identityStatus?: 'supplement-qualified' | 'ambiguous' | 'unavailable';
 }
+export interface NativeMonitorCandidate extends NativeMonitor { deviceId?: string; deviceKey?: string; }
 export interface NativeMonitorResult {
   supported: boolean; detectedAt: string; monitors: NativeMonitor[]; error?: string;
 }
-export type MonitorChangeAttribute = 'bounds' | 'resolution' | 'orientation' | 'primary';
+export type MonitorChangeAttribute = 'bounds' | 'resolution' | 'orientation' | 'primary' | 'deviceName' | 'identity';
 export type MonitorChange =
   | { type: 'connected' | 'disconnected'; stableId: string; monitor: NativeMonitor }
   | { type: 'changed'; stableId: string; monitor: NativeMonitor; changedAttributes: MonitorChangeAttribute[] };
 
 const emptyResult = (detectedAt: string, error: string): NativeMonitorResult => ({ supported: true, detectedAt, monitors: [], error });
+
+function identityFingerprint(value: string): string {
+  return createHash('sha256').update(value.trim().toLocaleLowerCase('en-US')).digest('hex').slice(0, 16);
+}
+
+function appendIdentitySuffix(value: string, suffix: string): string {
+  const separator = '|';
+  return `${value.slice(0, Math.max(1, 512 - separator.length - suffix.length))}${separator}${suffix}`;
+}
+
+export function normalizeNativeMonitorIdentities(candidates: readonly NativeMonitorCandidate[]): NativeMonitor[] {
+  const deviceIdCounts = new Map<string, number>();
+  const bindingIdCounts = new Map<string, number>();
+  const deviceNameCounts = new Map<string, number>();
+  for (const candidate of candidates) {
+    const deviceId = (candidate.deviceId?.trim() || candidate.stableId.trim()).toLocaleLowerCase('en-US');
+    const deviceName = candidate.deviceName.trim().toLocaleLowerCase('en-US');
+    deviceIdCounts.set(deviceId, (deviceIdCounts.get(deviceId) ?? 0) + 1);
+    deviceNameCounts.set(deviceName, (deviceNameCounts.get(deviceName) ?? 0) + 1);
+    if (candidate.bindingId) {
+      const bindingId = candidate.bindingId.toLocaleLowerCase('en-US');
+      bindingIdCounts.set(bindingId, (bindingIdCounts.get(bindingId) ?? 0) + 1);
+    }
+  }
+
+  return candidates.map((candidate, index) => {
+    const { deviceId: rawDeviceId, deviceKey: rawDeviceKey, ...monitor } = candidate;
+    const deviceId = rawDeviceId?.trim() || candidate.stableId.trim();
+    const bindingId = candidate.bindingId;
+    const duplicateDeviceId = (deviceIdCounts.get(deviceId.toLocaleLowerCase('en-US')) ?? 0) > 1;
+    const duplicateBindingId = Boolean(bindingId && (bindingIdCounts.get(bindingId.toLocaleLowerCase('en-US')) ?? 0) > 1);
+    if (!duplicateDeviceId && !duplicateBindingId) {
+      const identityStatus = candidate.identityStatus ?? (bindingId ? undefined : 'unavailable');
+      return {
+        ...monitor,
+        stableId: deviceId,
+        ...(identityStatus ? { identityStatus } : {}),
+      };
+    }
+
+    const deviceKey = rawDeviceKey?.trim() ?? '';
+    const matchingDeviceKeys = candidates.filter((other) =>
+      (other.deviceId?.trim() || other.stableId.trim()).toLocaleLowerCase('en-US') === deviceId.toLocaleLowerCase('en-US') &&
+      (other.deviceKey?.trim() ?? '').toLocaleLowerCase('en-US') === deviceKey.toLocaleLowerCase('en-US')
+    ).length;
+    const bindingIsUnique = Boolean(bindingId && bindingIdCounts.get(bindingId.toLocaleLowerCase('en-US')) === 1);
+    const supplementalDiscriminator = deviceKey && matchingDeviceKeys === 1
+      ? deviceKey
+      : bindingIsUnique ? bindingId! : '';
+
+    if (supplementalDiscriminator) {
+      const suffix = `KEY-${identityFingerprint(supplementalDiscriminator)}`;
+      return {
+        ...monitor,
+        stableId: appendIdentitySuffix(deviceId, suffix),
+        bindingId: !bindingId ? null : !duplicateBindingId ? bindingId : appendIdentitySuffix(bindingId, suffix),
+        identityStatus: bindingId ? 'supplement-qualified' : 'unavailable',
+      };
+    }
+
+    const outputName = candidate.deviceName.trim();
+    const outputKey = (deviceNameCounts.get(outputName.toLocaleLowerCase('en-US')) ?? 0) === 1
+      ? outputName
+      : `${outputName}\u0000${index}`;
+    const suffix = `OUTPUT-${identityFingerprint(outputKey)}`;
+    return {
+      ...monitor,
+      stableId: appendIdentitySuffix(deviceId, suffix),
+      bindingId: bindingId ? appendIdentitySuffix(bindingId, suffix) : null,
+      identityStatus: 'ambiguous',
+    };
+  });
+}
 
 export function parseNativeMonitorOutput(output: string, detectedAt = new Date().toISOString()): NativeMonitorResult {
   try {
@@ -28,12 +104,14 @@ export function parseNativeMonitorOutput(output: string, detectedAt = new Date()
     if (typeof (value as { error?: unknown }).error === 'string' && (value as { error: string }).error) {
       return emptyResult(detectedAt, (value as { error: string }).error);
     }
-    const monitors: NativeMonitor[] = [];
+    const candidates: NativeMonitorCandidate[] = [];
     for (const raw of value.monitors) {
       if (!raw || typeof raw !== 'object') return emptyResult(detectedAt, 'Windows display discovery returned invalid monitor data.');
       const m = raw as Record<string, unknown>;
       const numbers = ['x', 'y', 'width', 'height'].map((key) => m[key]);
       if (['stableId', 'deviceName', 'friendlyName'].some((key) => typeof m[key] !== 'string' || !(m[key] as string).trim()) ||
+          (m.deviceId !== undefined && m.deviceId !== null && (typeof m.deviceId !== 'string' || m.deviceId.length > 512)) ||
+          (m.deviceKey !== undefined && m.deviceKey !== null && (typeof m.deviceKey !== 'string' || m.deviceKey.length > 256)) ||
           numbers.some((n, index) => typeof n !== 'number' || !Number.isFinite(n) || (index > 1 && n <= 0)) ||
           !['landscape', 'portrait'].includes(String(m.orientation)) || typeof m.primary !== 'boolean' || typeof m.attached !== 'boolean') {
         return emptyResult(detectedAt, 'Windows display discovery returned invalid monitor data.');
@@ -46,12 +124,15 @@ export function parseNativeMonitorOutput(output: string, detectedAt = new Date()
       const stableId = (m.stableId as string).trim();
       const rawBindingId = typeof m.bindingId === 'string' ? m.bindingId.trim() : '';
       const bindingId = rawBindingId.length <= 512 && /^MONITOR\\/iu.test(rawBindingId) ? rawBindingId : null;
-      monitors.push({
-        stableId, bindingId, deviceName: m.deviceName as string, friendlyName: m.friendlyName as string,
+      candidates.push({
+        stableId, bindingId, deviceId: typeof m.deviceId === 'string' ? m.deviceId : stableId,
+        deviceKey: typeof m.deviceKey === 'string' ? m.deviceKey : undefined,
+        deviceName: m.deviceName as string, friendlyName: m.friendlyName as string,
         bounds: { x, y, width, height }, resolution: { width, height }, orientation: m.orientation as NativeMonitor['orientation'],
         primary: m.primary, attached: m.attached,
       });
     }
+    const monitors = normalizeNativeMonitorIdentities(candidates);
     return { supported: true, detectedAt, monitors };
   } catch {
     return emptyResult(detectedAt, 'Windows display discovery returned no monitor data.');
@@ -82,6 +163,8 @@ export function compareMonitorSnapshots(
     if (monitor.resolution.width !== next.resolution.width || monitor.resolution.height !== next.resolution.height) changedAttributes.push('resolution');
     if (monitor.orientation !== next.orientation) changedAttributes.push('orientation');
     if (monitor.primary !== next.primary) changedAttributes.push('primary');
+    if (monitor.deviceName !== next.deviceName) changedAttributes.push('deviceName');
+    if (monitor.bindingId !== next.bindingId || monitor.identityStatus !== next.identityStatus) changedAttributes.push('identity');
     if (changedAttributes.length) changes.push({ type: 'changed', stableId: monitor.stableId, monitor: next, changedAttributes });
   }
   for (const monitor of current) {
