@@ -16,7 +16,8 @@ if (-not $SetupExe) { $SetupExe = Join-Path $PSScriptRoot "build\inno\GugakSigna
 $SetupExe = (Resolve-Path -LiteralPath $SetupExe).Path
 if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup EXE가 없습니다: $SetupExe" }
 $innoSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "GugakSignage.iss"))
-if ($innoSource -notmatch 'SaveStringToUTF8File\(SecretPath, Password, False\)' -or
+if ($innoSource -notmatch 'SaveStringsToUTF8FileWithoutBOM\(SecretPath, PasswordLines, False\)' -or
+    $innoSource -notmatch 'PasswordLines\[0\] := Password' -or
     $innoSource -notmatch '-AdminPasswordFile "' -or $innoSource -match '-AdminPassword "') {
     throw "Inno setup must transfer the Manager password through its temporary UTF-8 file, not a process argument."
 }
