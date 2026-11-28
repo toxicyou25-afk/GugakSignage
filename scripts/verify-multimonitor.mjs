@@ -859,9 +859,9 @@ try {
       const state = window.__signagePlayer.getState();
       const plans = Object.values(state.wallPlans || {});
       const urlPlanCount = plans.filter((plan) => plan.kind === 'url').length;
-      const imagePlanCount = plans.length - urlPlanCount;
+      const mediaPlanCount = plans.filter((plan) => plan.kind === 'image' || plan.kind === 'video').length;
       return plans.length === 4 && urlPlanCount > 0 &&
-        document.querySelectorAll('.wall-screen .wall-media').length === imagePlanCount &&
+        document.querySelectorAll('.wall-screen .wall-media').length === mediaPlanCount &&
         document.querySelectorAll('.wall-screen .wall-url-offline').length === urlPlanCount &&
         document.querySelectorAll('.wall-screen iframe').length === 0;
     }, null, { timeout: 20_000 });

@@ -138,6 +138,25 @@ function migrate(db: DB): void {
       blocked_until TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS admin_login_attempts (
+      client_key_hash TEXT PRIMARY KEY,
+      failed_count INTEGER NOT NULL,
+      window_started_at TEXT NOT NULL,
+      blocked_until TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_audit_events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK (event_type IN (
+        'admin.login.failed', 'admin.login.rate_limited', 'admin.login.succeeded', 'admin.password.changed'
+      )),
+      outcome TEXT NOT NULL CHECK (outcome IN ('failure', 'rate_limited', 'success')),
+      client_key_hash TEXT NOT NULL,
+      occurred_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_audit_events_occurred
+      ON admin_audit_events(occurred_at, id);
+
     CREATE TABLE IF NOT EXISTS display_groups (
       id TEXT PRIMARY KEY,
       site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
