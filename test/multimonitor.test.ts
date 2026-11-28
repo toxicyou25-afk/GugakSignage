@@ -390,7 +390,7 @@ test('physical monitor binding uses the configured heartbeat window', () => {
   }
 });
 
-test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async () => {
+test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-topology-api-'));
   const config: AppConfig = loadConfig({
     rootDir: path.resolve(import.meta.dirname, '..'),
@@ -760,6 +760,51 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' },
     });
     assert.equal(explicitSecondPc.status, 200, JSON.stringify(explicitSecondPc.body));
+    await t.test('site monitor inventory keeps each Player report and assignment coverage separate', async () => {
+      run(db, 'UPDATE devices SET last_host_local = 0 WHERE id = ?', secondDevice.body.device.id);
+      const anonymous = await fetch(baseUrl + '/api/sites/' + site.body.site.id + '/monitor-inventory');
+      assert.equal(anonymous.status, 401);
+      const inventoryResponse = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      assert.equal(inventoryResponse.status, 200, JSON.stringify(inventoryResponse.body));
+      assert.equal(inventoryResponse.body.siteId, site.body.site.id);
+      assert.ok(Number.isFinite(Date.parse(inventoryResponse.body.generatedAt)));
+      const inventory = inventoryResponse.body.devices;
+      assert.equal(inventory.length, 2);
+      const firstHost = inventory.find((entry: any) => entry.deviceId === device.body.device.id);
+      const secondHost = inventory.find((entry: any) => entry.deviceId === secondDevice.body.device.id);
+      assert.equal(firstHost.monitorReport.reported, false);
+      assert.equal(firstHost.monitorReport.reportedAt, null);
+      assert.equal(firstHost.monitorReport.ageMs, null);
+      assert.deepEqual(firstHost.monitorReport.monitors, []);
+      assert.equal(secondHost.localHost, false);
+      assert.equal(secondHost.online, true);
+      assert.equal(secondHost.monitorReport.reported, true);
+      assert.ok(secondHost.monitorReport.reportedAt);
+      assert.ok(secondHost.monitorReport.ageMs >= 0);
+      assert.equal(secondHost.monitorReport.monitors.length, 2);
+      assert.equal(secondHost.logicalDisplayCount, 1);
+      assert.equal(secondHost.assignedDisplayCount, 1);
+      assert.deepEqual(secondHost.unassignedDisplayIds, []);
+      assert.deepEqual(secondHost.assignments.map((assignment: any) => ({
+        displayId: assignment.displayId,
+        nativeMonitorId: assignment.nativeMonitorId,
+        monitorDetected: assignment.monitorDetected,
+      })), [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY', monitorDetected: true }]);
+
+      const staleAt = new Date(Date.now() - 120_000).toISOString();
+      run(db, 'UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?', staleAt, secondDevice.body.device.id);
+      run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', staleAt, secondDevice.body.device.id);
+      const offlineInventory = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      const offlineHost = offlineInventory.body.devices.find((entry: any) => entry.deviceId === secondDevice.body.device.id);
+      assert.equal(offlineHost.online, false);
+      assert.equal(offlineHost.monitorReport.reported, true);
+      assert.ok(offlineHost.monitorReport.ageMs >= 120_000);
+      assert.equal(offlineHost.monitorReport.monitors.length, 2);
+      run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', new Date().toISOString(), secondDevice.body.device.id);
+
+      const missingSite = await request('/api/sites/site-does-not-exist/monitor-inventory');
+      assert.equal(missingSite.status, 404);
+    });
     const draftRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
     assert.equal(draftRemoteTargets.status, 200, JSON.stringify(draftRemoteTargets.body));
     assert.deepEqual(draftRemoteTargets.body.screenTargets, []);
