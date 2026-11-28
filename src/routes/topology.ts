@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { AppConfig } from '../config.js';
 import { get, run, type DB } from '../db.js';
 import { publishGroupSnapshot } from '../publishing.js';
+import { monitorInventoryForSite } from '../monitor-inventory.js';
 import {
   buildWallSnapshot,
   configureGroupDisplays,
@@ -56,6 +57,15 @@ export function topologyRoutes(db: DB, config: AppConfig): Router {
     const notes = asTrimmed(req.body?.notes, 1000) || null;
     const result = createSite(db, { name, timezone, notes });
     res.status(201).json({ site: result.site, group: result.group });
+  });
+
+  router.get('/sites/:id/monitor-inventory', (req, res) => {
+    const inventory = monitorInventoryForSite(db, req.params.id, config.heartbeatOnlineMs);
+    if (!inventory) {
+      res.status(404).json({ error: '장소를 찾을 수 없습니다.' });
+      return;
+    }
+    res.json(inventory);
   });
 
   router.get('/sites/:id', (req, res) => {

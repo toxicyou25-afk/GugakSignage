@@ -390,7 +390,7 @@ test('physical monitor binding uses the configured heartbeat window', () => {
   }
 });
 
-test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async () => {
+test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-topology-api-'));
   const config: AppConfig = loadConfig({
     rootDir: path.resolve(import.meta.dirname, '..'),
@@ -451,6 +451,18 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     });
     assert.equal(secondDevice.status, 201, JSON.stringify(secondDevice.body));
     run(db, 'UPDATE devices SET last_ip = ?, last_host_local = 0, last_seen = ? WHERE id = ?', '192.168.1.44', new Date().toISOString(), secondDevice.body.device.id);
+    const availableDevice = await request('/api/devices', {
+      method: 'POST',
+      body: { name: '미배정 온라인 PC', orientation: 'landscape', width: 1920, height: 1080, playlistId: 'playlist-1' },
+    });
+    assert.equal(availableDevice.status, 201, JSON.stringify(availableDevice.body));
+    run(db, 'UPDATE displays SET device_id = NULL WHERE device_id = ?', availableDevice.body.device.id);
+    run(db, 'UPDATE devices SET site_id = NULL, hardware_id = ?, last_seen = ? WHERE id = ?',
+      'hardware-unassigned-online', new Date().toISOString(), availableDevice.body.device.id);
+    run(db, 'INSERT INTO player_monitor_reports(device_id, snapshot_json, reported_at) VALUES (?, ?, ?)',
+      availableDevice.body.device.id,
+      JSON.stringify([{ stableId: 'UNASSIGNED-PRIMARY', bindingId: 'MONITOR\\UNASSIGNED-PRIMARY', deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Unassigned primary', bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 }, orientation: 'landscape', primary: true, attached: true }]),
+      new Date().toISOString());
     const managerLocalMonitors = await request(`/api/native-monitors?deviceId=${encodeURIComponent(device.body.device.id)}`);
     assert.equal(managerLocalMonitors.status, 200, JSON.stringify(managerLocalMonitors.body));
     const remoteMonitors = await request(`/api/native-monitors?deviceId=${encodeURIComponent(secondDevice.body.device.id)}`);
@@ -760,6 +772,86 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       body: { deviceId: secondDevice.body.device.id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY' },
     });
     assert.equal(explicitSecondPc.status, 200, JSON.stringify(explicitSecondPc.body));
+    await t.test('site monitor inventory keeps each Player report and assignment coverage separate', async () => {
+      run(db, 'UPDATE devices SET last_host_local = 0 WHERE id = ?', secondDevice.body.device.id);
+
+      const otherSite = await request('/api/sites', { method: 'POST', body: { name: '다른 장소', timezone: 'Asia/Seoul' } });
+      assert.equal(otherSite.status, 201, JSON.stringify(otherSite.body));
+      const otherSiteDevice = await request('/api/devices', {
+        method: 'POST',
+        body: { name: '다른 장소 전용 PC', orientation: 'landscape', width: 1920, height: 1080, playlistId: 'playlist-1' },
+      });
+      assert.equal(otherSiteDevice.status, 201, JSON.stringify(otherSiteDevice.body));
+      run(db, 'UPDATE devices SET site_id = ? WHERE id = ?', otherSite.body.site.id, otherSiteDevice.body.device.id);
+
+      const anonymous = await fetch(baseUrl + '/api/sites/' + site.body.site.id + '/monitor-inventory');
+      assert.equal(anonymous.status, 401);
+      const inventoryResponse = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      assert.equal(inventoryResponse.status, 200, JSON.stringify(inventoryResponse.body));
+      assert.equal(inventoryResponse.body.siteId, site.body.site.id);
+      assert.ok(Number.isFinite(Date.parse(inventoryResponse.body.generatedAt)));
+      const inventory = inventoryResponse.body.devices;
+      assert.equal(inventory.length, 3);
+      const firstHost = inventory.find((entry: any) => entry.deviceId === device.body.device.id);
+      const secondHost = inventory.find((entry: any) => entry.deviceId === secondDevice.body.device.id);
+      const unassignedHost = inventory.find((entry: any) => entry.deviceId === availableDevice.body.device.id);
+      assert.equal(unassignedHost.siteAssigned, false);
+      assert.equal(unassignedHost.online, true);
+      assert.equal(unassignedHost.monitorReport.reported, true);
+      assert.deepEqual(unassignedHost.monitorReport.monitors.map((monitor: any) => monitor.bindingId), ['MONITOR\\UNASSIGNED-PRIMARY']);
+      assert.equal(inventory.some((entry: any) => entry.deviceId === otherSiteDevice.body.device.id), false);
+      assert.equal(firstHost.siteAssigned, true);
+      assert.equal(secondHost.siteAssigned, true);
+      assert.equal(firstHost.monitorReport.reported, false);
+      assert.equal(firstHost.monitorReport.reportedAt, null);
+      assert.equal(firstHost.monitorReport.ageMs, null);
+      assert.deepEqual(firstHost.monitorReport.monitors, []);
+      assert.equal(secondHost.localHost, false);
+      assert.equal(secondHost.online, true);
+      assert.equal(secondHost.monitorReport.reported, true);
+      assert.ok(secondHost.monitorReport.reportedAt);
+      assert.ok(secondHost.monitorReport.ageMs >= 0);
+      assert.equal(secondHost.monitorReport.monitors.length, 2);
+      assert.equal(secondHost.logicalDisplayCount, 1);
+      assert.equal(secondHost.assignedDisplayCount, 1);
+      assert.deepEqual(secondHost.unassignedDisplayIds, []);
+      assert.deepEqual(secondHost.assignments.map((assignment: any) => ({
+        displayId: assignment.displayId,
+        nativeMonitorId: assignment.nativeMonitorId,
+        monitorDetected: assignment.monitorDetected,
+      })), [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY', monitorDetected: true }]);
+
+      const emptyReportAt = new Date().toISOString();
+      run(db, 'INSERT INTO player_monitor_reports(device_id, snapshot_json, reported_at) VALUES (?, ?, ?) ON CONFLICT(device_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, reported_at = excluded.reported_at',
+        device.body.device.id, '[]', emptyReportAt);
+      run(db, 'UPDATE devices SET hardware_id = NULL, last_seen = NULL WHERE id = ?', device.body.device.id);
+      const pendingInventory = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      const pendingHost = pendingInventory.body.devices.find((entry: any) => entry.deviceId === device.body.device.id);
+      assert.equal(pendingHost.status, 'pending');
+      assert.equal(pendingHost.online, false);
+      assert.equal(pendingHost.monitorReport.reported, true);
+      assert.deepEqual(pendingHost.monitorReport.monitors, []);
+      run(db, 'DELETE FROM player_monitor_reports WHERE device_id = ?', device.body.device.id);
+      run(db, 'UPDATE devices SET hardware_id = ?, last_seen = ? WHERE id = ?', 'hardware-four-monitors', new Date().toISOString(), device.body.device.id);
+
+      const staleAt = new Date(Date.now() - 120_000).toISOString();
+      run(db, 'UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?', staleAt, secondDevice.body.device.id);
+      run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', staleAt, secondDevice.body.device.id);
+      const offlineInventory = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      const offlineHost = offlineInventory.body.devices.find((entry: any) => entry.deviceId === secondDevice.body.device.id);
+      assert.equal(offlineHost.online, false);
+      assert.equal(offlineHost.monitorReport.reported, true);
+      assert.ok(offlineHost.monitorReport.ageMs >= 120_000);
+      assert.equal(offlineHost.monitorReport.monitors.length, 2);
+      run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', new Date().toISOString(), secondDevice.body.device.id);
+
+      const missingSite = await request('/api/sites/site-does-not-exist/monitor-inventory');
+      assert.equal(missingSite.status, 404);
+
+      run(db, 'DELETE FROM player_monitor_reports WHERE device_id = ?', availableDevice.body.device.id);
+      run(db, 'DELETE FROM devices WHERE id IN (?, ?)', availableDevice.body.device.id, otherSiteDevice.body.device.id);
+      run(db, 'DELETE FROM sites WHERE id = ?', otherSite.body.site.id);
+    });
     const draftRemoteTargets = await request('/api/player/screen-targets', { token: secondRegistration.body.token });
     assert.equal(draftRemoteTargets.status, 200, JSON.stringify(draftRemoteTargets.body));
     assert.deepEqual(draftRemoteTargets.body.screenTargets, []);
