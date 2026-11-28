@@ -1,27 +1,133 @@
 {
-  "startedAt": "2026-11-24T11:12:56.246Z",
-  "base": "http://127.0.0.1:3141",
+  "startedAt": "2026-11-28T05:35:21.022Z",
+  "base": "<loopback-url>",
   "temporaryDataDir": "<system temp>",
   "steps": [
     {
       "name": "장소 목록 화면 확인",
-      "at": "2026-11-24T11:12:59.748Z",
+      "at": "2026-11-28T05:35:23.909Z",
       "siteCards": 1
     },
     {
       "name": "4번 화면 전용 이미지",
-      "at": "2026-11-24T11:12:59.765Z",
-      "id": "8a3e5016-83ed-40f6-87ef-6cf0010cbf77",
-      "contentId": "ct-sample-poster-welcome"
+      "at": "2026-11-28T05:35:23.927Z",
+      "id": "11397119-c602-40a3-aa81-b4ade729b667",
+      "contentId": "ct-sample-poster-welcome",
+      "urlPlaylistId": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+      "urlContentId": "ct-sample-notice"
+    },
+    {
+      "name": "인벤토리 요청 오류 중에도 현재 PC의 직접 모니터 배정 유지",
+      "at": "2026-11-28T05:35:24.020Z",
+      "deviceId": "dev-sample-lobby"
+    },
+    {
+      "name": "모니터 인벤토리 요청 오류 뒤 재시도 복구",
+      "at": "2026-11-28T05:35:24.076Z"
+    },
+    {
+      "name": "이 PC의 직접 모니터 탐색 결과를 화면 배정에 유지",
+      "at": "2026-11-28T05:35:24.088Z",
+      "deviceId": "dev-sample-lobby",
+      "bindingId": "MONITOR\\VERIFY-LOCAL-FALLBACK"
+    },
+    {
+      "name": "현재 PC의 물리 모니터 감지 상태 표시",
+      "at": "2026-11-28T05:35:24.093Z",
+      "detectedMonitors": 0,
+      "status": "생성 2026. 11. 28. 오후 2:35:24 · 15초 간격 확인"
     },
     {
       "name": "관리 화면에서 4모니터·1280×720·2×2 배치 저장",
-      "at": "2026-11-24T11:13:00.162Z",
+      "at": "2026-11-28T05:35:24.261Z",
       "previewScreens": 4
     },
     {
+      "name": "장소 미배정 온라인 후보와 보고 모니터를 화면 배정에서 선택",
+      "at": "2026-11-28T05:35:24.729Z",
+      "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+      "bindingId": "MONITOR\\VERIFY-REMOTE-STABLE"
+    },
+    {
+      "name": "site monitor inventory shows each Player and last report",
+      "at": "2026-11-28T05:35:25.464Z",
+      "deviceRows": 2,
+      "offlineMonitorRows": 2,
+      "offlineCoverage": "0/0개 화면 배정 · 미지정 0개 · 마지막 모니터 보고 2분 전",
+      "localCoverage": "0/4개 화면 배정 · 미지정 4개 · 마지막 모니터 보고 0초 전"
+    },
+    {
+      "name": "대기 Player와 성공한 빈 모니터 보고 구분",
+      "at": "2026-11-28T05:35:26.237Z",
+      "pendingAt": "2026-11-28T05:35:25.513Z",
+      "text": "브라우저 검증용 PC B <script>test</script>\n95bf1243-9180-4865-b2db-3292dca970c1 · Player · 장소 미배정\n대기\n0/0개 화면 배정 · 미지정 0개 · 마지막 모니터 보고 0초 전\n\n보고된 모니터가 없습니다."
+    },
+    {
+      "name": "주기 갱신에서 로컬 탐색은 유지하고 오프라인 Player 선택지는 비활성화",
+      "at": "2026-11-28T05:35:56.891Z"
+    },
+    {
+      "name": "열린 편집기에서 로컬 및 원격 Player의 최신 모니터 보고가 배정 선택기에 반영됨",
+      "at": "2026-11-28T05:35:56.896Z",
+      "localBindingId": "MONITOR\\VERIFY-LOCAL-REFRESHED",
+      "remoteBindingId": "MONITOR\\VERIFY-REMOTE-REFRESHED"
+    },
+    {
+      "name": "화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존",
+      "at": "2026-11-28T05:35:57.267Z",
+      "initialMapping": [
+        "dev-sample-lobby",
+        "dev-sample-lobby",
+        "dev-sample-lobby",
+        "dev-sample-lobby"
+      ],
+      "explicitMapping": [
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+          "nativeMonitorId": "MONITOR\\VERIFY-REMOTE-STABLE"
+        }
+      ],
+      "savedMapping": [
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "dev-sample-lobby",
+          "nativeMonitorId": null
+        },
+        {
+          "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+          "nativeMonitorId": "MONITOR\\VERIFY-REMOTE-STABLE"
+        }
+      ],
+      "remoteMonitorPickerDisabled": false,
+      "remoteMonitorBindingId": "MONITOR\\VERIFY-REMOTE-STABLE"
+    },
+    {
+      "name": "저장됐지만 감지되지 않은 오프라인 모니터 배정은 비활성으로 표시",
+      "at": "2026-11-28T05:35:57.485Z",
+      "bindingId": "MONITOR\\VERIFY-REMOTE-STABLE"
+    },
+    {
       "name": "관리 미리보기와 실제 엔진 RenderPlan 동일 응답 확인",
-      "at": "2026-11-24T11:13:00.445Z",
+      "at": "2026-11-28T05:35:58.648Z",
       "displays": 4,
       "plans": 4,
       "layout": "grid",
@@ -37,70 +143,102 @@
         0,
         0
       ],
+      "kinds": [
+        "image",
+        "video",
+        "image",
+        "url"
+      ],
+      "contentIds": [
+        "ct-sample-poster-welcome",
+        "ct-sample-video-bbb",
+        "ct-sample-poster-class",
+        "ct-sample-notice"
+      ],
+      "deviceMapping": [
+        "dev-sample-lobby",
+        "dev-sample-lobby",
+        "dev-sample-lobby",
+        "dev-sample-lobby"
+      ],
       "nextChanges": [
-        "2026-11-24T11:13:03.092Z",
-        "2026-11-24T11:13:03.092Z",
-        "2026-11-24T11:13:03.092Z",
+        "2026-11-28T05:36:00.215Z",
+        "2026-11-28T05:36:00.215Z",
+        "2026-11-28T05:36:00.215Z",
         null
       ]
     },
     {
       "name": "4화면 배치 게시",
-      "at": "2026-11-24T11:13:00.519Z",
+      "at": "2026-11-28T05:35:58.729Z",
       "toast": "1대 PC에 v2 배치를 게시했습니다."
     },
     {
       "name": "재생기에서 한 PC·4화면 캔버스 표시",
-      "at": "2026-11-24T11:13:04.147Z",
+      "at": "2026-11-28T05:36:02.195Z",
       "deviceId": "dev-sample-lobby",
       "manifestVersion": 2,
-      "playlistId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+      "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
       "queueLength": 0,
       "index": 0,
-      "currentContentId": "ct-sample-poster-welcome",
+      "currentContentId": "ct-sample-video-bbb",
       "offline": false,
       "lastError": null,
-      "lastHeartbeatAt": "2026-11-24T11:13:00.669Z",
-      "wallGroupId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+      "lastHeartbeatAt": "2026-11-28T05:35:58.855Z",
+      "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
       "wallDisplayIds": [
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33",
-        "cccf09d4-2cc0-4860-ab4d-27b897891fe8",
-        "a665f288-4e9a-4216-a514-6df5d7c1191f",
-        "c1aa3599-51ff-47c0-a202-f1537fedb210"
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+        "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+        "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+        "1e7bab9b-a653-4ccf-949b-97733d429b19"
       ],
       "wallPlans": {
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-          "imageId": "ct-sample-poster-welcome",
-          "atMs": 1795518784138,
-          "fit": "contain",
-          "rotation": 0,
-          "nextChangeAtMs": 1795518786092
-        },
-        "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
           "imageId": "ct-sample-video-bbb",
-          "atMs": 1795518784138,
+          "contentId": "ct-sample-video-bbb",
+          "kind": "video",
+          "contentUrl": "/media/seed-sample-video.mp4",
+          "atMs": 1795844161250,
           "fit": "contain",
           "rotation": 0,
-          "nextChangeAtMs": 1795518786092
+          "nextChangeAtMs": 1795844163215
         },
-        "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+        "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
           "imageId": "ct-sample-poster-class",
-          "atMs": 1795518784138,
+          "contentId": "ct-sample-poster-class",
+          "kind": "image",
+          "contentUrl": "/media/seed-poster-class.png",
+          "atMs": 1795844161250,
           "fit": "contain",
           "rotation": 0,
-          "nextChangeAtMs": 1795518786092
+          "nextChangeAtMs": 1795844163215
         },
-        "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-          "imageId": "ct-sample-poster-welcome",
-          "atMs": 1795518784138,
+        "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
+          "imageId": "ct-sample-notice",
+          "contentId": "ct-sample-notice",
+          "kind": "url",
+          "contentUrl": "/sample/notice.html",
+          "atMs": 1795844161250,
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795844163215
+        },
+        "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+          "imageId": "ct-sample-notice",
+          "contentId": "ct-sample-notice",
+          "kind": "url",
+          "contentUrl": "/sample/notice.html",
+          "atMs": 1795844161250,
           "fit": "cover",
           "rotation": 0,
           "nextChangeAtMs": null
         }
       },
-      "serverOffsetMs": 0,
+      "serverOffsetMs": -4,
+      "shellVersion": "v5",
       "screenCount": 4,
-      "mediaCount": 4,
+      "mediaCount": 2,
+      "urlFrameCount": 2,
       "renderReady": [
         "true",
         "true",
@@ -108,70 +246,85 @@
         "true"
       ],
       "screenHtml": [
-        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1080,&quot;h&quot;:1920}\" data-destination-rect=\"{&quot;x&quot;:437.5,&quot;y&quot;:0,&quot;w&quot;:405,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 34.1",
         "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:640,&quot;h&quot;:360}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: ",
         "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1920,&quot;h&quot;:1080}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top",
-        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:656.25,&quot;w&quot;:1080,&quot;h&quot;:607.5}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0"
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"null\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: 0%; width: 100%; height: 100%; transition-duration: 300ms;\"><div ",
+        "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"null\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: 0%; width: 100%; height: 100%; transition-duration: 300ms;\"><div "
       ]
     },
     {
       "name": "서버 시각 기준 3초 전환 관찰",
-      "at": "2026-11-24T11:13:07.452Z",
+      "at": "2026-11-28T05:36:05.511Z",
       "changed": true,
-      "serverOffsetMs": 0
+      "serverOffsetMs": -4
     },
     {
       "name": "오프라인 재로드에서 캐시 오프셋과 공유 RenderPlan 유지",
-      "at": "2026-11-24T11:13:08.453Z",
-      "offsetNow": -3,
-      "storedOffset": -3,
+      "at": "2026-11-28T05:36:06.226Z",
+      "offsetNow": -4,
+      "storedOffset": -4,
       "offsetDriftMs": 0,
-      "cacheAgeMs": 6885,
+      "cacheAgeMs": 7168,
       "screenCount": 4,
+      "urlFallbackCount": 2,
+      "urlFrameCount": 0,
+      "urlPlanCount": 2,
       "plansMatchSharedInput": true,
       "expected": {
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-          "imageId": "ct-sample-video-bbb",
-          "nextChangeAtMs": 1795518789092
-        },
-        "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
           "imageId": "ct-sample-poster-class",
-          "nextChangeAtMs": 1795518789092
+          "nextChangeAtMs": 1795844166215
         },
-        "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+        "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+          "imageId": "ct-sample-notice",
+          "nextChangeAtMs": 1795844166215
+        },
+        "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
           "imageId": "ct-sample-poster-autumn",
-          "nextChangeAtMs": 1795518789092
+          "nextChangeAtMs": 1795844166215
         },
-        "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-          "imageId": "ct-sample-poster-welcome",
+        "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+          "imageId": "ct-sample-notice",
           "nextChangeAtMs": null
         }
       },
       "actual": {
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-          "imageId": "ct-sample-video-bbb",
-          "atMs": 1795518787492,
-          "fit": "contain",
-          "rotation": 0,
-          "nextChangeAtMs": 1795518789092
-        },
-        "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
           "imageId": "ct-sample-poster-class",
-          "atMs": 1795518787492,
+          "contentId": "ct-sample-poster-class",
+          "kind": "image",
+          "contentUrl": "/media/seed-poster-class.png",
+          "atMs": 1795844165592,
           "fit": "contain",
           "rotation": 0,
-          "nextChangeAtMs": 1795518789092
+          "nextChangeAtMs": 1795844166215
         },
-        "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+        "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+          "imageId": "ct-sample-notice",
+          "contentId": "ct-sample-notice",
+          "kind": "url",
+          "contentUrl": "/sample/notice.html",
+          "atMs": 1795844165592,
+          "fit": "contain",
+          "rotation": 0,
+          "nextChangeAtMs": 1795844166215
+        },
+        "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
           "imageId": "ct-sample-poster-autumn",
-          "atMs": 1795518787492,
+          "contentId": "ct-sample-poster-autumn",
+          "kind": "image",
+          "contentUrl": "/media/seed-poster-autumn.png",
+          "atMs": 1795844165592,
           "fit": "contain",
           "rotation": 0,
-          "nextChangeAtMs": 1795518789092
+          "nextChangeAtMs": 1795844166215
         },
-        "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-          "imageId": "ct-sample-poster-welcome",
-          "atMs": 1795518787492,
+        "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+          "imageId": "ct-sample-notice",
+          "contentId": "ct-sample-notice",
+          "kind": "url",
+          "contentUrl": "/sample/notice.html",
+          "atMs": 1795844165592,
           "fit": "cover",
           "rotation": 0,
           "nextChangeAtMs": null
@@ -180,31 +333,189 @@
     },
     {
       "name": "모니터별 분리 창 모드 확인",
-      "at": "2026-11-24T11:13:09.540Z",
+      "at": "2026-11-28T05:36:09.435Z",
       "deviceId": "dev-sample-lobby",
       "manifestVersion": 2,
-      "playlistId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+      "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
       "queueLength": 0,
       "index": 0,
-      "currentContentId": "ct-sample-poster-class",
+      "currentContentId": "ct-sample-poster-autumn",
       "offline": false,
       "lastError": null,
-      "lastHeartbeatAt": "2026-11-24T11:13:08.495Z",
-      "wallGroupId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+      "lastHeartbeatAt": "2026-11-28T05:36:06.304Z",
+      "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
       "wallDisplayIds": [
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33"
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b"
       ],
       "wallPlans": {
-        "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-          "imageId": "ct-sample-poster-class",
-          "atMs": 1795518789114.5,
+        "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
+          "imageId": "ct-sample-poster-autumn",
+          "contentId": "ct-sample-poster-autumn",
+          "kind": "image",
+          "contentUrl": "/media/seed-poster-autumn.png",
+          "atMs": 1795844169248.5,
           "fit": "contain",
           "rotation": 0,
-          "nextChangeAtMs": 1795518792092
+          "nextChangeAtMs": 1795844172215
         }
       },
-      "serverOffsetMs": -0.5,
+      "serverOffsetMs": -1.5,
+      "shellVersion": "v5",
       "screenCount": 1
+    },
+    {
+      "name": "재생기가 보고한 원격 모니터 ID를 관리자 배정에 저장",
+      "at": "2026-11-28T05:36:12.459Z",
+      "requestBody": {
+        "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+        "playlistId": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+        "rotation": 0,
+        "fitMode": "cover",
+        "nativeMonitorId": "MONITOR\\VERIFY-REMOTE-STABLE"
+      }
+    },
+    {
+      "name": "같은 PC에서 원격 모니터 배정 해제 요청 확인",
+      "at": "2026-11-28T05:36:15.329Z",
+      "requestBody": {
+        "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+        "playlistId": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+        "rotation": 0,
+        "fitMode": "cover",
+        "nativeMonitorId": null
+      }
+    },
+    {
+      "name": "동일 PC의 Player 창 동시 등록이 인증 토큰을 공유",
+      "at": "2026-11-28T05:36:16.801Z",
+      "registrations": 2,
+      "maxRegistrationsInFlight": 1,
+      "playerStates": [
+        {
+          "deviceId": "dev-sample-lobby",
+          "manifestVersion": 2,
+          "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+          "queueLength": 0,
+          "index": 0,
+          "currentContentId": "ct-sample-video-bbb",
+          "offline": false,
+          "lastError": null,
+          "lastHeartbeatAt": "2026-11-28T05:36:15.846Z",
+          "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+          "wallDisplayIds": [
+            "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+            "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+            "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+            "1e7bab9b-a653-4ccf-949b-97733d429b19"
+          ],
+          "wallPlans": {
+            "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
+              "imageId": "ct-sample-video-bbb",
+              "contentId": "ct-sample-video-bbb",
+              "kind": "video",
+              "contentUrl": "/media/seed-sample-video.mp4",
+              "atMs": 1795844175886,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+              "imageId": "ct-sample-poster-class",
+              "contentId": "ct-sample-poster-class",
+              "kind": "image",
+              "contentUrl": "/media/seed-poster-class.png",
+              "atMs": 1795844175886,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
+              "imageId": "ct-sample-notice",
+              "contentId": "ct-sample-notice",
+              "kind": "url",
+              "contentUrl": "/sample/notice.html",
+              "atMs": 1795844175886,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+              "imageId": "ct-sample-notice",
+              "contentId": "ct-sample-notice",
+              "kind": "url",
+              "contentUrl": "/sample/notice.html",
+              "atMs": 1795844175886,
+              "fit": "cover",
+              "rotation": 0,
+              "nextChangeAtMs": null
+            }
+          },
+          "serverOffsetMs": -1,
+          "shellVersion": "v5"
+        },
+        {
+          "deviceId": "dev-sample-lobby",
+          "manifestVersion": 2,
+          "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+          "queueLength": 0,
+          "index": 0,
+          "currentContentId": "ct-sample-video-bbb",
+          "offline": false,
+          "lastError": null,
+          "lastHeartbeatAt": "2026-11-28T05:36:16.012Z",
+          "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+          "wallDisplayIds": [
+            "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+            "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+            "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+            "1e7bab9b-a653-4ccf-949b-97733d429b19"
+          ],
+          "wallPlans": {
+            "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
+              "imageId": "ct-sample-video-bbb",
+              "contentId": "ct-sample-video-bbb",
+              "kind": "video",
+              "contentUrl": "/media/seed-sample-video.mp4",
+              "atMs": 1795844176052.6667,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+              "imageId": "ct-sample-poster-class",
+              "contentId": "ct-sample-poster-class",
+              "kind": "image",
+              "contentUrl": "/media/seed-poster-class.png",
+              "atMs": 1795844176052.6667,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
+              "imageId": "ct-sample-notice",
+              "contentId": "ct-sample-notice",
+              "kind": "url",
+              "contentUrl": "/sample/notice.html",
+              "atMs": 1795844176052.6667,
+              "fit": "contain",
+              "rotation": 0,
+              "nextChangeAtMs": 1795844178215
+            },
+            "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+              "imageId": "ct-sample-notice",
+              "contentId": "ct-sample-notice",
+              "kind": "url",
+              "contentUrl": "/sample/notice.html",
+              "atMs": 1795844176052.6667,
+              "fit": "cover",
+              "rotation": 0,
+              "nextChangeAtMs": null
+            }
+          },
+          "serverOffsetMs": -1.3333333333333333,
+          "shellVersion": "v5"
+        }
+      ]
     }
   ],
   "consoleErrors": [],
@@ -225,63 +536,95 @@
       0,
       0
     ],
+    "kinds": [
+      "image",
+      "video",
+      "image",
+      "url"
+    ],
+    "contentIds": [
+      "ct-sample-poster-welcome",
+      "ct-sample-video-bbb",
+      "ct-sample-poster-class",
+      "ct-sample-notice"
+    ],
+    "deviceMapping": [
+      "dev-sample-lobby",
+      "dev-sample-lobby",
+      "dev-sample-lobby",
+      "dev-sample-lobby"
+    ],
     "nextChanges": [
-      "2026-11-24T11:13:03.092Z",
-      "2026-11-24T11:13:03.092Z",
-      "2026-11-24T11:13:03.092Z",
+      "2026-11-28T05:36:00.215Z",
+      "2026-11-28T05:36:00.215Z",
+      "2026-11-28T05:36:00.215Z",
       null
     ]
   },
   "player": {
     "deviceId": "dev-sample-lobby",
     "manifestVersion": 2,
-    "playlistId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+    "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
     "queueLength": 0,
     "index": 0,
-    "currentContentId": "ct-sample-poster-welcome",
+    "currentContentId": "ct-sample-video-bbb",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T11:13:00.669Z",
-    "wallGroupId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+    "lastHeartbeatAt": "2026-11-28T05:35:58.855Z",
+    "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
     "wallDisplayIds": [
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33",
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8",
-      "a665f288-4e9a-4216-a514-6df5d7c1191f",
-      "c1aa3599-51ff-47c0-a202-f1537fedb210"
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+      "1e7bab9b-a653-4ccf-949b-97733d429b19"
     ],
     "wallPlans": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518784138,
-        "fit": "contain",
-        "rotation": 0,
-        "nextChangeAtMs": 1795518786092
-      },
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
         "imageId": "ct-sample-video-bbb",
-        "atMs": 1795518784138,
+        "contentId": "ct-sample-video-bbb",
+        "kind": "video",
+        "contentUrl": "/media/seed-sample-video.mp4",
+        "atMs": 1795844161250,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518786092
+        "nextChangeAtMs": 1795844163215
       },
-      "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
         "imageId": "ct-sample-poster-class",
-        "atMs": 1795518784138,
+        "contentId": "ct-sample-poster-class",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-class.png",
+        "atMs": 1795844161250,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518786092
+        "nextChangeAtMs": 1795844163215
       },
-      "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518784138,
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844161250,
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795844163215
+      },
+      "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844161250,
         "fit": "cover",
         "rotation": 0,
         "nextChangeAtMs": null
       }
     },
-    "serverOffsetMs": 0,
+    "serverOffsetMs": -4,
+    "shellVersion": "v5",
     "screenCount": 4,
-    "mediaCount": 4,
+    "mediaCount": 2,
+    "urlFrameCount": 2,
     "renderReady": [
       "true",
       "true",
@@ -289,88 +632,107 @@
       "true"
     ],
     "screenHtml": [
-      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1080,&quot;h&quot;:1920}\" data-destination-rect=\"{&quot;x&quot;:437.5,&quot;y&quot;:0,&quot;w&quot;:405,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 34.1",
       "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:640,&quot;h&quot;:360}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: ",
       "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1920,&quot;h&quot;:1080}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top",
-      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"{&quot;x&quot;:0,&quot;y&quot;:656.25,&quot;w&quot;:1080,&quot;h&quot;:607.5}\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0"
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"null\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: 0%; width: 100%; height: 100%; transition-duration: 300ms;\"><div ",
+      "<div class=\"wall-screen-canvas\" data-render-ready=\"true\" data-source-rect=\"null\" data-destination-rect=\"{&quot;x&quot;:0,&quot;y&quot;:0,&quot;w&quot;:1280,&quot;h&quot;:720}\"><div class=\"wall-media-clip visible\" style=\"left: 0%; top: 0%; width: 100%; height: 100%; transition-duration: 300ms;\"><div "
     ]
   },
   "perMonitorWindow": {
     "deviceId": "dev-sample-lobby",
     "manifestVersion": 2,
-    "playlistId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+    "playlistId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
     "queueLength": 0,
     "index": 0,
-    "currentContentId": "ct-sample-poster-class",
+    "currentContentId": "ct-sample-poster-autumn",
     "offline": false,
     "lastError": null,
-    "lastHeartbeatAt": "2026-11-24T11:13:08.495Z",
-    "wallGroupId": "004a355f-5316-4d77-81f4-7e1c09d486f0",
+    "lastHeartbeatAt": "2026-11-28T05:36:06.304Z",
+    "wallGroupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
     "wallDisplayIds": [
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33"
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b"
     ],
     "wallPlans": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-poster-class",
-        "atMs": 1795518789114.5,
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
+        "imageId": "ct-sample-poster-autumn",
+        "contentId": "ct-sample-poster-autumn",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-autumn.png",
+        "atMs": 1795844169248.5,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518792092
+        "nextChangeAtMs": 1795844172215
       }
     },
-    "serverOffsetMs": -0.5,
+    "serverOffsetMs": -1.5,
+    "shellVersion": "v5",
     "screenCount": 1
   },
   "offlineReload": {
-    "offsetNow": -3,
-    "storedOffset": -3,
+    "offsetNow": -4,
+    "storedOffset": -4,
     "offsetDriftMs": 0,
-    "cacheAgeMs": 6885,
+    "cacheAgeMs": 7168,
     "screenCount": 4,
+    "urlFallbackCount": 2,
+    "urlFrameCount": 0,
+    "urlPlanCount": 2,
     "plansMatchSharedInput": true,
     "expected": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-video-bbb",
-        "nextChangeAtMs": 1795518789092
-      },
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
         "imageId": "ct-sample-poster-class",
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+        "imageId": "ct-sample-notice",
+        "nextChangeAtMs": 1795844166215
+      },
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
         "imageId": "ct-sample-poster-autumn",
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-        "imageId": "ct-sample-poster-welcome",
+      "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+        "imageId": "ct-sample-notice",
         "nextChangeAtMs": null
       }
     },
     "actual": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-video-bbb",
-        "atMs": 1795518787492,
-        "fit": "contain",
-        "rotation": 0,
-        "nextChangeAtMs": 1795518789092
-      },
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
         "imageId": "ct-sample-poster-class",
-        "atMs": 1795518787492,
+        "contentId": "ct-sample-poster-class",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-class.png",
+        "atMs": 1795844165592,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844165592,
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795844166215
+      },
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
         "imageId": "ct-sample-poster-autumn",
-        "atMs": 1795518787492,
+        "contentId": "ct-sample-poster-autumn",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-autumn.png",
+        "atMs": 1795844165592,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518787492,
+      "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844165592,
         "fit": "cover",
         "rotation": 0,
         "nextChangeAtMs": null
@@ -379,71 +741,1072 @@
   },
   "testingOffline": false,
   "physicalMonitors": "NOT_RUN",
-  "finishedAt": "2026-11-24T11:13:09.540Z",
+  "finishedAt": "2026-11-28T05:36:16.830Z",
   "result": "passed",
-  "serverLog": "[signage] 서버 시작 · 2026-11-24T11:12:57.231Z\n[signage] 관리 화면: http://127.0.0.1:3141/admin/\n[signage] 재생기: http://127.0.0.1:3141/player/\n[signage] 데이터베이스: <temp>\\verify.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: http://127.0.0.1:3141/player/?code=GUGAK1\n",
+  "serverLog": "[signage] 서버 시작 · 2026-11-28T05:35:21.786Z\n[signage] 관리 화면: <loopback-url>/admin/\n[signage] 재생기: <loopback-url>/player/\n[signage] 데이터베이스: <temp>\\verify.sqlite\n[signage] 업로드 폴더: <temp>\\uploads\n[signage] 샘플 기기 등록 코드: GUGAK1\n[signage] 샘플 재생기 주소: <loopback-url>/player/?code=GUGAK1\n",
+  "deviceMapping": {
+    "initialMapping": [
+      "dev-sample-lobby",
+      "dev-sample-lobby",
+      "dev-sample-lobby",
+      "dev-sample-lobby"
+    ],
+    "explicitMapping": [
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+        "nativeMonitorId": "MONITOR\\VERIFY-REMOTE-STABLE"
+      }
+    ],
+    "savedMapping": [
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "dev-sample-lobby",
+        "nativeMonitorId": null
+      },
+      {
+        "deviceId": "95bf1243-9180-4865-b2db-3292dca970c1",
+        "nativeMonitorId": "MONITOR\\VERIFY-REMOTE-STABLE"
+      }
+    ],
+    "remoteMonitorPickerDisabled": false,
+    "remoteMonitorBindingId": "MONITOR\\VERIFY-REMOTE-STABLE"
+  },
+  "screenSave": {
+    "status": 200,
+    "requestBody": {
+      "deviceId": "dev-sample-lobby",
+      "playlistId": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+      "rotation": 0,
+      "fitMode": "cover",
+      "nativeMonitorId": "MONITOR\\JCHE321\\{4d36e96e-e325-11ce-bfc1-08002be10318}\\0002"
+    },
+    "body": {
+      "nativeMonitorId": "MONITOR\\JCHE321\\{4d36e96e-e325-11ce-bfc1-08002be10318}\\0002",
+      "preview": {
+        "wall": {
+          "schemaVersion": 2,
+          "publishedAt": null,
+          "site": {
+            "id": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "name": "기본 장소",
+            "timezone": "Asia/Seoul",
+            "notes": "기존 MVP 기기에서 자동으로 만든 장소입니다."
+          },
+          "group": {
+            "id": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+            "siteId": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "name": "기본 화면 그룹",
+            "layoutId": "cfc390cd-b06a-4635-8918-9b7fa51cbe6e",
+            "playlistId": "pl-sample-lobby",
+            "playbackMode": "synchronized-cycle",
+            "epoch": "2026-11-28T05:35:24.215Z",
+            "settings": {
+              "dwellMs": 3000,
+              "transitionMs": 0
+            }
+          },
+          "layout": {
+            "id": "cfc390cd-b06a-4635-8918-9b7fa51cbe6e",
+            "name": "4화면 grid 배치",
+            "type": "grid",
+            "canvasWidth": 3840,
+            "canvasHeight": 2160,
+            "gap": 0,
+            "bezel": 0,
+            "slots": [
+              {
+                "id": "slot-1",
+                "x": 0,
+                "y": 0,
+                "w": 0.5,
+                "h": 0.5
+              },
+              {
+                "id": "slot-2",
+                "x": 0.5,
+                "y": 0,
+                "w": 0.5,
+                "h": 0.5
+              },
+              {
+                "id": "slot-3",
+                "x": 0,
+                "y": 0.5,
+                "w": 0.5,
+                "h": 0.5
+              },
+              {
+                "id": "slot-4",
+                "x": 0.5,
+                "y": 0.5,
+                "w": 0.5,
+                "h": 0.5
+              }
+            ]
+          },
+          "displays": [
+            {
+              "id": "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+              "deviceId": "dev-sample-lobby",
+              "nativeMonitorId": null,
+              "groupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+              "name": "로비 안내 화면 · 화면",
+              "resolution": {
+                "width": 1280,
+                "height": 720
+              },
+              "orientation": "landscape",
+              "rotation": 0,
+              "fit": "contain",
+              "slotId": "slot-1",
+              "startIndex": 0,
+              "step": 1,
+              "status": "pending"
+            },
+            {
+              "id": "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+              "deviceId": "dev-sample-lobby",
+              "nativeMonitorId": null,
+              "groupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+              "name": "화면 2",
+              "resolution": {
+                "width": 1280,
+                "height": 720
+              },
+              "orientation": "landscape",
+              "rotation": 0,
+              "fit": "contain",
+              "slotId": "slot-2",
+              "startIndex": 1,
+              "step": 1,
+              "status": "pending"
+            },
+            {
+              "id": "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+              "deviceId": "dev-sample-lobby",
+              "nativeMonitorId": null,
+              "groupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+              "name": "화면 3",
+              "resolution": {
+                "width": 1280,
+                "height": 720
+              },
+              "orientation": "landscape",
+              "rotation": 0,
+              "fit": "contain",
+              "slotId": "slot-3",
+              "startIndex": 2,
+              "step": 1,
+              "status": "pending"
+            },
+            {
+              "id": "1e7bab9b-a653-4ccf-949b-97733d429b19",
+              "deviceId": "dev-sample-lobby",
+              "nativeMonitorId": "MONITOR\\JCHE321\\{4d36e96e-e325-11ce-bfc1-08002be10318}\\0002",
+              "groupId": "0435d9a3-d721-4d05-b604-c94cb99e1e99",
+              "name": "화면 4",
+              "resolution": {
+                "width": 1280,
+                "height": 720
+              },
+              "orientation": "landscape",
+              "rotation": 0,
+              "fit": "cover",
+              "slotId": "slot-4",
+              "startIndex": 3,
+              "step": 1,
+              "status": "pending"
+            }
+          ],
+          "screens": [
+            {
+              "displayId": "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+              "playlistId": "pl-sample-lobby",
+              "playlist": {
+                "id": "pl-sample-lobby",
+                "name": "로비 기본 순환",
+                "description": "기관 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.",
+                "items": [
+                  {
+                    "id": "pli-sample-1",
+                    "position": 1,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-autumn",
+                      "name": "가을 문화 행사 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-autumn.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-2",
+                    "position": 2,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-welcome",
+                      "name": "안내센터 안내",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-welcome.png",
+                      "width": 1080,
+                      "height": 1920
+                    }
+                  },
+                  {
+                    "id": "pli-sample-3",
+                    "position": 3,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-video-bbb",
+                      "name": "샘플 영상 (Big Buck Bunny)",
+                      "kind": "video",
+                      "mime": "video/mp4",
+                      "url": "/media/seed-sample-video.mp4",
+                      "width": 640,
+                      "height": 360
+                    }
+                  },
+                  {
+                    "id": "pli-sample-4",
+                    "position": 4,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-class",
+                      "name": "시민 체험 교실 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-class.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-5",
+                    "position": 5,
+                    "durationSeconds": 12,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-notice",
+                      "name": "오늘의 안내 (샘플 웹페이지)",
+                      "kind": "url",
+                      "mime": null,
+                      "url": "/sample/notice.html",
+                      "width": null,
+                      "height": null
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "displayId": "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+              "playlistId": "pl-sample-lobby",
+              "playlist": {
+                "id": "pl-sample-lobby",
+                "name": "로비 기본 순환",
+                "description": "기관 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.",
+                "items": [
+                  {
+                    "id": "pli-sample-1",
+                    "position": 1,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-autumn",
+                      "name": "가을 문화 행사 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-autumn.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-2",
+                    "position": 2,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-welcome",
+                      "name": "안내센터 안내",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-welcome.png",
+                      "width": 1080,
+                      "height": 1920
+                    }
+                  },
+                  {
+                    "id": "pli-sample-3",
+                    "position": 3,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-video-bbb",
+                      "name": "샘플 영상 (Big Buck Bunny)",
+                      "kind": "video",
+                      "mime": "video/mp4",
+                      "url": "/media/seed-sample-video.mp4",
+                      "width": 640,
+                      "height": 360
+                    }
+                  },
+                  {
+                    "id": "pli-sample-4",
+                    "position": 4,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-class",
+                      "name": "시민 체험 교실 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-class.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-5",
+                    "position": 5,
+                    "durationSeconds": 12,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-notice",
+                      "name": "오늘의 안내 (샘플 웹페이지)",
+                      "kind": "url",
+                      "mime": null,
+                      "url": "/sample/notice.html",
+                      "width": null,
+                      "height": null
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "displayId": "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+              "playlistId": "pl-sample-lobby",
+              "playlist": {
+                "id": "pl-sample-lobby",
+                "name": "로비 기본 순환",
+                "description": "기관 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.",
+                "items": [
+                  {
+                    "id": "pli-sample-1",
+                    "position": 1,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-autumn",
+                      "name": "가을 문화 행사 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-autumn.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-2",
+                    "position": 2,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-welcome",
+                      "name": "안내센터 안내",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-welcome.png",
+                      "width": 1080,
+                      "height": 1920
+                    }
+                  },
+                  {
+                    "id": "pli-sample-3",
+                    "position": 3,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-video-bbb",
+                      "name": "샘플 영상 (Big Buck Bunny)",
+                      "kind": "video",
+                      "mime": "video/mp4",
+                      "url": "/media/seed-sample-video.mp4",
+                      "width": 640,
+                      "height": 360
+                    }
+                  },
+                  {
+                    "id": "pli-sample-4",
+                    "position": 4,
+                    "durationSeconds": 10,
+                    "fitMode": "contain",
+                    "transitionMs": 500,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-poster-class",
+                      "name": "시민 체험 교실 포스터",
+                      "kind": "image",
+                      "mime": "image/png",
+                      "url": "/media/seed-poster-class.png",
+                      "width": 1920,
+                      "height": 1080
+                    }
+                  },
+                  {
+                    "id": "pli-sample-5",
+                    "position": 5,
+                    "durationSeconds": 12,
+                    "fitMode": "contain",
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-notice",
+                      "name": "오늘의 안내 (샘플 웹페이지)",
+                      "kind": "url",
+                      "mime": null,
+                      "url": "/sample/notice.html",
+                      "width": null,
+                      "height": null
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "displayId": "1e7bab9b-a653-4ccf-949b-97733d429b19",
+              "playlistId": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+              "playlist": {
+                "id": "5baa65a4-ac4a-4f14-a20f-3998c9a897cc",
+                "name": "4번 화면 URL 단독",
+                "description": "다중 모니터 URL 브라우저 검증용",
+                "items": [
+                  {
+                    "id": "fb884326-9944-4ea2-8943-25b72d771913",
+                    "position": 1,
+                    "durationSeconds": 30,
+                    "transitionMs": 300,
+                    "enabled": true,
+                    "content": {
+                      "id": "ct-sample-notice",
+                      "name": "오늘의 안내 (샘플 웹페이지)",
+                      "kind": "url",
+                      "mime": null,
+                      "url": "/sample/notice.html",
+                      "width": null,
+                      "height": null
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "groupPlaylist": {
+            "id": "pl-sample-lobby",
+            "name": "로비 기본 순환",
+            "description": "기관 로비에서 이미지, 영상, 안내 웹페이지를 순서대로 재생합니다.",
+            "items": [
+              {
+                "id": "pli-sample-1",
+                "position": 1,
+                "durationSeconds": 10,
+                "fitMode": "contain",
+                "transitionMs": 500,
+                "enabled": true,
+                "content": {
+                  "id": "ct-sample-poster-autumn",
+                  "name": "가을 문화 행사 포스터",
+                  "kind": "image",
+                  "mime": "image/png",
+                  "url": "/media/seed-poster-autumn.png",
+                  "width": 1920,
+                  "height": 1080
+                }
+              },
+              {
+                "id": "pli-sample-2",
+                "position": 2,
+                "durationSeconds": 10,
+                "fitMode": "contain",
+                "transitionMs": 500,
+                "enabled": true,
+                "content": {
+                  "id": "ct-sample-poster-welcome",
+                  "name": "안내센터 안내",
+                  "kind": "image",
+                  "mime": "image/png",
+                  "url": "/media/seed-poster-welcome.png",
+                  "width": 1080,
+                  "height": 1920
+                }
+              },
+              {
+                "id": "pli-sample-3",
+                "position": 3,
+                "durationSeconds": 10,
+                "fitMode": "contain",
+                "transitionMs": 300,
+                "enabled": true,
+                "content": {
+                  "id": "ct-sample-video-bbb",
+                  "name": "샘플 영상 (Big Buck Bunny)",
+                  "kind": "video",
+                  "mime": "video/mp4",
+                  "url": "/media/seed-sample-video.mp4",
+                  "width": 640,
+                  "height": 360
+                }
+              },
+              {
+                "id": "pli-sample-4",
+                "position": 4,
+                "durationSeconds": 10,
+                "fitMode": "contain",
+                "transitionMs": 500,
+                "enabled": true,
+                "content": {
+                  "id": "ct-sample-poster-class",
+                  "name": "시민 체험 교실 포스터",
+                  "kind": "image",
+                  "mime": "image/png",
+                  "url": "/media/seed-poster-class.png",
+                  "width": 1920,
+                  "height": 1080
+                }
+              },
+              {
+                "id": "pli-sample-5",
+                "position": 5,
+                "durationSeconds": 12,
+                "fitMode": "contain",
+                "transitionMs": 300,
+                "enabled": true,
+                "content": {
+                  "id": "ct-sample-notice",
+                  "name": "오늘의 안내 (샘플 웹페이지)",
+                  "kind": "url",
+                  "mime": null,
+                  "url": "/sample/notice.html",
+                  "width": null,
+                  "height": null
+                }
+              }
+            ]
+          },
+          "dwellMs": 3000
+        },
+        "plans": [
+          {
+            "displayId": "3eacf833-3244-4035-a01b-9c41d36b3d3b",
+            "displayName": "로비 안내 화면 · 화면",
+            "siteId": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "at": "2026-11-28T05:35:58.265Z",
+            "atMs": 1795844158265,
+            "mode": "synchronized-cycle",
+            "epochMs": 1795844124215,
+            "dwellMs": 3000,
+            "imageCount": 5,
+            "itemCount": 5,
+            "displayCount": 4,
+            "imageIndex": 1,
+            "imageId": "ct-sample-poster-welcome",
+            "contentId": "ct-sample-poster-welcome",
+            "kind": "image",
+            "content": {
+              "id": "ct-sample-poster-welcome",
+              "name": "안내센터 안내",
+              "kind": "image",
+              "mime": "image/png",
+              "url": "/media/seed-poster-welcome.png",
+              "width": 1080,
+              "height": 1920
+            },
+            "contentUrl": "/media/seed-poster-welcome.png",
+            "requiresNetwork": false,
+            "itemId": "pli-sample-2",
+            "image": {
+              "id": "ct-sample-poster-welcome",
+              "name": "안내센터 안내",
+              "kind": "image",
+              "mime": "image/png",
+              "url": "/media/seed-poster-welcome.png",
+              "width": 1080,
+              "height": 1920,
+              "filename": "안내센터 안내",
+              "displayUrl": "/media/seed-poster-welcome.png"
+            },
+            "imageUrl": "/media/seed-poster-welcome.png",
+            "rotation": 0,
+            "fit": "contain",
+            "opacity": 1,
+            "transitionMs": 500,
+            "slot": 11,
+            "slotId": "slot-1",
+            "slotRect": {
+              "x": 0,
+              "y": 0,
+              "w": 0.5,
+              "h": 0.5
+            },
+            "cycleIndex": 2,
+            "offsetMs": 1050,
+            "slotStartMs": 1795844157215,
+            "slotStartAt": "2026-11-28T05:35:57.215Z",
+            "nextChangeAtMs": 1795844160215,
+            "nextChangeAt": "2026-11-28T05:36:00.215Z",
+            "static": false,
+            "placeholder": false,
+            "viewport": {
+              "width": 1280,
+              "height": 720
+            },
+            "warnings": [
+              {
+                "code": "MORE_IMAGES_THAN_DISPLAYS",
+                "severity": "info",
+                "path": "playlist.items",
+                "message": "5 images for 4 displays; the image window rotates."
+              },
+              {
+                "code": "DISPLAY_OFFLINE",
+                "severity": "warning",
+                "path": "display",
+                "message": "Display 3eacf833-3244-4035-a01b-9c41d36b3d3b is pending; showing cached plan."
+              },
+              {
+                "code": "ASPECT_MISMATCH",
+                "severity": "warning",
+                "path": "image",
+                "message": "Image aspect differs from the 1280x720 display by 68.4%.",
+                "details": {
+                  "imageId": "ct-sample-poster-welcome",
+                  "imageAspect": 0.5625,
+                  "targetAspect": 1.7777777777777777,
+                  "difference": 0.68359375
+                }
+              }
+            ],
+            "sourceRect": {
+              "x": 0,
+              "y": 0,
+              "w": 1080,
+              "h": 1920
+            },
+            "destinationRect": {
+              "x": 437.5,
+              "y": 0,
+              "w": 405,
+              "h": 720
+            },
+            "letterbox": true
+          },
+          {
+            "displayId": "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3",
+            "displayName": "화면 2",
+            "siteId": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "at": "2026-11-28T05:35:58.265Z",
+            "atMs": 1795844158265,
+            "mode": "synchronized-cycle",
+            "epochMs": 1795844124215,
+            "dwellMs": 3000,
+            "imageCount": 5,
+            "itemCount": 5,
+            "displayCount": 4,
+            "imageIndex": 2,
+            "imageId": "ct-sample-video-bbb",
+            "contentId": "ct-sample-video-bbb",
+            "kind": "video",
+            "content": {
+              "id": "ct-sample-video-bbb",
+              "name": "샘플 영상 (Big Buck Bunny)",
+              "kind": "video",
+              "mime": "video/mp4",
+              "url": "/media/seed-sample-video.mp4",
+              "width": 640,
+              "height": 360
+            },
+            "contentUrl": "/media/seed-sample-video.mp4",
+            "requiresNetwork": false,
+            "itemId": "pli-sample-3",
+            "image": {
+              "id": "ct-sample-video-bbb",
+              "name": "샘플 영상 (Big Buck Bunny)",
+              "kind": "video",
+              "mime": "video/mp4",
+              "url": "/media/seed-sample-video.mp4",
+              "width": 640,
+              "height": 360,
+              "filename": "샘플 영상 (Big Buck Bunny)",
+              "displayUrl": "/media/seed-sample-video.mp4"
+            },
+            "imageUrl": "/media/seed-sample-video.mp4",
+            "rotation": 0,
+            "fit": "contain",
+            "opacity": 1,
+            "transitionMs": 300,
+            "slot": 11,
+            "slotId": "slot-2",
+            "slotRect": {
+              "x": 0.5,
+              "y": 0,
+              "w": 0.5,
+              "h": 0.5
+            },
+            "cycleIndex": 2,
+            "offsetMs": 1050,
+            "slotStartMs": 1795844157215,
+            "slotStartAt": "2026-11-28T05:35:57.215Z",
+            "nextChangeAtMs": 1795844160215,
+            "nextChangeAt": "2026-11-28T05:36:00.215Z",
+            "static": false,
+            "placeholder": false,
+            "viewport": {
+              "width": 1280,
+              "height": 720
+            },
+            "warnings": [
+              {
+                "code": "MORE_IMAGES_THAN_DISPLAYS",
+                "severity": "info",
+                "path": "playlist.items",
+                "message": "5 images for 4 displays; the image window rotates."
+              },
+              {
+                "code": "DISPLAY_OFFLINE",
+                "severity": "warning",
+                "path": "display",
+                "message": "Display 2f75f13b-d5bf-43ff-bdbb-ed6401862ec3 is pending; showing cached plan."
+              }
+            ],
+            "sourceRect": {
+              "x": 0,
+              "y": 0,
+              "w": 640,
+              "h": 360
+            },
+            "destinationRect": {
+              "x": 0,
+              "y": 0,
+              "w": 1280,
+              "h": 720
+            },
+            "letterbox": true
+          },
+          {
+            "displayId": "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f",
+            "displayName": "화면 3",
+            "siteId": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "at": "2026-11-28T05:35:58.265Z",
+            "atMs": 1795844158265,
+            "mode": "synchronized-cycle",
+            "epochMs": 1795844124215,
+            "dwellMs": 3000,
+            "imageCount": 5,
+            "itemCount": 5,
+            "displayCount": 4,
+            "imageIndex": 3,
+            "imageId": "ct-sample-poster-class",
+            "contentId": "ct-sample-poster-class",
+            "kind": "image",
+            "content": {
+              "id": "ct-sample-poster-class",
+              "name": "시민 체험 교실 포스터",
+              "kind": "image",
+              "mime": "image/png",
+              "url": "/media/seed-poster-class.png",
+              "width": 1920,
+              "height": 1080
+            },
+            "contentUrl": "/media/seed-poster-class.png",
+            "requiresNetwork": false,
+            "itemId": "pli-sample-4",
+            "image": {
+              "id": "ct-sample-poster-class",
+              "name": "시민 체험 교실 포스터",
+              "kind": "image",
+              "mime": "image/png",
+              "url": "/media/seed-poster-class.png",
+              "width": 1920,
+              "height": 1080,
+              "filename": "시민 체험 교실 포스터",
+              "displayUrl": "/media/seed-poster-class.png"
+            },
+            "imageUrl": "/media/seed-poster-class.png",
+            "rotation": 0,
+            "fit": "contain",
+            "opacity": 1,
+            "transitionMs": 500,
+            "slot": 11,
+            "slotId": "slot-3",
+            "slotRect": {
+              "x": 0,
+              "y": 0.5,
+              "w": 0.5,
+              "h": 0.5
+            },
+            "cycleIndex": 2,
+            "offsetMs": 1050,
+            "slotStartMs": 1795844157215,
+            "slotStartAt": "2026-11-28T05:35:57.215Z",
+            "nextChangeAtMs": 1795844160215,
+            "nextChangeAt": "2026-11-28T05:36:00.215Z",
+            "static": false,
+            "placeholder": false,
+            "viewport": {
+              "width": 1280,
+              "height": 720
+            },
+            "warnings": [
+              {
+                "code": "MORE_IMAGES_THAN_DISPLAYS",
+                "severity": "info",
+                "path": "playlist.items",
+                "message": "5 images for 4 displays; the image window rotates."
+              },
+              {
+                "code": "DISPLAY_OFFLINE",
+                "severity": "warning",
+                "path": "display",
+                "message": "Display e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f is pending; showing cached plan."
+              }
+            ],
+            "sourceRect": {
+              "x": 0,
+              "y": 0,
+              "w": 1920,
+              "h": 1080
+            },
+            "destinationRect": {
+              "x": 0,
+              "y": 0,
+              "w": 1280,
+              "h": 720
+            },
+            "letterbox": true
+          },
+          {
+            "displayId": "1e7bab9b-a653-4ccf-949b-97733d429b19",
+            "displayName": "화면 4",
+            "siteId": "712d7c1a-910c-4914-929d-87b9df78c8ea",
+            "at": "2026-11-28T05:35:58.265Z",
+            "atMs": 1795844158265,
+            "mode": "synchronized-cycle",
+            "epochMs": 1795844124215,
+            "dwellMs": 3000,
+            "imageCount": 1,
+            "itemCount": 1,
+            "displayCount": 4,
+            "imageIndex": 0,
+            "imageId": "ct-sample-notice",
+            "contentId": "ct-sample-notice",
+            "kind": "url",
+            "content": {
+              "id": "ct-sample-notice",
+              "name": "오늘의 안내 (샘플 웹페이지)",
+              "kind": "url",
+              "mime": null,
+              "url": "/sample/notice.html",
+              "width": null,
+              "height": null
+            },
+            "contentUrl": "/sample/notice.html",
+            "requiresNetwork": true,
+            "itemId": "fb884326-9944-4ea2-8943-25b72d771913",
+            "image": null,
+            "imageUrl": null,
+            "rotation": 0,
+            "fit": "cover",
+            "opacity": 1,
+            "transitionMs": 300,
+            "slot": 11,
+            "slotId": "slot-4",
+            "slotRect": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 0.5,
+              "h": 0.5
+            },
+            "cycleIndex": 11,
+            "offsetMs": 1050,
+            "slotStartMs": 1795844157215,
+            "slotStartAt": "2026-11-28T05:35:57.215Z",
+            "nextChangeAtMs": null,
+            "nextChangeAt": null,
+            "static": true,
+            "placeholder": false,
+            "viewport": {
+              "width": 1280,
+              "height": 720
+            },
+            "warnings": [
+              {
+                "code": "SINGLE_IMAGE",
+                "severity": "info",
+                "path": "playlist.items",
+                "message": "One image is repeated on every display and stays static."
+              },
+              {
+                "code": "DISPLAY_OFFLINE",
+                "severity": "warning",
+                "path": "display",
+                "message": "Display 1e7bab9b-a653-4ccf-949b-97733d429b19 is pending; showing cached plan."
+              }
+            ],
+            "sourceRect": null,
+            "destinationRect": {
+              "x": 0,
+              "y": 0,
+              "w": 1280,
+              "h": 720
+            }
+          }
+        ],
+        "atMs": 1795844158265,
+        "serverTime": "2026-11-28T05:35:58.265Z",
+        "layoutValidation": []
+      }
+    }
+  },
   "timing": {
     "before": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518784138,
-        "fit": "contain",
-        "rotation": 0,
-        "nextChangeAtMs": 1795518786092
-      },
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
         "imageId": "ct-sample-video-bbb",
-        "atMs": 1795518784138,
+        "contentId": "ct-sample-video-bbb",
+        "kind": "video",
+        "contentUrl": "/media/seed-sample-video.mp4",
+        "atMs": 1795844161250,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518786092
+        "nextChangeAtMs": 1795844163215
       },
-      "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
         "imageId": "ct-sample-poster-class",
-        "atMs": 1795518784138,
+        "contentId": "ct-sample-poster-class",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-class.png",
+        "atMs": 1795844161250,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518786092
+        "nextChangeAtMs": 1795844163215
       },
-      "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518784138,
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844161250,
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795844163215
+      },
+      "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844161250,
         "fit": "cover",
         "rotation": 0,
         "nextChangeAtMs": null
       }
     },
     "after": {
-      "3c3d27fc-fc37-4ce1-b146-47d762099c33": {
-        "imageId": "ct-sample-video-bbb",
-        "atMs": 1795518787134,
-        "fit": "contain",
-        "rotation": 0,
-        "nextChangeAtMs": 1795518789092
-      },
-      "cccf09d4-2cc0-4860-ab4d-27b897891fe8": {
+      "3eacf833-3244-4035-a01b-9c41d36b3d3b": {
         "imageId": "ct-sample-poster-class",
-        "atMs": 1795518787134,
+        "contentId": "ct-sample-poster-class",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-class.png",
+        "atMs": 1795844165265,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "a665f288-4e9a-4216-a514-6df5d7c1191f": {
+      "2f75f13b-d5bf-43ff-bdbb-ed6401862ec3": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844165265,
+        "fit": "contain",
+        "rotation": 0,
+        "nextChangeAtMs": 1795844166215
+      },
+      "e5e9b0c5-a277-4a38-8e77-bc2d8bd6f55f": {
         "imageId": "ct-sample-poster-autumn",
-        "atMs": 1795518787134,
+        "contentId": "ct-sample-poster-autumn",
+        "kind": "image",
+        "contentUrl": "/media/seed-poster-autumn.png",
+        "atMs": 1795844165265,
         "fit": "contain",
         "rotation": 0,
-        "nextChangeAtMs": 1795518789092
+        "nextChangeAtMs": 1795844166215
       },
-      "c1aa3599-51ff-47c0-a202-f1537fedb210": {
-        "imageId": "ct-sample-poster-welcome",
-        "atMs": 1795518787134,
+      "1e7bab9b-a653-4ccf-949b-97733d429b19": {
+        "imageId": "ct-sample-notice",
+        "contentId": "ct-sample-notice",
+        "kind": "url",
+        "contentUrl": "/sample/notice.html",
+        "atMs": 1795844165265,
         "fit": "cover",
         "rotation": 0,
         "nextChangeAtMs": null
       }
     },
     "changed": true,
-    "serverOffsetMs": 0
-  }
+    "serverOffsetMs": -4
+  },
+  "physicalBindingStatus": "VERIFIED_IN_UI"
 }
