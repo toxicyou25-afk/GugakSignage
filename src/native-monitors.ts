@@ -34,18 +34,24 @@ function appendIdentitySuffix(value: string, suffix: string): string {
 export function normalizeNativeMonitorIdentities(candidates: readonly NativeMonitorCandidate[]): NativeMonitor[] {
   const deviceIdCounts = new Map<string, number>();
   const bindingIdCounts = new Map<string, number>();
+  const deviceNameCounts = new Map<string, number>();
   for (const candidate of candidates) {
-    const deviceId = candidate.deviceId?.trim() || candidate.stableId.trim();
+    const deviceId = (candidate.deviceId?.trim() || candidate.stableId.trim()).toLocaleLowerCase('en-US');
+    const deviceName = candidate.deviceName.trim().toLocaleLowerCase('en-US');
     deviceIdCounts.set(deviceId, (deviceIdCounts.get(deviceId) ?? 0) + 1);
-    if (candidate.bindingId) bindingIdCounts.set(candidate.bindingId, (bindingIdCounts.get(candidate.bindingId) ?? 0) + 1);
+    deviceNameCounts.set(deviceName, (deviceNameCounts.get(deviceName) ?? 0) + 1);
+    if (candidate.bindingId) {
+      const bindingId = candidate.bindingId.toLocaleLowerCase('en-US');
+      bindingIdCounts.set(bindingId, (bindingIdCounts.get(bindingId) ?? 0) + 1);
+    }
   }
 
   return candidates.map((candidate, index) => {
     const { deviceId: rawDeviceId, deviceKey: rawDeviceKey, ...monitor } = candidate;
     const deviceId = rawDeviceId?.trim() || candidate.stableId.trim();
     const bindingId = candidate.bindingId;
-    const duplicateDeviceId = (deviceIdCounts.get(deviceId) ?? 0) > 1;
-    const duplicateBindingId = Boolean(bindingId && (bindingIdCounts.get(bindingId) ?? 0) > 1);
+    const duplicateDeviceId = (deviceIdCounts.get(deviceId.toLocaleLowerCase('en-US')) ?? 0) > 1;
+    const duplicateBindingId = Boolean(bindingId && (bindingIdCounts.get(bindingId.toLocaleLowerCase('en-US')) ?? 0) > 1);
     if (!duplicateDeviceId && !duplicateBindingId) {
       const identityStatus = candidate.identityStatus ?? (bindingId ? undefined : 'unavailable');
       return {
@@ -57,9 +63,10 @@ export function normalizeNativeMonitorIdentities(candidates: readonly NativeMoni
 
     const deviceKey = rawDeviceKey?.trim() ?? '';
     const matchingDeviceKeys = candidates.filter((other) =>
-      (other.deviceId?.trim() || other.stableId.trim()) === deviceId && other.deviceKey?.trim() === deviceKey
+      (other.deviceId?.trim() || other.stableId.trim()).toLocaleLowerCase('en-US') === deviceId.toLocaleLowerCase('en-US') &&
+      (other.deviceKey?.trim() ?? '').toLocaleLowerCase('en-US') === deviceKey.toLocaleLowerCase('en-US')
     ).length;
-    const bindingIsUnique = Boolean(bindingId && bindingIdCounts.get(bindingId) === 1);
+    const bindingIsUnique = Boolean(bindingId && bindingIdCounts.get(bindingId.toLocaleLowerCase('en-US')) === 1);
     const supplementalDiscriminator = deviceKey && matchingDeviceKeys === 1
       ? deviceKey
       : bindingIsUnique ? bindingId! : '';
@@ -74,7 +81,11 @@ export function normalizeNativeMonitorIdentities(candidates: readonly NativeMoni
       };
     }
 
-    const suffix = `OUTPUT-${identityFingerprint(`${candidate.deviceName}\u0000${index}`)}`;
+    const outputName = candidate.deviceName.trim();
+    const outputKey = (deviceNameCounts.get(outputName.toLocaleLowerCase('en-US')) ?? 0) === 1
+      ? outputName
+      : `${outputName}\u0000${index}`;
+    const suffix = `OUTPUT-${identityFingerprint(outputKey)}`;
     return {
       ...monitor,
       stableId: appendIdentitySuffix(deviceId, suffix),
@@ -99,8 +110,8 @@ export function parseNativeMonitorOutput(output: string, detectedAt = new Date()
       const m = raw as Record<string, unknown>;
       const numbers = ['x', 'y', 'width', 'height'].map((key) => m[key]);
       if (['stableId', 'deviceName', 'friendlyName'].some((key) => typeof m[key] !== 'string' || !(m[key] as string).trim()) ||
-          (m.deviceId !== undefined && (typeof m.deviceId !== 'string' || !m.deviceId.trim() || m.deviceId.length > 512)) ||
-          (m.deviceKey !== undefined && (typeof m.deviceKey !== 'string' || m.deviceKey.length > 256)) ||
+          (m.deviceId !== undefined && m.deviceId !== null && (typeof m.deviceId !== 'string' || m.deviceId.length > 512)) ||
+          (m.deviceKey !== undefined && m.deviceKey !== null && (typeof m.deviceKey !== 'string' || m.deviceKey.length > 256)) ||
           numbers.some((n, index) => typeof n !== 'number' || !Number.isFinite(n) || (index > 1 && n <= 0)) ||
           !['landscape', 'portrait'].includes(String(m.orientation)) || typeof m.primary !== 'boolean' || typeof m.attached !== 'boolean') {
         return emptyResult(detectedAt, 'Windows display discovery returned invalid monitor data.');

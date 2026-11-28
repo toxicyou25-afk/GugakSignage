@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareMonitorSnapshots, discoverNativeMonitors, NativeMonitorSnapshotTracker, parseNativeMonitorOutput } from '../src/native-monitors.js';
+import { compareMonitorSnapshots, discoverNativeMonitors, NativeMonitorSnapshotTracker, parseNativeMonitorOutput, type NativeMonitor } from '../src/native-monitors.js';
 
 const monitor = { deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Primary Display', stableId: 'MONITOR\\ABC', bindingId: 'MONITOR\\ABC', x: 0, y: 0, width: 1920, height: 1080, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 }, orientation: 'landscape', primary: true, attached: true };
 
@@ -55,6 +55,21 @@ test('marks same-model monitors ambiguous when Windows exposes no unique output 
   assert.ok(result.monitors.every((entry) => entry.bindingId?.startsWith('MONITOR\\SAME-MODEL|OUTPUT-')));
   assert.equal(new Set(result.monitors.map((entry) => entry.stableId)).size, 2);
   assert.equal(new Set(result.monitors.map((entry) => entry.bindingId)).size, 2);
+
+  const reordered = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [second, first] }));
+  const identitiesByOutput = (monitors: NativeMonitor[]) => Object.fromEntries(monitors.map((entry) => [entry.deviceName, entry.bindingId]));
+  assert.deepEqual(identitiesByOutput(reordered.monitors), identitiesByOutput(result.monitors));
+});
+
+test('keeps a detected display when Windows supplies null identity supplements', () => {
+  const fallback = { ...monitor, stableId: '\\\\.\\DISPLAY1', bindingId: null, deviceId: null, deviceKey: null };
+  const result = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [fallback] }));
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.monitors.length, 1);
+  assert.equal(result.monitors[0]?.stableId, fallback.stableId);
+  assert.equal(result.monitors[0]?.bindingId, null);
+  assert.equal(result.monitors[0]?.identityStatus, 'unavailable');
 });
 
 test('malformed native output returns a clear discovery error', () => {
