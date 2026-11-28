@@ -7,6 +7,12 @@ import type { DeviceRow } from './types.js';
 
 export type PlayerDesiredState = 'running' | 'stopped';
 
+export interface PlayerScreenTarget {
+  displayId: string;
+  nativeMonitorId: string;
+  bounds?: { x: number; y: number; width: number; height: number };
+}
+
 export interface PlayerControlState {
   schemaVersion: 1;
   desired: PlayerDesiredState;
@@ -15,6 +21,7 @@ export interface PlayerControlState {
   startedAt: string | null;
   deviceId: string | null;
   playerUrl: string | null;
+  screenTargets: PlayerScreenTarget[];
   lastError: string | null;
   updatedAt: string | null;
 }
@@ -27,6 +34,7 @@ export interface PlayerCommand {
   deviceId: string | null;
   deviceName: string | null;
   playerUrl: string | null;
+  screenTargets: PlayerScreenTarget[];
   requestedAt: string;
 }
 
@@ -38,6 +46,7 @@ export const DEFAULT_PLAYER_STATE: PlayerControlState = {
   startedAt: null,
   deviceId: null,
   playerUrl: null,
+  screenTargets: [],
   lastError: null,
   updatedAt: null,
 };
@@ -110,9 +119,39 @@ export function normalizePlayerState(raw: unknown): PlayerControlState {
     startedAt: typeof value.startedAt === 'string' ? value.startedAt : null,
     deviceId: typeof value.deviceId === 'string' ? value.deviceId : null,
     playerUrl: typeof value.playerUrl === 'string' ? value.playerUrl : null,
+    screenTargets: normalizePlayerScreenTargets(value.screenTargets),
     lastError: typeof value.lastError === 'string' ? value.lastError : null,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
   };
+}
+
+export function normalizePlayerScreenTargets(value: unknown): PlayerScreenTarget[] {
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const targets: PlayerScreenTarget[] = [];
+  const displayIds = new Set<string>();
+  const monitorIds = new Set<string>();
+  for (const rawTarget of value) {
+    if (!rawTarget || typeof rawTarget !== 'object') return [];
+    const target = rawTarget as Record<string, unknown>;
+    const displayId = typeof target.displayId === 'string' ? target.displayId.trim() : '';
+    const nativeMonitorId = typeof target.nativeMonitorId === 'string' ? target.nativeMonitorId.trim() : '';
+    if (!displayId || displayId.length > 100 || !nativeMonitorId || nativeMonitorId.length > 512 || !/^MONITOR\\/iu.test(nativeMonitorId) ||
+        displayIds.has(displayId) || monitorIds.has(nativeMonitorId)) return [];
+    const rawBounds = target.bounds;
+    let bounds: PlayerScreenTarget['bounds'];
+    if (rawBounds !== undefined) {
+      if (!rawBounds || typeof rawBounds !== 'object') return [];
+      const values = rawBounds as Record<string, unknown>;
+      const { x, y, width, height } = values;
+      if (![x, y, width, height].every(Number.isSafeInteger) ||
+          (width as number) < 320 || (height as number) < 320 || (width as number) > 16384 || (height as number) > 16384) return [];
+      bounds = { x: x as number, y: y as number, width: width as number, height: height as number };
+    }
+    displayIds.add(displayId);
+    monitorIds.add(nativeMonitorId);
+    targets.push({ displayId, nativeMonitorId, ...(bounds ? { bounds } : {}) });
+  }
+  return targets;
 }
 
 export function readPlayerState(dataDir: string): PlayerControlState {
@@ -134,6 +173,7 @@ export function playerLaunchUrl(config: AppConfig, device: Pick<DeviceRow, 'pair
 export function requestPlayerLaunch(
   config: AppConfig,
   device: Pick<DeviceRow, 'id' | 'name' | 'pairing_code'>,
+  screenTargets: PlayerScreenTarget[] = [],
 ): { command: PlayerCommand; state: PlayerControlState } {
   const requestedAt = new Date().toISOString();
   const serverInstance = currentServerInstance(config);
@@ -145,6 +185,7 @@ export function requestPlayerLaunch(
     deviceId: device.id,
     deviceName: device.name,
     playerUrl: playerLaunchUrl(config, device),
+    screenTargets: normalizePlayerScreenTargets(screenTargets),
     requestedAt,
   };
   atomicWrite(playerCommandPath(config.dataDir), command);
@@ -162,6 +203,7 @@ export function requestPlayerStop(config: AppConfig): { command: PlayerCommand; 
     deviceId: null,
     deviceName: null,
     playerUrl: null,
+    screenTargets: [],
     requestedAt,
   };
   atomicWrite(playerCommandPath(config.dataDir), command);

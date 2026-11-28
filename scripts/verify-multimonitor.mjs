@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
@@ -37,6 +38,9 @@ function sanitize(text) {
   return String(text)
     .replaceAll(root, '<repo>')
     .replaceAll(tempDir, '<temp>')
+    .replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):\d+/giu, '<loopback-url>')
+    .replace(/(?:127\.0\.0\.1|localhost):\d+/giu, '<loopback>')
+    .replace(/\[::1\]:\d+/giu, '<loopback>')
     .replace(/[A-Za-z]:\\Users\\[^\\\r\n]+/g, '<home>');
 }
 
@@ -200,10 +204,34 @@ try {
     if (!response.ok || !data.device?.id) throw new Error(data.error || '검증용 PC B를 만들지 못했습니다.');
     return data.device.id;
   });
+  const remoteMonitor = {
+    stableId: 'VERIFY-REMOTE-STABLE', bindingId: 'MONITOR\\VERIFY-REMOTE-STABLE',
+    deviceName: '\\\\.\\DISPLAY7', friendlyName: 'Reported remote monitor',
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
+    orientation: 'landscape', primary: true, attached: true,
+  };
+  const seedDb = new DatabaseSync(path.join(tempDir, 'verify.sqlite'));
+  const reportedAt = new Date().toISOString();
+  seedDb.prepare('UPDATE devices SET last_host_local = 0, last_seen = ? WHERE id = ?').run(reportedAt, secondDeviceId);
+  seedDb.prepare(`INSERT INTO player_monitor_reports (device_id, snapshot_json, reported_at)
+    VALUES (?, ?, ?)`).run(secondDeviceId, JSON.stringify([remoteMonitor]), reportedAt);
+  seedDb.close();
+  const remoteInventory = await admin.evaluate(async (deviceId) => {
+    const response = await fetch(`/api/native-monitors?deviceId=${encodeURIComponent(deviceId)}`);
+    return { status: response.status, body: await response.json() };
+  }, secondDeviceId);
+  if (remoteInventory.status !== 200 || !remoteInventory.body.reported ||
+      !remoteInventory.body.monitors?.some((monitor) => monitor.bindingId === remoteMonitor.bindingId)) {
+    throw new Error(`관리자 API에서 원격 모니터 보고를 확인할 수 없습니다: ${JSON.stringify(remoteInventory)}`);
+  }
   // Device creation adds a migration display; saving the current 4-screen
   // draft removes that temporary extra screen and refreshes the PC choices.
   await admin.click('.topology-config button[type=submit]');
-  await admin.waitForFunction(() => document.querySelectorAll('.screen-assignment').length === 4);
+  await admin.waitForFunction(({ deviceId, bindingId }) => {
+    const option = [...document.querySelectorAll('.screen-assignment [data-screen-device] option')].find((item) => item.value === deviceId);
+    if (!option) return false;
+    try { return JSON.parse(option.dataset.monitors || '[]').some((monitor) => monitor.bindingId === bindingId); } catch { return false; }
+  }, { deviceId: secondDeviceId, bindingId: remoteMonitor.bindingId });
   const initialMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
@@ -217,6 +245,14 @@ try {
   const screenDeviceSelects = admin.locator('.screen-assignment [data-screen-device]');
   if (await screenDeviceSelects.count() !== 4) throw new Error('화면별 PC 선택 UI가 4개 표시되지 않았습니다.');
   await fourth.locator('[data-screen-device]').selectOption(secondDeviceId);
+  const remoteMonitorSelect = fourth.locator('[data-screen-native-monitor]');
+  const remoteMonitorPickerDisabled = await remoteMonitorSelect.isDisabled();
+  if (remoteMonitorPickerDisabled) throw new Error('안정 식별자가 보고된 원격 Player의 모니터 선택기가 비활성화되었습니다.');
+  const remoteMonitorOptionCount = await remoteMonitorSelect.locator('option').evaluateAll((options, bindingId) =>
+    options.filter((option) => option.value === bindingId).length,
+  remoteMonitor.bindingId);
+  if (remoteMonitorOptionCount === 0) throw new Error('보고된 원격 모니터가 선택지에 없습니다.');
+  await remoteMonitorSelect.selectOption(remoteMonitor.bindingId);
   await fourth.locator('[data-topology-action=save-screen]').click();
   await admin.waitForFunction((secondId) =>
     document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-device]')?.value === secondId,
@@ -224,9 +260,9 @@ try {
   const explicitMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
-    return detail.groups[0].displays.map((display) => display.device_id);
+    return detail.groups[0].displays.map((display) => ({ deviceId: display.device_id, nativeMonitorId: display.nativeMonitorId }));
   });
-  if (explicitMapping[3] !== secondDeviceId || explicitMapping.slice(0, 3).some((value) => value !== deviceValue)) {
+  if (explicitMapping[3].deviceId !== secondDeviceId || explicitMapping[3].nativeMonitorId !== remoteMonitor.bindingId || explicitMapping.slice(0, 3).some((value) => value.deviceId !== deviceValue)) {
     throw new Error(`화면별 명시적 PC 재배정이 반영되지 않았습니다: ${JSON.stringify(explicitMapping)}`);
   }
   await admin.click('.topology-config button[type=submit]');
@@ -234,23 +270,68 @@ try {
   const savedMapping = await admin.evaluate(async () => {
     const sites = await (await fetch('/api/sites')).json();
     const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
-    return detail.groups[0].displays.map((display) => display.device_id);
+    return detail.groups[0].displays.map((display) => ({ deviceId: display.device_id, nativeMonitorId: display.nativeMonitorId }));
   });
   if (JSON.stringify(savedMapping) !== JSON.stringify(explicitMapping)) {
     throw new Error(`그룹 저장이 화면별 PC 배정을 덮어썼습니다: ${JSON.stringify(savedMapping)}`);
   }
-  report.deviceMapping = { initialMapping, explicitMapping, savedMapping };
+  report.deviceMapping = { initialMapping, explicitMapping, savedMapping, remoteMonitorPickerDisabled, remoteMonitorBindingId: remoteMonitor.bindingId };
   step('화면별 PC 재배정 뒤 그룹 저장에서 기존 매핑 보존', report.deviceMapping);
 
   const refreshedFourth = admin.locator('.screen-assignment').nth(3);
   await refreshedFourth.locator('[data-screen-device]').selectOption(deviceValue);
+  const localMonitor = await refreshedFourth.locator('[data-screen-native-monitor] option').evaluateAll((options) =>
+    options.map((option) => option.value).find(Boolean) || '',
+  );
+  const physicalBindingStatus = localMonitor ? 'VERIFIED_IN_UI' : 'NOT_AVAILABLE_STABLE_MONITOR_ID';
+  if (localMonitor) await refreshedFourth.locator('[data-screen-native-monitor]').selectOption(localMonitor);
   await refreshedFourth.locator('[data-screen-fit]').selectOption('cover');
   await refreshedFourth.locator('[data-screen-playlist]').selectOption(playlist.urlPlaylistId);
+  const selectedPlaylistBeforeSave = await refreshedFourth.locator('[data-screen-playlist]').inputValue();
+  if (selectedPlaylistBeforeSave !== playlist.urlPlaylistId) {
+    throw new Error(`4번 화면 재생목록 선택이 유지되지 않았습니다. expected=${playlist.urlPlaylistId}, actual=${selectedPlaylistBeforeSave}`);
+  }
+  const screenDisplayId = await refreshedFourth.getAttribute('data-display-id');
+  if (!screenDisplayId) throw new Error('4번 화면의 ID를 확인할 수 없습니다.');
+  const screenSaveRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(screenDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
+  const screenSaveResponsePromise = admin.waitForResponse((response) =>
+    response.url().includes(`/api/displays/${encodeURIComponent(screenDisplayId)}`) &&
+    response.request().method() === 'PUT',
+  );
   await refreshedFourth.locator('[data-topology-action=save-screen]').click();
+  const screenSaveRequest = await screenSaveRequestPromise;
+  const screenSaveResponse = await screenSaveResponsePromise;
+  let screenSaveBody;
+  try { screenSaveBody = await screenSaveResponse.json(); } catch { screenSaveBody = null; }
+  const screenSaveRequestBody = screenSaveRequest.postDataJSON();
+  report.screenSave = { status: screenSaveResponse.status(), requestBody: screenSaveRequestBody, body: screenSaveBody };
+  if (!screenSaveResponse.ok()) {
+    throw new Error(`화면 배정 저장 API가 실패했습니다: ${screenSaveResponse.status()} ${JSON.stringify(screenSaveBody)}`);
+  }
   await admin.waitForSelector('.preview-canvas');
-  await admin.waitForFunction((playlistId) =>
-    document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value === playlistId,
-  playlist.urlPlaylistId);
+  try {
+    await admin.waitForFunction((playlistId) =>
+      document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value === playlistId,
+    playlist.urlPlaylistId);
+  } catch (error) {
+    report.screenSaveFailureState = await admin.evaluate(async () => {
+      const sites = await (await fetch('/api/sites')).json();
+      const detail = await (await fetch(`/api/sites/${sites.sites[0].id}`)).json();
+      return {
+        uiPlaylistId: document.querySelectorAll('.screen-assignment')[3]?.querySelector('[data-screen-playlist]')?.value || null,
+        savedPlaylistId: detail.groups[0].displays[3]?.playlist_id || null,
+        savedDeviceId: detail.groups[0].displays[3]?.device_id || null,
+        toast: document.querySelector('.toast:not([hidden])')?.textContent || null,
+      };
+    });
+    report.screenSaveFailureState.expectedPlaylistId = playlist.urlPlaylistId;
+    report.screenSaveFailureState.selectedPlaylistBeforeSave = selectedPlaylistBeforeSave;
+    report.screenSaveFailureState.requestBody = screenSaveRequestBody;
+    throw new Error(`${error.message}; screen save state=${JSON.stringify(report.screenSaveFailureState)}`);
+  }
   await admin.waitForSelector('.preview-screen iframe', { timeout: 10_000 });
   const adminUrlHeading = await admin.frameLocator('.preview-screen iframe').locator('h1').innerText({ timeout: 10_000 });
   if (!adminUrlHeading.includes('오늘의 안내')) throw new Error(`관리 미리보기 URL iframe이 표시되지 않았습니다: ${adminUrlHeading}`);
@@ -322,16 +403,22 @@ try {
   await player.reload({ waitUntil: 'domcontentloaded' });
   await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 15_000 });
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 20_000 });
-  await player.waitForFunction(() =>
-    document.querySelectorAll('.wall-screen .wall-media, .wall-screen .wall-url-offline').length === 4,
-  null, { timeout: 20_000 });
-  await player.waitForSelector('.wall-screen .wall-url-offline', { timeout: 10_000 });
-  await player.waitForTimeout(700);
+  await player.waitForFunction(() => {
+    const state = window.__signagePlayer.getState();
+    const plans = Object.values(state.wallPlans || {});
+    const urlPlanCount = plans.filter((plan) => plan.kind === 'url').length;
+    const imagePlanCount = plans.length - urlPlanCount;
+    return plans.length === 4 && urlPlanCount > 0 &&
+      document.querySelectorAll('.wall-screen .wall-media').length === imagePlanCount &&
+      document.querySelectorAll('.wall-screen .wall-url-offline').length === urlPlanCount &&
+      document.querySelectorAll('.wall-screen iframe').length === 0;
+  }, null, { timeout: 20_000 });
   report.offlineReload = await player.evaluate(async () => {
     const shared = await import('/engine/index.js');
-    const manifest = JSON.parse(localStorage.getItem('signage.player.manifest.v1'));
+    const snapshot = JSON.parse(localStorage.getItem('signage.player.manifestSnapshot.v2'));
+    const manifest = snapshot.manifest;
     const state = window.__signagePlayer.getState();
-    const storedOffset = Number(localStorage.getItem('signage.player.manifestOffsetMs'));
+    const storedOffset = Number(snapshot.serverOffsetMs);
     const expected = Object.fromEntries(manifest.wall.displays
       .filter((display) => display.deviceId === state.deviceId)
       .map((display) => {
@@ -347,7 +434,7 @@ try {
       offsetNow: state.serverOffsetMs,
       storedOffset,
       offsetDriftMs: Math.abs(state.serverOffsetMs - storedOffset),
-      cacheAgeMs: Date.now() - Number(localStorage.getItem('signage.player.manifestCachedAt')),
+      cacheAgeMs: Date.now() - Number(snapshot.cachedAt),
       screenCount: document.querySelectorAll('.wall-screen').length,
       urlFallbackCount: document.querySelectorAll('.wall-screen .wall-url-offline').length,
       urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,
@@ -378,7 +465,89 @@ try {
     ...window.__signagePlayer.getState(),
     screenCount: document.querySelectorAll('.wall-screen').length,
   }));
+  report.physicalBindingStatus = physicalBindingStatus;
   step('모니터별 분리 창 모드 확인', report.perMonitorWindow);
+
+  const clearRemoteMonitor = admin.locator('.screen-assignment').nth(3);
+  await clearRemoteMonitor.locator('[data-screen-device]').selectOption(secondDeviceId);
+  if (await clearRemoteMonitor.locator('[data-screen-native-monitor]').isDisabled()) {
+    throw new Error('보고된 안정 모니터 ID가 있는 원격 Player에서 모니터 선택이 비활성화되었습니다.');
+  }
+  await clearRemoteMonitor.locator('[data-screen-native-monitor]').selectOption(remoteMonitor.bindingId);
+  const remoteMonitorDisplayId = await clearRemoteMonitor.getAttribute('data-display-id');
+  if (!remoteMonitorDisplayId) throw new Error('원격 화면의 ID를 확인할 수 없습니다.');
+  const remoteMonitorRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(remoteMonitorDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
+  await clearRemoteMonitor.locator('[data-topology-action=save-screen]').click();
+  const remoteMonitorBody = (await remoteMonitorRequestPromise).postDataJSON();
+  if (!Object.hasOwn(remoteMonitorBody, 'nativeMonitorId') || remoteMonitorBody.nativeMonitorId !== remoteMonitor.bindingId) {
+    throw new Error(`보고된 원격 모니터 선택을 저장할 때 식별자를 보내지 않았습니다: ${JSON.stringify(remoteMonitorBody)}`);
+  }
+  await admin.waitForFunction((deviceId) => {
+    const row = document.querySelectorAll('.screen-assignment')[3];
+    return row?.getAttribute('data-device-id') === deviceId && row?.getAttribute('data-local-host') === 'false' &&
+      row.querySelector('[data-screen-device]')?.value === deviceId;
+  }, secondDeviceId);
+  step('재생기가 보고한 원격 모니터 ID를 관리자 배정에 저장', { requestBody: remoteMonitorBody });
+  await clearRemoteMonitor.locator('[data-screen-native-monitor]').selectOption('');
+  const clearMonitorDisplayId = await clearRemoteMonitor.getAttribute('data-display-id');
+  if (!clearMonitorDisplayId) throw new Error('원격 화면의 ID를 확인할 수 없습니다.');
+  const clearMonitorRequestPromise = admin.waitForRequest((request) =>
+    request.url().includes(`/api/displays/${encodeURIComponent(clearMonitorDisplayId)}`) &&
+    request.method() === 'PUT',
+  );
+  await clearRemoteMonitor.locator('[data-topology-action=save-screen]').click();
+  const clearMonitorBody = (await clearMonitorRequestPromise).postDataJSON();
+  if (!Object.hasOwn(clearMonitorBody, 'nativeMonitorId') || clearMonitorBody.nativeMonitorId !== null) {
+    throw new Error(`같은 PC에서 모니터 배정을 지울 때 nativeMonitorId:null을 보내지 않았습니다: ${JSON.stringify(clearMonitorBody)}`);
+  }
+  step('같은 PC에서 원격 모니터 배정 해제 요청 확인', { requestBody: clearMonitorBody });
+
+  await player.evaluate(() => {
+    for (const key of [
+      'signage.player.token', 'signage.player.pendingToken', 'signage.player.pendingCode',
+      'signage.player.lastCode', 'signage.player.deviceId', 'signage.player.manifest.v1',
+      'signage.player.manifestSnapshot.v2', 'signage.player.manifestOffsetMs', 'signage.player.manifestCachedAt',
+    ]) localStorage.removeItem(key);
+  });
+  await player.close();
+  const concurrentPages = [await context.newPage(), await context.newPage()];
+  const registrationTokens = [];
+  let registrationsInFlight = 0;
+  let maxRegistrationsInFlight = 0;
+  const registrationRoute = async (route) => {
+    const body = route.request().postDataJSON();
+    registrationTokens.push(body.playerToken || null);
+    registrationsInFlight += 1;
+    maxRegistrationsInFlight = Math.max(maxRegistrationsInFlight, registrationsInFlight);
+    try {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await route.fulfill({ response });
+    } finally {
+      registrationsInFlight -= 1;
+    }
+  };
+  await context.route('**/api/player/register', registrationRoute);
+  try {
+    await Promise.all(concurrentPages.map((page) => page.goto(`${base}/player/?code=GUGAK1&reconnect=1`, { waitUntil: 'domcontentloaded' })));
+    await Promise.all(concurrentPages.map((page) => page.waitForFunction(() => {
+      const state = window.__signagePlayer?.getState?.();
+      return state?.deviceId === 'dev-sample-lobby' && state.manifestVersion !== null && !state.offline;
+    }, null, { timeout: 30_000 })));
+    const sharedTokens = await Promise.all(concurrentPages.map((page) => page.evaluate(() => localStorage.getItem('signage.player.token'))));
+    const playerStates = await Promise.all(concurrentPages.map((page) => page.evaluate(() => window.__signagePlayer.getState())));
+    if (registrationTokens.length !== 2 || new Set(registrationTokens).size !== 1 || maxRegistrationsInFlight !== 1 ||
+        !registrationTokens[0] || sharedTokens[0] !== registrationTokens[0] || sharedTokens[1] !== registrationTokens[0]) {
+      throw new Error(`동시 Player 창 등록이 하나의 인증 토큰으로 직렬화되지 않았습니다: ${JSON.stringify({ registrationTokens, sharedTokens, maxRegistrationsInFlight })}`);
+    }
+    step('동일 PC의 Player 창 동시 등록이 인증 토큰을 공유', { registrations: registrationTokens.length, maxRegistrationsInFlight, playerStates });
+  } finally {
+    await context.unroute('**/api/player/register', registrationRoute).catch(() => {});
+    await Promise.all(concurrentPages.map((page) => page.close().catch(() => {})));
+  }
 
   if (report.adminPreview.displays !== 4 || report.player.screenCount !== 4 || report.perMonitorWindow.screenCount !== 1) {
     throw new Error('브라우저 화면 수가 예상과 다릅니다.');
@@ -395,6 +564,7 @@ try {
 } finally {
   if (browser) await browser.close().catch(() => {});
   await stopServer();
+  report.base = sanitize(report.base);
   report.serverLog = sanitize(report.serverLog);
   const jsonPath = path.join(root, 'docs', 'verification', 'multimonitor-run.json');
   const textPath = path.join(root, 'docs', 'verification', 'multimonitor-run.txt');
@@ -402,3 +572,4 @@ try {
   fs.writeFileSync(textPath, `${JSON.stringify(report, null, 2)}\n\n${report.serverLog}`);
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
+

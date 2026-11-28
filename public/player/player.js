@@ -1,20 +1,25 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { createCacheReadiness } from './player-runtime.js';
+import { calculateServerOffsetMs, createCacheReadiness, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, withPlayerRegistrationLock } from './player-runtime.js';
 
-const PLAYER_SHELL_VERSION = 'v4';
+const PLAYER_SHELL_VERSION = 'v5';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
 const STORAGE = {
   token: 'signage.player.token',
   hardwareId: 'signage.player.hardwareId',
   deviceId: 'signage.player.deviceId',
+  pendingPlayerToken: 'signage.player.pendingToken',
+  pendingRegistrationCode: 'signage.player.pendingCode',
   manifest: 'signage.player.manifest.v1',
+  manifestSnapshot: 'signage.player.manifestSnapshot.v2',
   manifestOffsetMs: 'signage.player.manifestOffsetMs',
   manifestCachedAt: 'signage.player.manifestCachedAt',
   lastCode: 'signage.player.lastCode',
 };
 const POLL_MS = 15_000;
 const HEARTBEAT_MS = 15_000;
+const STAGED_MEDIA_PREFIX = '__gugak_signage_stage__:';
+const STAGED_MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
 
 const $ = (selector) => document.querySelector(selector);
 const el = {
@@ -48,8 +53,12 @@ const runtime = {
   cacheReadiness: createCacheReadiness(),
   token: safeGet(STORAGE.token),
   deviceId: safeGet(STORAGE.deviceId),
+  hostManaged: false,
+  connectionGeneration: 0,
+  manifestRequestGeneration: 0,
   manifest: null,
   pendingManifest: null,
+  pendingManifestClock: null,
   playlistId: null,
   queue: [],
   index: 0,
@@ -92,11 +101,34 @@ function safeGet(key) {
 }
 
 function safeSet(key, value) {
-  try { localStorage.setItem(key, value); } catch { /* storage may be blocked */ }
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
 }
 
 function safeRemove(key) {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+function createPlayerToken() {
+  if (!globalThis.crypto?.getRandomValues) throw new Error('재생기 인증 토큰을 안전하게 만들 수 없습니다.');
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+function persistManifestSnapshot(manifest, serverOffsetMs, cachedAt) {
+  return safeSet(STORAGE.manifestSnapshot, JSON.stringify({ manifest, serverOffsetMs, cachedAt }));
+}
+
+function isConnected() {
+  return runtime.hostManaged ? Boolean(runtime.deviceId) : Boolean(runtime.token);
+}
+
+function connectionSnapshot() {
+  return { generation: runtime.connectionGeneration, identity: runtime.hostManaged ? runtime.deviceId : runtime.token };
+}
+
+function isCurrentConnection(snapshot) {
+  return snapshot.generation === runtime.connectionGeneration && snapshot.identity === (runtime.hostManaged ? runtime.deviceId : runtime.token);
 }
 
 function hardwareId() {
@@ -160,6 +192,7 @@ async function pair(code, auto = false, options = {}) {
   }
   if (runtime.pairing) return;
   runtime.lastAttemptCode = normalized;
+  const attemptGeneration = runtime.connectionGeneration;
   runtime.pairing = true;
   setBusy(el.pairButton, true, '연결 중…');
   el.sampleConnect.disabled = true;
@@ -167,40 +200,71 @@ async function pair(code, auto = false, options = {}) {
   el.pairRecover.hidden = true;
   el.pairError.hidden = true;
   try {
-    const response = await fetch('/api/player/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code: normalized,
-        hardwareId: hardwareId(),
-        takeover: options.takeover === true,
-        screen: { width: window.screen?.width || innerWidth, height: window.screen?.height || innerHeight },
-        userAgent: navigator.userAgent,
-      }),
+    const data = await withPlayerRegistrationLock(runtime.hostManaged ? null : navigator.locks, async () => {
+      if (attemptGeneration !== runtime.connectionGeneration) return null;
+      let requestedPlayerToken;
+      if (!runtime.hostManaged) {
+        const selected = selectRegistrationToken({
+          lastCode: safeGet(STORAGE.lastCode) || '',
+          activeToken: runtime.token || safeGet(STORAGE.token),
+          pendingCode: safeGet(STORAGE.pendingRegistrationCode) || '',
+          pendingToken: safeGet(STORAGE.pendingPlayerToken),
+        }, normalized, createPlayerToken);
+        requestedPlayerToken = selected.token;
+        if (!safeSet(STORAGE.pendingRegistrationCode, normalized) || !safeSet(STORAGE.pendingPlayerToken, requestedPlayerToken)) {
+          throw new Error('재생기 인증 정보를 로컬에 저장할 수 없습니다. 브라우저 저장 공간을 확인해 주세요.');
+        }
+      }
+      const response = await fetch('/api/player/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: normalized,
+          hardwareId: hardwareId(),
+          ...(requestedPlayerToken ? { playerToken: requestedPlayerToken } : {}),
+          takeover: options.takeover === true,
+          screen: { width: window.screen?.width || innerWidth, height: window.screen?.height || innerHeight },
+          userAgent: navigator.userAgent,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (attemptGeneration !== runtime.connectionGeneration) return null;
+      if (!response.ok) {
+        const error = new Error(data?.error || '등록 코드를 확인해 주세요.');
+        error.status = response.status;
+        error.sampleCode = data?.sampleCode || null;
+        throw error;
+      }
+      if (!runtime.hostManaged) {
+        if (data?.token !== requestedPlayerToken) throw new Error('관리 서버가 보낸 재생기 인증 토큰을 확인하지 못했습니다.');
+        if (safeSet(STORAGE.token, data.token) && safeSet(STORAGE.lastCode, normalized)) {
+          safeRemove(STORAGE.pendingPlayerToken);
+          safeRemove(STORAGE.pendingRegistrationCode);
+        }
+      }
+      return data;
     });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = new Error(data?.error || '등록 코드를 확인해 주세요.');
-      error.status = response.status;
-      error.sampleCode = data?.sampleCode || null;
-      throw error;
-    }
+    if (!data || attemptGeneration !== runtime.connectionGeneration) return;
     const previousDevice = runtime.deviceId;
-    runtime.token = data.token;
+    runtime.token = runtime.hostManaged ? null : data.token;
     runtime.deviceId = data.device?.id || null;
+    if (runtime.hostManaged && !runtime.deviceId) throw new Error('재생기 연결 정보를 받지 못했습니다.');
+    runtime.connectionGeneration += 1;
     clearInterval(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
-    safeSet(STORAGE.token, data.token);
+    if (runtime.hostManaged) safeRemove(STORAGE.token);
     runtime.cacheReadiness.invalidate();
     runtime.cacheReady = false;
     if (runtime.deviceId) safeSet(STORAGE.deviceId, runtime.deviceId);
     safeSet(STORAGE.lastCode, normalized);
     if (previousDevice && previousDevice !== runtime.deviceId) {
       safeRemove(STORAGE.manifest);
+      safeRemove(STORAGE.manifestSnapshot);
       safeRemove(STORAGE.manifestOffsetMs);
       safeRemove(STORAGE.manifestCachedAt);
       runtime.manifest = null;
       runtime.pendingManifest = null;
+      runtime.pendingManifestClock = null;
       await clearMediaCache();
     }
     showPlayer();
@@ -230,7 +294,7 @@ async function pair(code, auto = false, options = {}) {
 function startAutoReconnect() {
   if (!runtime.autoReconnect || !runtime.reconnectCode || runtime.reconnectTimer) return;
   runtime.reconnectTimer = setInterval(async () => {
-    if (runtime.token || runtime.pairing || !navigator.onLine) return;
+    if (isConnected() || runtime.pairing || !navigator.onLine) return;
     await pair(runtime.reconnectCode, true, { takeover: true });
   }, 15_000);
 }
@@ -238,8 +302,22 @@ function startAutoReconnect() {
 async function loadPlayerConfig() {
   try {
     const response = await fetch('/api/player/config', { cache: 'no-store' });
-    if (!response.ok) return;
+    if (!response.ok) throw new Error(`config ${response.status}`);
     const config = await response.json();
+    runtime.hostManaged = config.hostManaged === true;
+    if (runtime.hostManaged) {
+      runtime.token = null;
+      safeRemove(STORAGE.token);
+    }
+    if (runtime.hostManaged && typeof config.adminDevicesUrl === 'string') {
+      try {
+        const adminUrl = new URL(config.adminDevicesUrl, location.href);
+        const adminLink = el.pair.querySelector('.pair-admin-link a');
+        if ((adminUrl.protocol === 'http:' || adminUrl.protocol === 'https:') && adminLink) {
+          adminLink.href = adminUrl.toString();
+        }
+      } catch { /* retain the same-origin link */ }
+    }
     runtime.sampleMode = Boolean(config.sampleMode && config.sampleCode);
     runtime.sampleCode = config.sampleCode || null;
     if (runtime.sampleMode) {
@@ -248,7 +326,8 @@ async function loadPlayerConfig() {
       el.sampleConnect.textContent = `샘플 코드 ${runtime.sampleCode}로 연결`;
     }
   } catch {
-    // The pairing screen still works without the demo hint.
+    const cached = loadCachedManifest();
+    runtime.hostManaged = restoreHostManagedMode(runtime, cached);
   }
 }
 
@@ -257,7 +336,7 @@ function startLoops() {
   runtime.started = true;
   runtime.pollTimer = setInterval(() => {
     reevaluateCachedSchedule();
-    fetchManifest();
+    void loadPlayerConfig().then(() => fetchManifest());
   }, POLL_MS);
   runtime.heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
   runtime.clockTimer = setInterval(() => { syncServerClock().catch(() => {}); }, 30_000);
@@ -269,10 +348,12 @@ async function syncServerClock() {
   const samples = [];
   for (let index = 0; index < 5; index += 1) {
     const sent = Date.now();
+  const connection = connectionSnapshot();
     const response = await fetch('/api/time', { cache: 'no-store' });
     const received = Date.now();
     if (!response.ok) throw new Error(`time ${response.status}`);
     const data = await response.json();
+    if (!isCurrentConnection(connection)) return;
     const serverMs = Number(data.serverTimeMs ?? Date.parse(data.serverTime));
     if (!Number.isFinite(serverMs)) continue;
     samples.push({ offset: serverMs - (sent + received) / 2, rtt: received - sent });
@@ -290,42 +371,60 @@ function serverNow() {
 }
 
 async function fetchManifest(options = {}) {
-  if (!runtime.token) return;
+  if (!isConnected()) return;
+  const requestGeneration = ++runtime.manifestRequestGeneration;
+  const connection = connectionSnapshot();
   const requestToken = runtime.token;
-  const manifestGeneration = runtime.cacheReadiness.begin();
+  let manifestGeneration;
   try {
     const response = await fetch('/api/player/manifest', {
-      headers: { Authorization: `Bearer ${requestToken}` },
+      headers: runtime.hostManaged ? {} : { Authorization: `Bearer ${requestToken}` },
       cache: 'no-store',
     });
     if (response.status === 401) {
-      handleUnauthorized(requestToken);
+      handleUnauthorized(requestToken, connection);
       return;
     }
     const data = await response.json().catch(() => null);
-    if (requestToken !== runtime.token) return;
+    if (requestGeneration !== runtime.manifestRequestGeneration || !isCurrentConnection(connection)) return;
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
-    if (runtime.token !== requestToken) return;
+    if (requestGeneration !== runtime.manifestRequestGeneration || !isCurrentConnection(connection)) return;
     setOffline(false);
-    if (runtime.lastError) runtime.lastError = null;
-    const serverMs = Date.parse(manifest.serverTime);
-    if (Number.isFinite(serverMs)) runtime.serverOffsetMs = serverMs - Date.now();
-    safeSet(STORAGE.manifest, JSON.stringify(manifest));
-    safeSet(STORAGE.manifestOffsetMs, String(runtime.serverOffsetMs));
-    safeSet(STORAGE.manifestCachedAt, String(Date.now()));
-    el.error.hidden = true;
-    acceptManifest(manifest, Boolean(options.initial));
+    const manifestKey = `${connection.generation}:${connection.identity}:${manifest.version}`;
+    manifestGeneration = runtime.cacheReadiness.begin(manifestKey);
+    const receivedAt = Date.now();
+    const measuredServerOffsetMs = calculateServerOffsetMs(manifest.serverTime, receivedAt, runtime.serverOffsetMs);
     const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
-      (isCurrent) => prefetchAssets(manifest, requestToken, isCurrent),
+      (isCurrent) => promotePreparedManifest({
+        isCurrent: () => isCurrent() && isCurrentConnection(connection),
+        prepareAssets: () => prefetchAssets(manifest, connection, isCurrent),
+        persistManifest: () => persistManifestSnapshot(manifest, measuredServerOffsetMs, receivedAt),
+        activateManifest: () => {
+          runtime.serverOffsetMs = measuredServerOffsetMs;
+          runtime.lastError = null;
+          el.error.hidden = true;
+          acceptManifest(manifest, Boolean(options.initial), { serverOffsetMs: measuredServerOffsetMs });
+        },
+      }),
     );
-    if (requestToken !== runtime.token || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
+    if (!isCurrentConnection(connection) || !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.cacheReady = prepared;
+    if (!prepared) {
+      runtime.lastError = '새 재생 콘텐츠를 완전히 준비하지 못했습니다.';
+      if (!runtime.manifest) {
+        showError('재생 콘텐츠를 준비하지 못했습니다', '이전 캐시가 없으므로 네트워크와 콘텐츠 상태를 확인한 뒤 다시 시도해 주세요.');
+      }
+      return;
+    }
+    void pruneStaleCachedAssets(manifest, connection, () => runtime.cacheReadiness.isCurrent(manifestGeneration))
+      .catch((error) => console.warn('[signage] 이전 콘텐츠 캐시 정리를 미뤘습니다.', error));
   } catch (error) {
-    if (requestToken !== runtime.token) return;
-    if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
+    if (requestGeneration !== runtime.manifestRequestGeneration) return;
+    if (!isCurrentConnection(connection)) return;
+    if (manifestGeneration !== undefined && !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.lastError = error.message;
     setOffline(true);
     runtime.cacheReady = false;
@@ -341,20 +440,23 @@ async function fetchManifest(options = {}) {
   }
 }
 
-function acceptManifest(manifest, initial) {
+function acceptManifest(manifest, initial, clock = {}) {
+  if (Number.isFinite(clock.serverOffsetMs)) runtime.serverOffsetMs = clock.serverOffsetMs;
   if (manifest.wall) {
     if (!runtime.manifest || initial || runtime.manifest.version !== manifest.version) {
-      applyManifest(manifest, true);
+      applyManifest(manifest, true, clock);
     } else {
       runtime.manifest = manifest;
-      runtime.serverOffsetMs = Number.isFinite(Date.parse(manifest.serverTime))
-        ? Date.parse(manifest.serverTime) - Date.now()
-        : runtime.serverOffsetMs;
+      if (!Number.isFinite(clock.serverOffsetMs)) {
+        runtime.serverOffsetMs = Number.isFinite(Date.parse(manifest.serverTime))
+          ? Date.parse(manifest.serverTime) - Date.now()
+          : runtime.serverOffsetMs;
+      }
     }
     return;
   }
   if (!runtime.manifest || initial || !runtime.currentNode || runtime.queue.length === 0) {
-    applyManifest(manifest, true);
+    applyManifest(manifest, true, clock);
     return;
   }
   const nextPlaylist = activePlaylist(manifest);
@@ -364,11 +466,12 @@ function acceptManifest(manifest, initial) {
     return;
   }
   runtime.pendingManifest = manifest;
+  runtime.pendingManifestClock = clock;
 }
 
 function reevaluateCachedSchedule() {
   const manifest = runtime.manifest;
-  if (!manifest || !runtime.token || el.player.hidden) return;
+  if (!manifest || !isConnected() || el.player.hidden) return;
   if (manifest.wall) return;
   const playlist = activePlaylist(manifest);
   const queue = queueFor(playlist);
@@ -421,6 +524,7 @@ function queueFor(playlist) {
 function applyManifest(manifest, restart, clock = {}) {
   runtime.manifest = manifest;
   runtime.pendingManifest = null;
+  runtime.pendingManifestClock = null;
   hideCenter();
   el.error.hidden = true;
   el.deviceLabel.textContent = manifest.device?.name || '';
@@ -777,7 +881,7 @@ function advance() {
   clearTimeout(runtime.timer);
   runtime.timer = null;
   if (runtime.pendingManifest) {
-    applyManifest(runtime.pendingManifest, true);
+    applyManifest(runtime.pendingManifest, true, runtime.pendingManifestClock || {});
     return;
   }
   const playlist = activePlaylist(runtime.manifest);
@@ -969,12 +1073,13 @@ function escapeHtml(value) {
 }
 
 async function sendHeartbeat() {
-  if (!runtime.token) return;
+  if (!isConnected()) return;
+  const connection = connectionSnapshot();
   const requestToken = runtime.token;
   try {
     const response = await fetch('/api/player/heartbeat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
+      headers: runtime.hostManaged ? { 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json', Authorization: `Bearer ${requestToken}` },
       body: JSON.stringify({
         state: runtime.offline ? 'offline' : runtime.currentNode ? 'playing' : 'waiting',
         currentContentId: runtime.currentContentId,
@@ -985,26 +1090,43 @@ async function sendHeartbeat() {
       }),
     });
     if (response.status === 401) {
-      handleUnauthorized(requestToken);
+      handleUnauthorized(requestToken, connection);
       return;
     }
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     if (!response.ok) throw new Error(`heartbeat ${response.status}`);
     runtime.lastHeartbeatAt = new Date().toISOString();
   } catch {
-    if (requestToken !== runtime.token) return;
+    if (!isCurrentConnection(connection)) return;
     setOffline(true);
   }
 }
 
-function handleUnauthorized(requestToken = runtime.token) {
-  if (requestToken !== runtime.token) return;
-  safeRemove(STORAGE.token);
-  runtime.token = null;
+function handleUnauthorized(requestToken = runtime.token, connection = null) {
+  if (connection && !isCurrentConnection(connection)) return;
+  if (runtime.hostManaged ? !runtime.deviceId : requestToken !== runtime.token) return;
+  runtime.connectionGeneration += 1;
+  if (runtime.hostManaged) {
+    runtime.deviceId = null;
+    safeRemove(STORAGE.deviceId);
+  } else {
+    safeRemove(STORAGE.token);
+    runtime.token = null;
+  }
   showPair('재생기 연결이 만료되었습니다. 관리 화면의 등록 코드를 다시 입력해 주세요.', safeGet(STORAGE.lastCode) || '');
 }
 
 function loadCachedManifest() {
+  const snapshotRaw = safeGet(STORAGE.manifestSnapshot);
+  if (snapshotRaw) {
+    try {
+      const snapshot = JSON.parse(snapshotRaw);
+      if (snapshot?.manifest && Array.isArray(snapshot.manifest.schedules)) {
+        const serverOffsetMs = Number(snapshot.serverOffsetMs);
+        if (Number.isFinite(serverOffsetMs)) return { manifest: snapshot.manifest, serverOffsetMs };
+      }
+    } catch { /* fall back to the pre-snapshot cache format */ }
+  }
   const raw = safeGet(STORAGE.manifest);
   if (!raw) return null;
   try {
@@ -1068,6 +1190,44 @@ async function putCachedBlob(id, blob, content) {
   await transactionPromise(tx);
 }
 
+function stagedMediaId(batchId, contentId) {
+  return `${STAGED_MEDIA_PREFIX}${batchId}:${contentId}`;
+}
+
+function hasExpiredStagingTimestamp(id, now = Date.now()) {
+  if (!id.startsWith(STAGED_MEDIA_PREFIX)) return false;
+  const timestamp = Number(id.slice(STAGED_MEDIA_PREFIX.length).split(':', 1)[0]);
+  return !Number.isSafeInteger(timestamp) || now - timestamp > STAGED_MEDIA_TTL_MS;
+}
+
+async function deleteCachedIds(db, ids) {
+  if (!ids.length) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  for (const id of ids) store.delete(id);
+  await transactionPromise(tx);
+}
+
+async function promoteStagedBlobs(db, stagedItems) {
+  if (!stagedItems.length) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  const completed = transactionPromise(tx);
+  for (const item of stagedItems) {
+    const request = store.get(item.stageId);
+    request.onerror = () => { try { tx.abort(); } catch { /* transaction already finished */ } };
+    request.onsuccess = () => {
+      if (!request.result) {
+        try { tx.abort(); } catch { /* transaction already finished */ }
+        return;
+      }
+      store.put({ ...request.result, id: item.contentId, cachedAt: new Date().toISOString() });
+      store.delete(item.stageId);
+    };
+  }
+  await completed;
+}
+
 async function resolveMediaUrl(content) {
   if (content.kind === 'url') return content.url;
   if (runtime.objectUrls.has(content.id)) return runtime.objectUrls.get(content.id);
@@ -1079,7 +1239,21 @@ async function resolveMediaUrl(content) {
       return objectUrl;
     }
   } catch { /* fall through to network */ }
-  return content.url;
+  const url = mediaRouteUrl(content.url);
+  if (runtime.hostManaged) return url;
+  const response = await fetch(url, { cache: 'default', headers: playerMediaHeaders(false, runtime.token) });
+  if (!response.ok) throw new Error(`media ${response.status}`);
+  const blob = await response.blob();
+  if (blob.size === 0) throw new Error('재생할 콘텐츠가 비어 있습니다.');
+  const objectUrl = URL.createObjectURL(blob);
+  runtime.objectUrls.set(content.id, objectUrl);
+  return objectUrl;
+}
+
+function mediaRouteUrl(url) {
+  if (!runtime.hostManaged) return url;
+  const parsed = new URL(url, location.href);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function collectContents(manifest) {
@@ -1097,11 +1271,9 @@ function collectContents(manifest) {
   return [...map.values()];
 }
 
-async function prefetchAssets(manifest, requestToken, isCurrent) {
+async function prefetchAssets(manifest, connection, isCurrent) {
   runtime.prefetching = true;
   const contents = collectContents(manifest);
-  const activeIds = new Set(contents.map((content) => content.id));
-  let ready = true;
   try {
     const db = await openCacheDb();
     const existing = await new Promise((resolve, reject) => {
@@ -1110,45 +1282,69 @@ async function prefetchAssets(manifest, requestToken, isCurrent) {
       request.onsuccess = () => resolve(new Set(request.result.map(String)));
       request.onerror = () => reject(request.error);
     });
-    for (const content of contents) {
-      if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
-        ready = false;
-        break;
-      }
-      if (existing.has(content.id)) continue;
-      try {
-        const response = await fetch(content.url, { cache: 'default' });
-        if (!response.ok) { ready = false; continue; }
-        const blob = await response.blob();
-        if (blob.size === 0) { ready = false; continue; }
-        if (!runtime.token || runtime.token !== requestToken || !isCurrent()) {
-          ready = false;
-          break;
+    const expiredStagingIds = [...existing].filter((id) => hasExpiredStagingTimestamp(id));
+    if (expiredStagingIds.length) {
+      await deleteCachedIds(db, expiredStagingIds);
+      for (const id of expiredStagingIds) existing.delete(id);
+    }
+    const batchId = `${Date.now()}:${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+    return await prepareAssetBatch(contents, {
+      isCurrent: () => isConnected() && isCurrentConnection(connection) && isCurrent(),
+      hasCachedContent: (contentId) => existing.has(contentId),
+      fetchAsset: async (content) => {
+        const response = await fetch(mediaRouteUrl(content.url), {
+          cache: 'default',
+          headers: playerMediaHeaders(runtime.hostManaged, runtime.token),
+        });
+        if (response.status === 401) {
+          handleUnauthorized(runtime.token, connection);
+          return null;
         }
-        await putCachedBlob(content.id, blob, content);
-        existing.add(content.id);
-      } catch {
-        // A single asset failure must not stop the playlist.
-        ready = false;
-      }
-    }
-    if (!isCurrent()) return false;
-    const stale = [...existing].filter((id) => !activeIds.has(id));
-    if (stale.length) {
-      const tx = db.transaction('media', 'readwrite');
-      const store = tx.objectStore('media');
-      for (const id of stale) store.delete(id);
-      await transactionPromise(tx);
-    }
-    if (!isCurrent()) return false;
-    revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
+        if (!response.ok) return null;
+        const blob = await response.blob();
+        const contentLength = response.headers.get('content-length');
+        const expectedSize = contentLength === null ? Number.NaN : Number(contentLength);
+        if (Number.isSafeInteger(expectedSize) && expectedSize >= 0 && blob.size !== expectedSize) return null;
+        return blob;
+      },
+      stageAsset: async (content, blob) => {
+        const stageId = stagedMediaId(batchId, content.id);
+        await putCachedBlob(stageId, blob, content);
+        return { stageId, contentId: content.id };
+      },
+      promoteStagedAssets: (stagedItems) => promoteStagedBlobs(db, stagedItems),
+      discardStagedAssets: async (stagedItems) => {
+        try { await deleteCachedIds(db, stagedItems.map((item) => item.stageId)); }
+        catch (error) { console.warn('[signage] 임시 콘텐츠 캐시를 정리하지 못했습니다.', error); throw error; }
+      },
+    });
   } catch (error) {
     console.warn('[signage] 콘텐츠 캐시를 준비하지 못했습니다.', error);
-    ready = false;
+    return false;
   } finally {
     runtime.prefetching = false;
   }
-  return ready;
+}
+
+async function pruneStaleCachedAssets(manifest, connection, isCurrent) {
+  const activeIds = new Set(collectContents(manifest).map((content) => content.id));
+  const db = await openCacheDb();
+  if (!isConnected() || !isCurrentConnection(connection) || !isCurrent()) return;
+  const tx = db.transaction('media', 'readwrite');
+  const store = tx.objectStore('media');
+  const request = store.getAllKeys();
+  request.onsuccess = () => {
+    if (!isCurrent()) {
+      try { tx.abort(); } catch { /* transaction already finished */ }
+      return;
+    }
+    for (const rawId of request.result) {
+      const id = String(rawId);
+      if (!id.startsWith(STAGED_MEDIA_PREFIX) && !activeIds.has(id)) store.delete(rawId);
+    }
+  };
+  await transactionPromise(tx);
+  if (isCurrent()) revokeUnusedObjectUrls(activeIds, runtime.currentContentId);
 }
 
 function revokeUnusedObjectUrls(activeIds, keepContentId) {
@@ -1202,7 +1398,7 @@ el.pairRecover.addEventListener('click', () => {
 });
 
 el.retry.addEventListener('click', async () => {
-  if (!runtime.token) { showPair(); return; }
+  if (!isConnected()) { showPair(); return; }
   el.error.hidden = true;
   await fetchManifest({ initial: !runtime.manifest });
 });
@@ -1217,14 +1413,22 @@ el.fullscreen.addEventListener('click', async () => {
 
 el.disconnect.addEventListener('click', async () => {
   if (!confirm('이 재생기의 연결 정보와 캐시를 지울까요? 관리 화면에서 기기를 다시 연결해야 합니다.')) return;
+  runtime.connectionGeneration += 1;
+  if (runtime.hostManaged) {
+    try { await fetch('/api/player/disconnect', { method: 'POST' }); } catch { /* local state still needs to clear */ }
+  }
   safeRemove(STORAGE.token);
+  safeRemove(STORAGE.pendingPlayerToken);
+  safeRemove(STORAGE.pendingRegistrationCode);
   safeRemove(STORAGE.manifest);
+  safeRemove(STORAGE.manifestSnapshot);
   safeRemove(STORAGE.manifestOffsetMs);
   safeRemove(STORAGE.manifestCachedAt);
   safeRemove(STORAGE.deviceId);
   runtime.token = null;
   runtime.manifest = null;
   runtime.pendingManifest = null;
+  runtime.pendingManifestClock = null;
   await clearMediaCache();
   runtime.started = false;
   clearInterval(runtime.pollTimer);
@@ -1238,7 +1442,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && runtime.manifest?.wall) renderWallFrame();
 });
 window.addEventListener('online', () => {
-  if (!runtime.token && runtime.autoReconnect) {
+  if (!isConnected() && runtime.autoReconnect) {
     void pair(runtime.reconnectCode, true, { takeover: true });
   }
   fetchManifest();
@@ -1285,20 +1489,20 @@ async function init() {
   runtime.reconnectCode = code;
   await loadPlayerConfig();
   const cached = loadCachedManifest();
-  if (cached && runtime.token) {
+  if (cached && isConnected()) {
     runtime.manifest = cached.manifest;
     showPlayer();
     applyManifest(cached.manifest, true, { serverOffsetMs: cached.serverOffsetMs });
   }
   const storedCode = safeGet(STORAGE.lastCode);
-  const codeMatchesPairedDevice = Boolean(runtime.token) && (!storedCode || storedCode === code.toUpperCase());
+  const codeMatchesPairedDevice = isConnected() && (!storedCode || storedCode === code.toUpperCase());
   if (code && !codeMatchesPairedDevice) {
     showPair('', code);
     await pair(code, true, { takeover: runtime.autoReconnect });
-    if (!runtime.token) startAutoReconnect();
+    if (!isConnected()) startAutoReconnect();
     return;
   }
-  if (runtime.token) {
+  if (isConnected()) {
     showPlayer();
     startLoops();
     await fetchManifest({ initial: !runtime.manifest });

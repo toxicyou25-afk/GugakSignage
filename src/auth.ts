@@ -5,6 +5,12 @@ import type { NextFunction, Request, Response } from 'express';
 const COOKIE_NAME = 'signage_session';
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 
+export function assertManagerPasswordChanged(isTestDefault: boolean): void {
+  if (isTestDefault) {
+    throw new Error('Manager LAN/central mode refuses to start while the stored administrator password is the test default. Change it in standalone mode first.');
+  }
+}
+
 function sign(secret: string, payload: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
@@ -75,11 +81,11 @@ export function requireAdmin(secret: string, getSessionEpoch: () => string = () 
   };
 }
 
-export function setSessionCookie(res: Response, secret: string, sessionEpoch = '0'): void {
+export function setSessionCookie(res: Response, secret: string, sessionEpoch = '0', secure = false): void {
   res.cookie(COOKIE_NAME, createSessionToken(secret, sessionEpoch), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure,
     maxAge: SESSION_TTL_SECONDS * 1000,
     path: '/',
   });

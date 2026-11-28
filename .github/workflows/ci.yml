@@ -133,31 +133,70 @@ jobs:
         run: npm ci --prefix prototype
       - name: Verify dependency license inventory
         run: npm run verify:licenses
-      - name: Validate Windows package build script syntax
+      - name: Set up pinned Inno Setup 6.7.3
         shell: powershell
         run: |
-          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\build-installer.ps1'
-          $tokens = $null
-          $parseErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile($installerBuildScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
-          if ($parseErrors.Count -gt 0) {
-            $parseErrors | ForEach-Object { Write-Output ("{0}:{1}: {2} [{3}]" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message, $_.Extent.Text) }
-            throw 'Windows installer build script syntax is invalid.'
+          $version = '6.7.3'
+          $expectedHash = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
+          $innoRoot = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'
+          $isccPath = Join-Path $innoRoot 'ISCC.exe'
+          $markerPath = Join-Path $innoRoot ".gugaksignage-inno-$version.sha256"
+          $needsInstall = $true
+          if ((Test-Path -LiteralPath $isccPath -PathType Leaf) -and (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+            $isccHash = (Get-FileHash -LiteralPath $isccPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expectedMarker = @($version, $expectedHash, $isccHash) -join "`n"
+            $needsInstall = ([IO.File]::ReadAllText($markerPath).Trim() -ne $expectedMarker)
           }
-      - name: Validate Windows package build script syntax
+          if ($needsInstall) {
+            $setupPath = Join-Path $env:RUNNER_TEMP "innosetup-$version.exe"
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setupPath
+            $actualHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) { throw "Inno Setup download SHA-256 mismatch: $actualHash" }
+            $setupSignature = Get-AuthenticodeSignature -FilePath $setupPath
+            if ($setupSignature.Status -ne 'Valid' -or $setupSignature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+              throw "Inno Setup download has no valid Pyrsys B.V. Authenticode signature: $($setupSignature.Status)"
+            }
+            New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+            $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /DIR="' + $innoRoot + '"'
+            $process = Start-Process -FilePath $setupPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+            if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+            if (-not (Test-Path -LiteralPath $isccPath -PathType Leaf)) { throw "ISCC.exe is missing: $isccPath" }
+            $isccHash = (Get-FileHash -LiteralPath $isccPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $markerText = @($version, $expectedHash, $isccHash) -join "`n"
+            [IO.File]::WriteAllText($markerPath, $markerText, [Text.UTF8Encoding]::new($false))
+          }
+          if (-not (Test-Path -LiteralPath $isccPath -PathType Leaf)) { throw "ISCC.exe is missing: $isccPath" }
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$innoRoot`r`n", [Text.UTF8Encoding]::new($false))
+      - name: Validate Windows install script syntax
         shell: powershell
         run: |
-          $installerBuildScript = Join-Path $env:GITHUB_WORKSPACE 'installer\build-installer.ps1'
+          $installerScript = Join-Path $env:GITHUB_WORKSPACE 'installer\install.ps1'
           $tokens = $null
           $parseErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile($installerBuildScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          [System.Management.Automation.Language.Parser]::ParseFile($installerScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
           if ($parseErrors.Count -gt 0) {
             $parseErrors | ForEach-Object { Write-Output ("{0}:{1}: {2} [{3}]" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message, $_.Extent.Text) }
-            throw 'Windows installer build script syntax is invalid.'
+            throw 'Windows install script syntax is invalid.'
+          }
+      - name: Validate Windows uninstall script syntax
+        shell: powershell
+        run: |
+          $uninstallerScript = Join-Path $env:GITHUB_WORKSPACE 'installer\uninstall.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($uninstallerScript, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Output ("{0}:{1}: {2} [{3}]" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message, $_.Extent.Text) }
+            throw 'Windows uninstall script syntax is invalid.'
           }
       - name: Build Windows package and verify payload licenses
         shell: powershell
-        run: .\\installer\build-installer.ps1 -OutputDir .\installer\build\ci -SkipInstall -SkipCompile
+        run: |
+          .\\installer\build-installer.ps1 -SkipInstall
+          $setupExe = Join-Path $env:GITHUB_WORKSPACE 'installer\build\inno\GugakSignage-Setup-0.1.0.exe'
+          if (-not (Test-Path -LiteralPath $setupExe -PathType Leaf)) {
+            throw "Inno Setup 6 did not produce the required setup EXE: $setupExe"
+          }
       - name: PoC engine tests
         run: npm test --prefix poc
       - name: Verify first-run flow
@@ -171,6 +210,10 @@ jobs:
       - name: Verify persistent profile service worker update
         if: ${{ success() }}
         run: npm run verify:sw-update
+      - name: Verify taskkill captures native errors under Stop
+        if: ${{ success() }}
+        shell: powershell
+        run: .\installer\test-taskkill-native.ps1
       - name: Upload verification logs and screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
@@ -180,5 +223,79 @@ jobs:
             docs/verification/*.json
             docs/verification/*.txt
             docs/verification/evidence/*.png
+            installer/build/ci-install-evidence/*.json
+            installer/build/ci-install-evidence/*.txt
+            installer/build/ci-inno-evidence/*.json
+            installer/build/ci-inno-evidence/*.txt
+            installer/build/inno/*.exe
+          if-no-files-found: warn
+          retention-days: 14
+
+  installer:
+    name: Verify Windows installer lifecycle
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Microsoft Edge for Playwright
+        run: npx playwright install msedge
+      - name: Set up Inno Setup 6.7.3
+        shell: powershell
+        run: |
+          $setupPath = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setupPath
+          $actualHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') { throw "Inno Setup 6.7.3 SHA-256 mismatch: $actualHash" }
+          $signature = Get-AuthenticodeSignature -FilePath $setupPath
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup signature is invalid: $($signature.Status)"
+          }
+          $innoRoot = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'
+          New-Item -ItemType Directory -Path $innoRoot -Force | Out-Null
+          $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /DIR="' + $innoRoot + '"'
+          $process = Start-Process -FilePath $setupPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          $iscc = Join-Path $innoRoot 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw "ISCC.exe is missing: $iscc" }
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$innoRoot`r`n", [Text.UTF8Encoding]::new($false))
+      - name: Build installer and verify package licenses
+        shell: powershell
+        run: .\installer\build-installer.ps1 -SkipInstall
+      - name: Verify Unicode shortcut creation
+        shell: powershell
+        run: .\\installer\\test-unicode-shortcut.ps1
+      - name: Verify taskkill failure handling
+        shell: powershell
+        run: .\installer\test-taskkill-native.ps1
+      - name: 'Verify installer PR #35 regressions'
+        shell: powershell
+        run: .\installer\test-install.ps1 -RegressionOnly
+      - name: Verify PowerShell install, upgrade, removal, and data preservation
+        shell: powershell
+        run: .\installer\test-install.ps1 -EvidenceDir .\installer\build\ci-install-evidence
+      - name: Verify Inno Setup install, upgrade, removal, and data preservation
+        shell: powershell
+        run: .\installer\test-inno.ps1 -EvidenceDir .\installer\build\ci-inno-evidence
+      - name: Upload installer verification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-verification-${{ github.run_attempt }}
+          path: |
+            installer/build/ci-install-evidence/*.json
+            installer/build/ci-install-evidence/*.txt
+            installer/build/ci-inno-evidence/*.json
+            installer/build/ci-inno-evidence/*.txt
+            installer/build/inno/*.exe
           if-no-files-found: warn
           retention-days: 14

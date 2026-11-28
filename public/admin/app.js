@@ -223,7 +223,7 @@ async function refreshOnly() {
 
 function playerControlState() {
   return state.dashboard?.playerControl || {
-    desired: 'stopped', running: false, pid: null, startedAt: null, deviceId: null, playerUrl: null, lastError: null,
+    desired: 'stopped', running: false, pid: null, startedAt: null, deviceId: null, playerUrl: null, lastError: null, launchSupported: true,
   };
 }
 
@@ -409,6 +409,7 @@ function renderSampleBanner(show) {
 function playerLaunchButton(device, className = 'btn btn-primary btn-sm') {
   if (!device) return '';
   const player = playerControlState();
+  if (player.launchSupported === false) return '';
   if (player.running && player.deviceId === device.id) {
     return `<button class="${className}" type="button" data-action="stop-player">재생기 중지</button>`;
   }
@@ -418,6 +419,7 @@ function playerLaunchButton(device, className = 'btn btn-primary btn-sm') {
 
 function playerStateBadge() {
   const player = playerControlState();
+  if (player.launchSupported === false) return '<span class="badge badge-info">중앙 Player 관리</span>';
   if (player.running) return '<span class="badge badge-live">재생기 실행 중</span>';
   if (player.desired === 'running') return '<span class="badge badge-pending">재생기 시작 중</span>';
   return '<span class="badge badge-plain badge-offline">재생기 꺼짐</span>';
@@ -482,7 +484,7 @@ function renderCurrentBroadcast(devices) {
     <section class="current-broadcast" aria-labelledby="current-broadcast-title">
       <div class="card-head">
         <div><p class="eyebrow">ON AIR</p><h2 id="current-broadcast-title">현재 송출</h2></div>
-        <div class="button-row">${playerStateBadge()}${player.running ? '<button class="btn btn-ghost btn-sm" type="button" data-action="stop-player">재생기 중지</button>' : ''}<a class="btn btn-ghost btn-sm" href="#/devices">기기 관리</a></div>
+        <div class="button-row">${playerStateBadge()}${player.launchSupported !== false && player.running ? '<button class="btn btn-ghost btn-sm" type="button" data-action="stop-player">재생기 중지</button>' : ''}<a class="btn btn-ghost btn-sm" href="#/devices">기기 관리</a></div>
       </div>
       ${devices.length ? `<div class="broadcast-grid">${cards}</div>` : '<div class="empty"><h3>등록된 기기가 없습니다</h3><p>기기를 추가하고 재생목록을 게시하면 현재 송출 내용이 여기에 표시됩니다.</p><a class="btn btn-primary" href="#/devices">기기 추가</a></div>'}
     </section>`;
@@ -745,7 +747,7 @@ function uploadOne(file, onProgress) {
 function renderDevices() {
   const player = playerControlState();
   el.view.innerHTML = `
-    <div class="card-head" style="margin-bottom:10px"><div><p class="page-intro" style="margin:0">기기를 추가하면 6자리 등록 코드가 발급됩니다. 재생기 첫 화면에 코드를 입력하면 연결되고, 준비한 재생목록을 게시할 수 있습니다.</p><div class="device-player-state">${playerStateBadge()}<span>${player.running && player.deviceId ? `‘${esc(state.devices.find((device) => device.id === player.deviceId)?.name || '기기')}’ 재생 중` : '재생기는 관리자 화면의 실행 버튼으로만 시작합니다.'}</span></div></div><div class="button-row">${player.running ? '<button class="btn btn-ghost" type="button" data-action="stop-player">재생기 중지</button>' : ''}<button class="btn btn-primary" type="button" data-action="new-device">기기 추가</button></div></div>
+    <div class="card-head" style="margin-bottom:10px"><div><p class="page-intro" style="margin:0">기기를 추가하면 6자리 등록 코드가 발급됩니다. 재생기 첫 화면에 코드를 입력하면 연결되고, 준비한 재생목록을 게시할 수 있습니다.</p><div class="device-player-state">${playerStateBadge()}<span>${player.running && player.deviceId ? `‘${esc(state.devices.find((device) => device.id === player.deviceId)?.name || '기기')}’ 재생 중` : player.launchSupported === false ? '원격 Player 연결 상태와 화면 배정을 관리합니다.' : '재생기는 관리자 화면의 실행 버튼으로만 시작합니다.'}</span></div></div><div class="button-row">${player.launchSupported !== false && player.running ? '<button class="btn btn-ghost" type="button" data-action="stop-player">재생기 중지</button>' : ''}<button class="btn btn-primary" type="button" data-action="new-device">기기 추가</button></div></div>
     ${state.devices.length ? `<div class="device-grid">${state.devices.map(deviceCardHtml).join('')}</div>` : `
       <div class="empty"><div class="empty-mark">▣</div><h3>등록된 기기가 없습니다</h3><p>로비 PC나 안내 모니터를 기기로 추가하세요. 기기마다 고유한 등록 코드와 재생 상태를 관리합니다.</p><button class="btn btn-primary" type="button" data-action="new-device">첫 기기 추가</button></div>`}
   `;
@@ -764,6 +766,7 @@ function deviceCardHtml(device) {
       <div><span class="device-code-label">등록 코드 · 재생기 첫 화면에 입력</span><span class="device-code">${esc(device.pairingCode)}</span></div>
       <div class="button-row"><button class="btn btn-ghost btn-sm" type="button" data-action="copy-code" data-code="${esc(device.pairingCode)}">복사</button>${playerLaunchButton(device)}<a class="btn btn-ghost btn-sm" href="${esc(device.playerUrl)}" target="_blank" rel="noopener">미리보기</a></div>
     </div>
+    ${device.pairingCodeExpiresAt ? `<div class="device-facts"><span>등록 코드 만료 <strong>${device.pairingCodeConsumedAt ? '사용됨' : `${Math.max(0, Math.ceil((Date.parse(device.pairingCodeExpiresAt) - Date.now()) / 60000))}분 남음 · ${esc(new Date(device.pairingCodeExpiresAt).toLocaleString())}`}</strong></span></div>` : ''}
     <div class="device-facts">
       <span>재생목록 <strong>${esc(device.playlistName || '미지정')}</strong></span>
       <span>장소 <strong>${esc(device.siteName || '미지정')}</strong></span>

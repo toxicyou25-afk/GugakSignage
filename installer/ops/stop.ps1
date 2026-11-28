@@ -10,6 +10,13 @@ if (-not (Test-Path -LiteralPath $configPath)) {
     throw "install.json을 찾지 못했습니다: $configPath"
 }
 $config = Read-JsonFile -Path $configPath
+$roleProperty = $config.PSObject.Properties["role"]
+$configuredRole = if ($null -eq $roleProperty) { "integrated" } else { [string]$roleProperty.Value }
+$serverEntry = switch ($configuredRole) {
+    { $_ -in @("integrated", "manager") } { "server.js" }
+    "player-host" { "player-host-main.js" }
+    default { throw "install.json의 역할이 유효하지 않아 서버 프로세스를 안전하게 확인할 수 없습니다." }
+}
 $logDir = Get-NormalizedPath -Path ([string]$config.logDir)
 $statePath = Join-Path $logDir "watchdog-state.json"
 $controlDir = Join-Path (Get-NormalizedPath -Path ([string]$config.dataDir)) "control"
@@ -21,14 +28,14 @@ if (Test-Path -LiteralPath $statePath) {
     $state = Read-JsonFile -Path $statePath
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while ([DateTime]::UtcNow -lt $deadline) {
-        $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+        $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
         if (-not $watchdog) { break }
         Start-Sleep -Milliseconds 250
     }
 
-    $stoppedServer = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js")
-    $stoppedBrowser = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @([string]$config.profileDir)
-    $stoppedWatchdog = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+    $stoppedServer = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\$serverEntry") -InstallDir $installDir
+    $stoppedBrowser = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @([string]$config.profileDir) -InstallDir $installDir
+    $stoppedWatchdog = Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
 }
 
 Remove-Item -LiteralPath $stopRequest -Force -ErrorAction SilentlyContinue

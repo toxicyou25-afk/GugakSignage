@@ -70,6 +70,7 @@ export function migrateSampleCode(db: DB): boolean {
 
 export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; deviceId?: string; pairingCode?: string } {
   if (!config.seedSamples) return { seeded: false };
+  if (config.databaseWasPresentAtStartup) return { seeded: false };
   const seeded = get<{ value: string }>(db, "SELECT value FROM meta WHERE key = 'samples_seeded'");
   if (seeded) return { seeded: false };
 

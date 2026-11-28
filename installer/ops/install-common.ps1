@@ -11,6 +11,144 @@ function Get-NormalizedPath {
     return $full
 }
 
+if (-not ([System.Management.Automation.PSTypeName]'GugakShellLinkNative').Type) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+[ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface GugakShellLinkNative
+{
+    void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int length, IntPtr findData, uint flags);
+    void GetIDList(out IntPtr itemIdList);
+    void SetIDList(IntPtr itemIdList);
+    void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder description, int length);
+    void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string description);
+    void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder directory, int length);
+    void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string directory);
+    void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder arguments, int length);
+    void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string arguments);
+    void GetHotkey(out short hotkey);
+    void SetHotkey(short hotkey);
+    void GetShowCmd(out int showCommand);
+    void SetShowCmd(int showCommand);
+    void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder iconPath, int length, out int iconIndex);
+    void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string iconPath, int iconIndex);
+    void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
+    void Resolve(IntPtr window, uint flags);
+    void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
+}
+
+[ComImport, Guid("00021401-0000-0000-C000-000000000046"), ClassInterface(ClassInterfaceType.None), ComDefaultInterface(typeof(GugakShellLinkNative))]
+public class GugakShellLinkClass
+{
+}
+
+public static class GugakShortcutNative
+{
+    public static void Save(string shortcutPath, string targetPath, string arguments, string workingDirectory, string description, string iconPath, int iconIndex)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            link.SetPath(targetPath);
+            link.SetArguments(arguments ?? String.Empty);
+            link.SetWorkingDirectory(workingDirectory ?? String.Empty);
+            link.SetDescription(description ?? String.Empty);
+            link.SetShowCmd(1);
+            if (!String.IsNullOrEmpty(iconPath)) link.SetIconLocation(iconPath, iconIndex);
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Save(shortcutPath, true);
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    public static string GetTargetPath(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var path = new StringBuilder(32768);
+            link.GetPath(path, path.Capacity, IntPtr.Zero, 0);
+            return path.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    public static string GetArguments(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var arguments = new StringBuilder(32768);
+            link.GetArguments(arguments, arguments.Capacity);
+            return arguments.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    public static string GetIconLocation(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var icon = new StringBuilder(32768);
+            int iconIndex;
+            link.GetIconLocation(icon, icon.Capacity, out iconIndex);
+            return icon.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    public static string GetWorkingDirectory(string shortcutPath)
+    {
+        var link = (GugakShellLinkNative)new GugakShellLinkClass();
+        try
+        {
+            ((System.Runtime.InteropServices.ComTypes.IPersistFile)link).Load(shortcutPath, 0);
+            var directory = new StringBuilder(32768);
+            link.GetWorkingDirectory(directory, directory.Capacity);
+            return directory.ToString();
+        }
+        finally
+        {
+            if (Marshal.IsComObject(link)) Marshal.FinalReleaseComObject(link);
+        }
+    }
+}
+"@
+}
+
+function Save-WindowsShortcut {
+    param(
+        [Parameter(Mandatory = $true)][string]$ShortcutPath,
+        [Parameter(Mandatory = $true)][string]$TargetPath,
+        [string]$Arguments = "",
+        [string]$WorkingDirectory = "",
+        [string]$Description = "",
+        [string]$IconPath = "",
+        [int]$IconIndex = 0
+    )
+
+    [GugakShortcutNative]::Save($ShortcutPath, $TargetPath, $Arguments, $WorkingDirectory, $Description, $IconPath, $IconIndex)
+    return $ShortcutPath
+}
+
 if (-not ([System.Management.Automation.PSTypeName]'GugakPathNative').Type) {
     Add-Type -TypeDefinition @"
 using System;
@@ -121,6 +259,24 @@ function Get-PathDepthBelowRoot {
     return @($relative -split "[\\/]" | Where-Object { $_ }).Count
 }
 
+function Get-UserDocumentsPath {
+    param(
+        [AllowEmptyString()][string]$KnownFolderPath,
+        [AllowEmptyString()][string]$UserProfilePath
+    )
+    if (-not $PSBoundParameters.ContainsKey("KnownFolderPath")) {
+        $KnownFolderPath = [Environment]::GetFolderPath("MyDocuments")
+    }
+    if (-not $PSBoundParameters.ContainsKey("UserProfilePath")) {
+        $UserProfilePath = $env:USERPROFILE
+    }
+    if (-not [string]::IsNullOrWhiteSpace($KnownFolderPath)) {
+        return Get-NormalizedPath -Path $KnownFolderPath
+    }
+    if ([string]::IsNullOrWhiteSpace($UserProfilePath)) { return "" }
+    return Get-NormalizedPath -Path (Join-Path $UserProfilePath "Documents")
+}
+
 function Assert-SafeDataRemovalTarget {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
@@ -140,7 +296,7 @@ function Assert-SafeDataRemovalTarget {
         (Join-Path $env:ProgramFiles ""),
         ([Environment]::GetEnvironmentVariable("ProgramFiles(x86)")),
         ([Environment]::GetFolderPath("Desktop")),
-        ([Environment]::GetFolderPath("MyDocuments")),
+        (Get-UserDocumentsPath),
         ([Environment]::GetFolderPath("MyPictures")),
         ([Environment]::GetFolderPath("MyVideos"))
     ) | Where-Object { $_ } | ForEach-Object { Get-NormalizedPath -Path $_ }
@@ -180,17 +336,115 @@ function Assert-SafeDataRemovalTarget {
     }
 }
 
+function Get-ProcessExecutableFromCommandLine {
+    param([string]$CommandLine)
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) { return "" }
+
+    $value = $CommandLine.TrimStart()
+    if ($value.StartsWith('"', [StringComparison]::Ordinal)) {
+        $endQuote = $value.IndexOf('"', 1)
+        if ($endQuote -le 1) { return "" }
+        return $value.Substring(1, $endQuote - 1)
+    }
+
+    $match = [Regex]::Match($value, '^(?<executable>[^\s]+)(?:\s|$)')
+    if (-not $match.Success) { return "" }
+    return $match.Groups["executable"].Value
+}
+
+function Test-ProcessStartTimeMatch {
+    param([DateTime]$ActualStartTime, [string]$ExpectedStartTime)
+    if (-not $ExpectedStartTime) { return $true }
+    $expected = [DateTimeOffset]::Parse($ExpectedStartTime).UtcDateTime
+    $actual = $ActualStartTime.ToUniversalTime()
+    return [Math]::Abs(($actual - $expected).TotalSeconds) -le 5
+}
+
+function Get-VerifiedInstalledProcessFromState {
+    param(
+        [int]$ProcessId,
+        $CimProcess,
+        [string]$ExpectedExecutable,
+        [string]$ExpectedStartTime,
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
+    )
+    if (-not $InstallDir) { return $null }
+    try {
+        $installRoot = Get-NormalizedPath -Path $InstallDir
+        $configPath = Join-Path $installRoot "install.json"
+        if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return $null }
+        $config = Read-JsonFile -Path $configPath
+        if ([string]$config.product -ne "GugakSignage" -or
+            -not (Test-PathEqual -Left ([string]$config.installDir) -Right $installRoot)) { return $null }
+
+        $nativeProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+        if (-not $nativeProcess) { return $null }
+        $nativePath = [string]$nativeProcess.Path
+        if ($nativePath -and -not (Test-PathEqual -Left $nativePath -Right $ExpectedExecutable)) { return $null }
+        $reportedName = [string]$CimProcess.Name
+        if (-not $reportedName) { $reportedName = [string]$nativeProcess.ProcessName }
+        $reportedStart = if ($CimProcess.CreationDate) { [DateTime]$CimProcess.CreationDate } else { [DateTime]$nativeProcess.StartTime }
+        if ([IO.Path]::GetFileNameWithoutExtension($reportedName) -ne [IO.Path]::GetFileNameWithoutExtension($ExpectedExecutable) -or
+            -not (Test-ProcessStartTimeMatch -ActualStartTime $reportedStart -ExpectedStartTime $ExpectedStartTime)) { return $null }
+
+        $statePath = Join-Path ([string]$config.logDir) "watchdog-state.json"
+        if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { return $null }
+        $state = Read-JsonFile -Path $statePath
+        $markers = @($CommandLineContains | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        $hasServerEntry = $markers | Where-Object { $_ -match '(^|[\\/])dist[\\/](server|player-host-main)\.js$' } | Select-Object -First 1
+        $hasWatchdogEntry = $markers | Where-Object { $_ -match '(^|[\\/])watchdog\.mjs$' } | Select-Object -First 1
+        $hasBrowserProfile = $config.profileDir -and ($markers | Where-Object { Test-PathEqual -Left ([string]$_) -Right ([string]$config.profileDir) } | Select-Object -First 1)
+
+        if ($hasServerEntry) {
+            if ([int]$state.serverPid -ne $ProcessId -or
+                -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.serverStartedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            if ($hasServerEntry -match 'player-host-main\.js$') {
+                if ([string]$config.role -ne "player-host") { return $null }
+            } else {
+                $instancePath = Join-Path (Join-Path ([string]$config.dataDir) "control") "server-instance.json"
+                if (-not (Test-Path -LiteralPath $instancePath -PathType Leaf)) { return $null }
+                $instance = Read-JsonFile -Path $instancePath
+                if ([int]$instance.pid -ne $ProcessId -or
+                    ($state.serverInstanceId -and [string]$state.serverInstanceId -ne [string]$instance.id) -or
+                    -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$instance.startedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            }
+            return $nativeProcess
+        }
+        if ($hasWatchdogEntry) {
+            if ([int]$state.watchdogPid -ne $ProcessId -or
+                -not (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.watchdogStartedAt) -ExpectedStartTime $ExpectedStartTime)) { return $null }
+            return $nativeProcess
+        }
+        if ($hasBrowserProfile -and [int]$state.browserPid -eq $ProcessId -and
+            (Test-ProcessStartTimeMatch -ActualStartTime ([DateTime]$state.browserStartedAt) -ExpectedStartTime $ExpectedStartTime)) {
+            return $nativeProcess
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
 function Get-VerifiedOwnedProcess {
     param(
         [int]$ProcessId,
         [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [string]$ExpectedStartTime = "",
-        [string[]]$CommandLineContains = @()
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
     )
     if ($ProcessId -le 0) { return $null }
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-    if (-not $process -or -not $process.ExecutablePath) { return $null }
-    if (-not (Test-PathEqual -Left ([string]$process.ExecutablePath) -Right $ExpectedExecutable)) { return $null }
+    if (-not $process) { return $null }
+    $actualExecutable = [string]$process.ExecutablePath
+    if (-not $actualExecutable) {
+        $actualExecutable = Get-ProcessExecutableFromCommandLine -CommandLine ([string]$process.CommandLine)
+        if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) {
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -CimProcess $process -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+        }
+    }
+    if (-not $actualExecutable -or -not (Test-PathEqual -Left $actualExecutable -Right $ExpectedExecutable)) { return $null }
     if ($ExpectedStartTime) {
         $expected = [DateTimeOffset]::Parse($ExpectedStartTime).UtcDateTime
         $actual = ([DateTime]$process.CreationDate).ToUniversalTime()
@@ -199,10 +453,46 @@ function Get-VerifiedOwnedProcess {
     $commandLine = [string]$process.CommandLine
     foreach ($marker in $CommandLineContains) {
         if ($marker -and $commandLine.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-            return $null
+            return Get-VerifiedInstalledProcessFromState -ProcessId $ProcessId -CimProcess $process -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         }
     }
     return $process
+}
+
+function Invoke-TaskkillProcessTree {
+    param(
+        [Parameter(Mandatory = $true)][ValidateRange(0, 2147483647)][int]$ProcessId,
+        [switch]$RootOnly
+    )
+
+    $taskkillPath = Join-Path $env:SystemRoot "System32\taskkill.exe"
+    if (-not (Test-Path -LiteralPath $taskkillPath -PathType Leaf)) {
+        throw "Windows taskkill.exe를 찾을 수 없습니다: $taskkillPath"
+    }
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $taskkillPath
+    $arguments = "/PID $ProcessId"
+    if (-not $RootOnly) { $arguments += " /T" }
+    $startInfo.Arguments = $arguments + " /F"
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $nativeProcess = New-Object System.Diagnostics.Process
+    $nativeProcess.StartInfo = $startInfo
+    try {
+        if (-not $nativeProcess.Start()) { throw "taskkill.exe를 시작하지 못했습니다." }
+        $stdoutTask = $nativeProcess.StandardOutput.ReadToEndAsync()
+        $stderrTask = $nativeProcess.StandardError.ReadToEndAsync()
+        $nativeProcess.WaitForExit()
+        $output = @($stdoutTask.GetAwaiter().GetResult(), $stderrTask.GetAwaiter().GetResult() |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join [Environment]::NewLine
+        return [pscustomobject]@{ ExitCode = $nativeProcess.ExitCode; Output = $output }
+    } finally {
+        $nativeProcess.Dispose()
+    }
 }
 
 function Stop-VerifiedOwnedProcess {
@@ -210,7 +500,8 @@ function Stop-VerifiedOwnedProcess {
         [int]$ProcessId,
         [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [string]$ExpectedStartTime = "",
-        [string[]]$CommandLineContains = @()
+        [string[]]$CommandLineContains = @(),
+        [string]$InstallDir = ""
     )
     if ($ProcessId -le 0) { return $false }
     $deadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -218,19 +509,64 @@ function Stop-VerifiedOwnedProcess {
     while ([DateTime]::UtcNow -lt $deadline) {
         $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
         if (-not $process) { return $false }
-        $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains
+        $verified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
         if ($verified) { break }
         Start-Sleep -Milliseconds 100
     }
     if (-not $verified) {
         $actualStart = if ($process.CreationDate) { ([DateTime]$process.CreationDate).ToUniversalTime().ToString("o") } else { "<unknown>" }
-        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart"
+        $commandLine = [string]$process.CommandLine
+        $commandLineExecutable = Get-ProcessExecutableFromCommandLine -CommandLine $commandLine
+        $missingMarkers = @($CommandLineContains | Where-Object {
+            $_ -and $commandLine.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -lt 0
+        }) -join ","
+        $nativePath = "<unavailable>"
+        $nativeName = "<unavailable>"
+        $stateSummary = "<not-read>"
+        try {
+            $nativeProcess = Get-Process -Id $ProcessId -ErrorAction Stop
+            $nativePath = [string]$nativeProcess.Path
+            $nativeName = [string]$nativeProcess.ProcessName
+            $nativeProcessStart = $nativeProcess.StartTime.ToUniversalTime().ToString("o")
+            if ($InstallDir) {
+                $installRoot = Get-NormalizedPath -Path $InstallDir
+                $installConfig = Read-JsonFile -Path (Join-Path $installRoot "install.json")
+                $watchdogState = Read-JsonFile -Path (Join-Path ([string]$installConfig.logDir) "watchdog-state.json")
+                $instancePath = Join-Path (Join-Path ([string]$installConfig.dataDir) "control") "server-instance.json"
+                $instance = if (Test-Path -LiteralPath $instancePath -PathType Leaf) { Read-JsonFile -Path $instancePath } else { $null }
+                $stateSummary = "serverPid=$($watchdogState.serverPid),serverStartedAt=$($watchdogState.serverStartedAt),instancePid=$($instance.pid),instanceStartedAt=$($instance.startedAt),instanceIdMatches=$([bool]($watchdogState.serverInstanceId -and $watchdogState.serverInstanceId -eq $instance.id)),nativeProcessStart=$nativeProcessStart,processNameMatches=$([IO.Path]::GetFileNameWithoutExtension($nativeName) -eq [IO.Path]::GetFileNameWithoutExtension($ExpectedExecutable))"
+            }
+        } catch { $stateSummary = "diagnostic-error=$($_.Exception.Message)" }
+        throw "프로세스 소유권을 확인하지 못해 종료하지 않았습니다. PID=$ProcessId, expected=$ExpectedExecutable @ $ExpectedStartTime, actual=$($process.ExecutablePath) @ $actualStart, commandLineExecutable=$commandLineExecutable, commandLineAvailable=$([bool]$commandLine), missingMarkers=$missingMarkers, nativePath=$nativePath, nativeName=$nativeName, installState=$stateSummary"
     }
-    $result = & taskkill.exe /PID $ProcessId /T /F 2>&1
-    $exitCode = $LASTEXITCODE
+    $taskkillResult = Invoke-TaskkillProcessTree -ProcessId $ProcessId
     $stillRunning = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-    if ($exitCode -ne 0 -and $stillRunning) {
-        throw "프로세스 종료에 실패했습니다. PID=$ProcessId, exit=$exitCode, output=$($result -join ' ')"
+    if ($stillRunning) {
+        $reverified = Get-VerifiedOwnedProcess -ProcessId $ProcessId -ExpectedExecutable $ExpectedExecutable -ExpectedStartTime $ExpectedStartTime -CommandLineContains $CommandLineContains -InstallDir $InstallDir
+        if (-not $reverified) {
+            if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { return $true }
+            throw "프로세스 트리 종료 실패 뒤 PID 신원이 변해 추가 종료를 중단했습니다. IDENTITY_CHANGED PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
+        }
+
+        $rootResult = Invoke-TaskkillProcessTree -ProcessId $ProcessId -RootOnly
+        $rootDeadline = [DateTime]::UtcNow.AddSeconds(3)
+        do {
+            $stillRunning = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+            if (-not $stillRunning) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $rootDeadline)
+
+        if ($stillRunning) {
+            $ownerName = "<unavailable>"
+            try {
+                $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -ErrorAction Stop
+                if ($owner.ReturnValue -eq 0) { $ownerName = "$($owner.Domain)\$($owner.User)" }
+            } catch { $ownerName = "error:$($_.Exception.Message)" }
+            throw "검증된 프로세스 종료에 실패했습니다. PID=$ProcessId, owner=$ownerName, session=$($process.SessionId), parentPid=$($process.ParentProcessId), treeExit=$($taskkillResult.ExitCode), rootExit=$($rootResult.ExitCode), treeOutput=$($taskkillResult.Output), rootOutput=$($rootResult.Output)"
+        }
+        Write-Warning "프로세스 트리 일부를 종료하지 못해 신원을 재확인한 루트 프로세스만 종료했습니다. PID=$ProcessId, treeExit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
+    } elseif ($taskkillResult.ExitCode -ne 0) {
+        Write-Warning "프로세스 루트는 종료됐지만 taskkill 트리 정리 결과가 비정상입니다. PID=$ProcessId, exit=$($taskkillResult.ExitCode), output=$($taskkillResult.Output)"
     }
     return $true
 }
@@ -241,13 +577,14 @@ function Test-ShortcutOwnedByInstall {
         [Parameter(Mandatory = $true)][string]$InstallDir
     )
     if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\watchdog-launch.vbs"
-    return ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
-        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
+    return ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir))
 }
 
 function Test-AdminShortcutOwnedByInstall {
@@ -256,13 +593,14 @@ function Test-AdminShortcutOwnedByInstall {
         [Parameter(Mandatory = $true)][string]$InstallDir
     )
     if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
     $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
     $launcher = Join-Path $InstallDir "ops\admin-launch.vbs"
-    return ((Test-PathEqual -Left ([string]$shortcut.TargetPath) -Right $wscript) -and
-        ([string]$shortcut.Arguments).IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-        (Test-PathEqual -Left ([string]$shortcut.WorkingDirectory) -Right $InstallDir))
+    return ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir))
 }
 
 function Test-ScheduledTaskOwnedByInstall {
@@ -329,7 +667,7 @@ function ConvertFrom-EnvScalarValue {
     $raw = $Value.Trim()
     if (-not $raw) { return "" }
     $quote = [char]0
-    if ($raw[0] -eq [char]34 -or $raw[0] -eq [char]39) { $quote = $raw[0] }
+    if ($raw[0] -eq [char]34 -or $raw[0] -eq [char]39 -or $raw[0] -eq [char]96) { $quote = $raw[0] }
     if ($quote -ne [char]0) {
         $builder = [Text.StringBuilder]::new()
         $closed = $false

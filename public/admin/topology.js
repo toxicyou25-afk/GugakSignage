@@ -98,19 +98,47 @@
   }
 
   async function renderEditor(view, siteId) {
-    const [detail, playlists] = await Promise.all([
+    const [detail, playlists, nativeMonitorResult] = await Promise.all([
       request(`/api/sites/${encodeURIComponent(siteId)}`),
       request('/api/playlists'),
+      request('/api/native-monitors'),
     ]);
     active = { siteId, detail, preview: active.preview };
     const group = detail.groups[0];
+    const monitorsByDevice = new Map();
+    const monitorErrorsByDevice = new Map();
+    for (const device of detail.devices) {
+      if (device.localHost) {
+        monitorsByDevice.set(device.id, nativeMonitorResult.supported && !nativeMonitorResult.error ? nativeMonitorResult.monitors : []);
+        if (nativeMonitorResult.error) monitorErrorsByDevice.set(device.id, nativeMonitorResult.error);
+      } else {
+        const remoteResult = await request(`/api/native-monitors?deviceId=${encodeURIComponent(device.id)}`);
+        monitorsByDevice.set(device.id, remoteResult.supported && !remoteResult.error ? remoteResult.monitors : []);
+        if (remoteResult.error) monitorErrorsByDevice.set(device.id, remoteResult.error);
+      }
+    }
     if (!group) {
       view.innerHTML = '<div class="empty"><h3>화면 그룹이 없습니다</h3><p>장소 정보를 확인하거나 다시 만들어 주세요.</p></div>';
       return;
     }
     const first = group.displays[0] || { width: 1920, height: 1080, rotation: 0, fit_mode: 'contain' };
     const playlistOptions = (selected, noneLabel) => `<option value="">${page(noneLabel)}</option>${playlists.playlists.map((playlist) => `<option value="${page(playlist.id)}" ${playlist.id === selected ? 'selected' : ''}>${page(playlist.name)}</option>`).join('')}`;
-    const deviceOptions = (selected, devices = detail.devices) => `<option value="">PC 연결 안 함</option>${devices.map((device) => `<option value="${page(device.id)}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`).join('')}`;
+    const nativeMonitorsFor = (deviceId) => monitorsByDevice.get(deviceId) || [];
+    const deviceOptions = (selected, devices = detail.devices) => `<option value="">PC 연결 안 함</option>${devices.map((device) => {
+      const monitorList = nativeMonitorsFor(device.id).filter((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId));
+      return `<option value="${page(device.id)}" data-local-host="${device.localHost ? 'true' : 'false'}" data-monitors="${page(JSON.stringify(monitorList))}" ${device.id === selected ? 'selected' : ''}>${page(device.name)} · ${device.displayCount}화면</option>`;
+    }).join('')}`;
+    const nativeMonitorOptions = (selected, deviceId) => {
+      const monitors = nativeMonitorsFor(deviceId);
+      const err = monitorErrorsByDevice.get(deviceId);
+      const selectedExists = monitors.some((monitor) => monitor.bindingId === selected);
+      const savedBindingStatus = selected && !/^MONITOR\\/iu.test(selected)
+        ? '안정 식별자가 아니므로 다시 배정해야 함'
+        : selected && !err && monitors.some((monitor) => monitor.stableId === selected && !monitor.bindingId)
+          ? '안정 식별자가 아니므로 다시 배정해야 함'
+        : err ? '현재 PC에서 확인할 수 없음' : '현재 감지되지 않음';
+      return `<option value="">물리 모니터 지정 안 함</option>${selected && !selectedExists ? `<option value="${page(selected)}" selected>저장된 모니터 ${page(selected)} · ${savedBindingStatus}</option>` : ''}${monitors.map((monitor) => monitor.bindingId ? `<option value="${page(monitor.bindingId)}" ${monitor.bindingId === selected ? 'selected' : ''}>${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>` : '').join('')}`;
+    };
     const groupDevices = group.devices || detail.devices;
     const assignedDevice = group.displays.find((display) => display.device_id)?.device_id || '';
 
@@ -147,9 +175,10 @@
             <div class="card-head"><div><p class="eyebrow" style="margin:0 0 5px">2. SCREEN ASSIGNMENT</p><h3>화면별 콘텐츠·PC 배정</h3><span class="tiny muted">재생목록과 실행 PC를 화면마다 지정합니다. 재생목록을 비워 두면 그룹 기본을 씁니다.</span></div></div>
             <div class="screen-assignment-list">
               ${group.displays.map((display, index) => `
-                <div class="screen-assignment" data-display-id="${page(display.id)}">
+                <div class="screen-assignment" data-display-id="${page(display.id)}" data-device-id="${page(display.device_id || '')}" data-local-host="${display.localHost ? 'true' : 'false'}">
                   <div class="screen-assignment-name"><span>${index + 1}</span><div><strong>${page(display.name)}</strong><small>${display.width}×${display.height} · ${page(display.deviceName || 'PC 미연결')}</small></div></div>
                   <label><span>PC 기기</span><select data-screen-device>${deviceOptions(display.device_id, groupDevices)}</select></label>
+                  <label><span>물리 모니터 (${page(display.deviceName || 'PC 미연결')})</span><select data-screen-native-monitor ${display.device_id ? '' : 'disabled'}>${nativeMonitorOptions(display.nativeMonitorId, display.device_id)}</select><small class="muted" data-screen-monitor-help>${monitorErrorsByDevice.get(display.device_id) ? page(monitorErrorsByDevice.get(display.device_id)) : 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.'}</small></label>
                   <label><span>재생목록</span><select data-screen-playlist>${playlistOptions(display.playlist_id, '그룹 기본 사용')}</select></label>
                   <label><span>회전</span><select data-screen-rotation>${[0,90,180,270].map((rotation) => `<option value="${rotation}" ${display.rotation === rotation ? 'selected' : ''}>${rotation}°</option>`).join('')}</select></label>
                   <label><span>맞춤</span><select data-screen-fit><option value="contain" ${display.fit_mode === 'contain' ? 'selected' : ''}>전체</option><option value="cover" ${display.fit_mode === 'cover' ? 'selected' : ''}>채우기</option><option value="stretch" ${display.fit_mode === 'stretch' ? 'selected' : ''}>늘이기</option></select></label>
@@ -201,7 +230,7 @@
           : '<p class="tiny muted">아직 모니터 변경을 감지하지 않았습니다.</p>';
         const currentDisplays = result.monitors.length ? `<div class="screen-assignment-list">${result.monitors.map((monitor) => `
           <div class="screen-assignment"><div class="screen-assignment-name"><span>${monitor.primary ? '★' : '•'}</span><div><strong>${page(monitor.friendlyName)}</strong><small>${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height} · ${page(monitor.orientation)}</small></div></div>
-          <small>${monitor.primary ? '주 디스플레이' : '보조 디스플레이'} · ${monitor.attached ? '연결됨' : '분리됨'} · (${monitor.bounds.x}, ${monitor.bounds.y})</small><small title="${page(monitor.stableId)}">${page(monitor.stableId)}</small></div>`).join('')}</div>` : '<p class="tiny muted">현재 연결된 모니터가 없습니다.</p>';
+          <small>${monitor.primary ? '주 디스플레이' : '보조 디스플레이'} · ${monitor.attached ? '연결됨' : '분리됨'} · (${monitor.bounds.x}, ${monitor.bounds.y})</small><small title="${page(monitor.stableId)}">${monitor.bindingId ? page(monitor.bindingId) : '안정 식별자 없음 · 배정할 수 없음'}</small></div>`).join('')}</div>` : '<p class="tiny muted">현재 연결된 모니터가 없습니다.</p>';
         list.innerHTML = `<h4>감지된 모니터</h4>${currentDisplays}<h4>변경 이력</h4>${history}`;
       }
     } catch (error) {
@@ -311,16 +340,29 @@
 
   async function saveScreen(row) {
     const displayId = row.dataset.displayId;
+    const selectedDeviceId = row.querySelector('[data-screen-device]').value || null;
+    const deviceChanged = selectedDeviceId !== (row.dataset.deviceId || null);
+    const monitorSelect = row.querySelector('[data-screen-native-monitor]');
+    const selectedDevice = row.querySelector('[data-screen-device]').selectedOptions[0];
+    let reportedMonitors = [];
+    try { reportedMonitors = JSON.parse(selectedDevice?.dataset.monitors || '[]'); } catch { reportedMonitors = []; }
+    const hasReportedStableMonitor = reportedMonitors.some((monitor) =>
+      monitor.bindingId === monitorSelect.value && /^MONITOR\\/iu.test(monitor.bindingId));
+    const nativeMonitorId = hasReportedStableMonitor
+      ? monitorSelect.value
+      : (deviceChanged || !monitorSelect.value ? null : undefined);
+    const body = {
+      deviceId: selectedDeviceId,
+      playlistId: row.querySelector('[data-screen-playlist]').value || null,
+      rotation: Number(row.querySelector('[data-screen-rotation]').value),
+      fitMode: row.querySelector('[data-screen-fit]').value,
+    };
+    if (nativeMonitorId !== undefined) body.nativeMonitorId = nativeMonitorId;
     await request(`/api/displays/${encodeURIComponent(displayId)}`, {
       method: 'PUT',
-      body: {
-        deviceId: row.querySelector('[data-screen-device]').value || null,
-        playlistId: row.querySelector('[data-screen-playlist]').value || null,
-        rotation: Number(row.querySelector('[data-screen-rotation]').value),
-        fitMode: row.querySelector('[data-screen-fit]').value,
-      },
+      body,
     });
-    toast('화면 배정을 저장했습니다.');
+    toast(deviceChanged && !nativeMonitorId ? 'PC를 변경했습니다. 해당 PC의 모니터 정보가 준비된 뒤 지정할 수 있습니다.' : '화면 배정을 저장했습니다.');
     await renderEditor(document.querySelector('#view'), active.siteId);
   }
 
@@ -359,6 +401,29 @@
     } catch (error) {
       errorToast(error);
     }
+  });
+
+  document.addEventListener('change', (event) => {
+    const deviceSelect = event.target.closest('[data-screen-device]');
+    if (!deviceSelect) return;
+    const row = deviceSelect.closest('[data-display-id]');
+    const monitorSelect = row?.querySelector('[data-screen-native-monitor]');
+    if (!monitorSelect) return;
+    const selected = deviceSelect.selectedOptions[0];
+    const localHost = selected?.dataset.localHost === 'true';
+    row.dataset.localHost = localHost ? 'true' : 'false';
+    monitorSelect.value = '';
+    let monitors = [];
+    try { monitors = JSON.parse(selected?.dataset.monitors || '[]'); } catch { monitors = []; }
+    monitorSelect.innerHTML = `<option value="">물리 모니터 지정 안 함</option>${monitors.map((monitor) =>
+      `<option value="${page(monitor.bindingId)}">${page(monitor.friendlyName)} · ${page(monitor.deviceName)} · ${monitor.resolution.width}×${monitor.resolution.height}</option>`,
+    ).join('')}`;
+    const hasStableMonitors = monitors.some((monitor) => typeof monitor.bindingId === 'string' && /^MONITOR\\/iu.test(monitor.bindingId));
+    monitorSelect.disabled = !hasStableMonitors;
+    const help = row.querySelector('[data-screen-monitor-help]');
+    if (help) help.textContent = hasStableMonitors
+      ? (localHost ? 'PC를 바꾸면 이 PC에서 감지된 모니터를 선택할 수 있습니다.' : '재생기가 보고한 모니터를 선택할 수 있습니다.')
+      : (localHost ? '이 PC에서 안정적인 모니터 식별자를 확인할 수 없습니다.' : '해당 Player PC의 모니터 정보가 아직 보고되지 않았습니다.');
   });
 
   window.GugakTopology = { render };

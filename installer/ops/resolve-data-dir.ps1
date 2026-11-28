@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+﻿# SPDX-License-Identifier: Apache-2.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$InstallDir,
@@ -34,3 +34,4 @@ try {
     [IO.File]::WriteAllText($OutputFile, $payload, [Text.Encoding]::ASCII)
     exit 1
 }
+

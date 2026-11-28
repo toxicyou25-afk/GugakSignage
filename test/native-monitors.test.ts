@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compareMonitorSnapshots, discoverNativeMonitors, NativeMonitorSnapshotTracker, parseNativeMonitorOutput } from '../src/native-monitors.js';
 
-const monitor = { deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Primary Display', stableId: 'MONITOR\\ABC', x: 0, y: 0, width: 1920, height: 1080, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 }, orientation: 'landscape', primary: true, attached: true };
+const monitor = { deviceName: '\\\\.\\DISPLAY1', friendlyName: 'Primary Display', stableId: 'MONITOR\\ABC', bindingId: 'MONITOR\\ABC', x: 0, y: 0, width: 1920, height: 1080, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 }, orientation: 'landscape', primary: true, attached: true };
 
 test('parses one attached physical monitor and detection timestamp', () => {
   const detectedAt = '2026-11-27T00:00:00.000Z';
@@ -11,7 +11,7 @@ test('parses one attached physical monitor and detection timestamp', () => {
   assert.equal(result.supported, true);
   assert.equal(result.detectedAt, detectedAt);
   assert.deepEqual(result.monitors[0], {
-    stableId: monitor.stableId, deviceName: monitor.deviceName, friendlyName: monitor.friendlyName,
+    stableId: monitor.stableId, bindingId: monitor.stableId, deviceName: monitor.deviceName, friendlyName: monitor.friendlyName,
     bounds: { x: 0, y: 0, width: 1920, height: 1080 }, resolution: { width: 1920, height: 1080 },
     orientation: 'landscape', primary: true, attached: true,
   });
@@ -29,6 +29,23 @@ test('malformed native output returns a clear discovery error', () => {
   for (const output of ['', 'not json', '{"supported":true}']) {
     assert.equal(parseNativeMonitorOutput(output).error, 'Windows display discovery returned no monitor data.');
   }
+});
+
+test('monitor discovery does not accept connector-only IDs as stable physical identity', () => {
+  const withoutStableId = { ...monitor, stableId: '\\\\.\\DISPLAY1', bindingId: null };
+  const result = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [withoutStableId] }));
+  assert.equal(result.monitors[0]?.stableId, '\\\\.\\DISPLAY1');
+  assert.equal(result.monitors[0]?.bindingId, null);
+});
+
+test('monitor discovery never promotes an omitted or malformed binding ID to a selectable ID', () => {
+  const omitted = { ...monitor } as Record<string, unknown>;
+  delete omitted.bindingId;
+  const malformed = { ...monitor, bindingId: '\\\\.\\DISPLAY1' };
+  const omittedResult = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [omitted] }));
+  const malformedResult = parseNativeMonitorOutput(JSON.stringify({ supported: true, monitors: [malformed] }));
+  assert.equal(omittedResult.monitors[0]?.bindingId, null);
+  assert.equal(malformedResult.monitors[0]?.bindingId, null);
 });
 
 

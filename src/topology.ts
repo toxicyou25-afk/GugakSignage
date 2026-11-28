@@ -88,7 +88,7 @@ function linkDeviceToGroup(
   if (!deviceId) return;
   run(
     db,
-    `UPDATE displays SET device_id = NULL, updated_at = ?
+    `UPDATE displays SET device_id = NULL, native_monitor_id = NULL, updated_at = ?
       WHERE device_id = ? AND id <> ? AND (site_id <> ? OR group_id <> ?)`,
     nowIso(),
     deviceId,
@@ -149,6 +149,7 @@ export function buildWallSnapshot(
     displays: displays.map((display, index) => ({
       id: display.id,
       deviceId: display.device_id,
+      nativeMonitorId: display.native_monitor_id,
       groupId: display.group_id,
       name: display.name,
       resolution: { width: display.width, height: display.height },
@@ -465,6 +466,7 @@ export function configureGroupDisplays(
 export function updateDisplay(
   db: DB,
   displayId: string,
+  heartbeatOnlineMs: number,
   input: {
     name?: string;
     playlistId?: string | null;
@@ -474,6 +476,7 @@ export function updateDisplay(
     rotation?: DisplayRotation;
     fitMode?: FitMode;
     deviceId?: string | null;
+    nativeMonitorId?: string | null;
     startIndex?: number;
     step?: number;
   },
@@ -498,14 +501,58 @@ export function updateDisplay(
     throw new Error('모니터 표시 설정을 확인해 주세요.');
   }
   const finalDeviceId = input.deviceId === undefined ? display.device_id : input.deviceId;
+  const requestedNativeMonitorId = input.nativeMonitorId === undefined
+    ? display.native_monitor_id
+    : input.nativeMonitorId;
+  if (input.nativeMonitorId !== undefined && requestedNativeMonitorId !== null && !finalDeviceId) {
+    throw new Error('물리 모니터를 지정하려면 먼저 PC 기기를 연결해 주세요.');
+  }
+  const finalDevice = finalDeviceId
+    ? get<{ last_host_local: number; last_seen: string | null }>(db, 'SELECT last_host_local, last_seen FROM devices WHERE id = ?', finalDeviceId)
+    : undefined;
+  const finalDeviceLastSeen = finalDevice?.last_seen ? Date.parse(finalDevice.last_seen) : Number.NaN;
+  const finalDeviceHeartbeatAge = Date.now() - finalDeviceLastSeen;
+  const finalDeviceIsLocalHost = finalDevice?.last_host_local === 1 && Number.isFinite(finalDeviceLastSeen) &&
+    finalDeviceHeartbeatAge >= 0 && finalDeviceHeartbeatAge <= heartbeatOnlineMs;
+  const report = finalDeviceId ? get<{ snapshot_json: string }>(db,
+    'SELECT snapshot_json FROM player_monitor_reports WHERE device_id = ?', finalDeviceId) : undefined;
+  let reportedBinding = false;
+  if (requestedNativeMonitorId && report) {
+    try { reportedBinding = (JSON.parse(report.snapshot_json) as Array<{ bindingId?: unknown }>).some((monitor) => monitor.bindingId === requestedNativeMonitorId); }
+    catch { reportedBinding = false; }
+  }
+  const finalDeviceOnline = Boolean(finalDevice && Number.isFinite(finalDeviceLastSeen) && finalDeviceHeartbeatAge >= 0 && finalDeviceHeartbeatAge <= heartbeatOnlineMs);
+  const canBindMonitor = finalDeviceIsLocalHost || (finalDevice?.last_host_local === 0 && finalDeviceOnline && reportedBinding);
+  const sameDevice = finalDeviceId === display.device_id;
+  const bindingChanged = input.nativeMonitorId !== undefined && requestedNativeMonitorId !== display.native_monitor_id;
+  if (input.nativeMonitorId && bindingChanged && !canBindMonitor) {
+    throw new Error('원격 Player의 모니터 배정은 해당 PC의 모니터 정보가 연결된 뒤에 지정할 수 있습니다.');
+  }
+  const nativeMonitorId = sameDevice
+    ? (input.nativeMonitorId === undefined ? display.native_monitor_id : requestedNativeMonitorId)
+    : (input.nativeMonitorId !== undefined && canBindMonitor ? requestedNativeMonitorId ?? null : null);
+  if (nativeMonitorId) {
+    const duplicate = get<{ id: string }>(
+      db,
+      'SELECT id FROM displays WHERE device_id = ? AND native_monitor_id = ? AND id <> ?',
+      finalDeviceId,
+      nativeMonitorId,
+      display.id,
+    );
+    if (duplicate) throw new Error('같은 PC의 다른 화면에 이미 연결된 물리 모니터입니다.');
+  }
   transaction(db, () => {
     if (input.deviceId !== undefined) {
       linkDeviceToGroup(db, finalDeviceId, display.site_id, display.group_id, display.id);
     }
+    if (finalDeviceId !== display.device_id) {
+      run(db, 'UPDATE displays SET device_id = ?, native_monitor_id = NULL, updated_at = ? WHERE id = ?',
+        finalDeviceId, nowIso(), display.id);
+    }
     run(
       db,
       `UPDATE displays SET name = ?, playlist_id = ?, width = ?, height = ?, orientation = ?,
-                            rotation = ?, fit_mode = ?, device_id = ?, start_index = ?, step = ?,
+                            rotation = ?, fit_mode = ?, device_id = ?, native_monitor_id = ?, start_index = ?, step = ?,
                             updated_at = ? WHERE id = ?`,
       input.name?.trim() || display.name,
       input.playlistId === undefined ? display.playlist_id : input.playlistId || null,
@@ -515,6 +562,7 @@ export function updateDisplay(
       rotation,
       fitMode,
       finalDeviceId,
+      nativeMonitorId,
       typeof input.startIndex === 'number' && Number.isInteger(input.startIndex) ? input.startIndex : display.start_index,
       typeof input.step === 'number' && Number.isInteger(input.step) ? input.step : display.step,
       nowIso(),
@@ -550,12 +598,19 @@ export function siteSummary(db: DB) {
 export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
   const site = get<SiteRow>(db, 'SELECT * FROM sites WHERE id = ?', siteId);
   if (!site) return null;
-  const deviceDto = (device: DeviceRow) => ({
-    id: device.id,
-    name: device.name,
-    status: deviceStatus(device, heartbeatOnlineMs),
-    displayCount: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?', device.id)?.n ?? 0),
-  });
+  const deviceDto = (device: DeviceRow) => {
+    const status = deviceStatus(device, heartbeatOnlineMs);
+    const lastSeen = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
+    const heartbeatAge = Date.now() - lastSeen;
+    return {
+      id: device.id,
+      name: device.name,
+      localHost: device.last_host_local === 1 && Number.isFinite(lastSeen) &&
+        heartbeatAge >= 0 && heartbeatAge <= heartbeatOnlineMs,
+      status,
+      displayCount: Number(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays WHERE device_id = ?', device.id)?.n ?? 0),
+    };
+  };
   const groups = all<DisplayGroupRow>(
     db,
     'SELECT * FROM display_groups WHERE site_id = ? ORDER BY created_at, rowid',
@@ -568,8 +623,18 @@ export function siteDetail(db: DB, siteId: string, heartbeatOnlineMs: number) {
       group.id,
     ).map((display) => {
       const status = deviceStatusFor(db, heartbeatOnlineMs, display.device_id);
+      const displayDevice = display.device_id
+        ? get<{ last_host_local: number; last_seen: string | null }>(db, 'SELECT last_host_local, last_seen FROM devices WHERE id = ?', display.device_id)
+        : undefined;
+      const displayLastSeen = displayDevice?.last_seen ? Date.parse(displayDevice.last_seen) : Number.NaN;
+      const displayHeartbeatAge = Date.now() - displayLastSeen;
+      const localHost = displayDevice?.last_host_local === 1 && Number.isFinite(displayLastSeen) &&
+        displayHeartbeatAge >= 0 && displayHeartbeatAge <= heartbeatOnlineMs;
+      const { native_monitor_id: _nativeMonitorId, ...displayData } = display;
       return {
-        ...display,
+        ...displayData,
+        nativeMonitorId: display.native_monitor_id,
+        localHost,
         status,
         deviceName: display.device_id
           ? get<{ name: string }>(db, 'SELECT name FROM devices WHERE id = ?', display.device_id)?.name ?? null

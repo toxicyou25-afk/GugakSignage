@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
 
 const root = path.resolve(import.meta.dirname, '..');
-const baseRef = '3556b02822ff10b94ecc468f6432216abf2156aa';
+const baseRef = '8eed9e1f30bdab61336252c68ffef36de392ee14';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-sw-update-'));
 const profileDir = path.join(tempDir, 'persistent-profile');
 const evidenceDir = path.join(root, 'docs', 'verification');
@@ -136,7 +136,7 @@ try {
   const base = 'http://127.0.0.1:' + port;
   report.base = base;
   report.baseFileCount = baseFiles.size;
-  step('v3 기준 자산과 동일 origin 정적 서버 준비', { files: baseFiles.size, base });
+  step('v4 기준 자산과 동일 origin 정적 서버 준비', { files: baseFiles.size, base });
 
   context = await chromium.launchPersistentContext(profileDir, {
     channel: 'msedge',
@@ -158,33 +158,33 @@ try {
       controller: navigator.serviceWorker.controller?.scriptURL ?? null,
       active: registration.active?.scriptURL ?? null,
       playerShellVersion: window.__signagePlayer.getState().shellVersion ?? null,
-      cachedPlayerIncludesV4: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v4'")),
+      cachedPlayerIncludesV5: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v5'")),
     };
   });
-  if (!report.baseState.cacheKeys.includes('gugak-signage-shell-v3')) {
-    throw new Error('기준 v3 셸 캐시가 생성되지 않았습니다: ' + JSON.stringify(report.baseState.cacheKeys));
+  if (!report.baseState.cacheKeys.includes('gugak-signage-shell-v4')) {
+    throw new Error('기준 v4 셸 캐시가 생성되지 않았습니다: ' + JSON.stringify(report.baseState.cacheKeys));
   }
-  if (report.baseState.playerShellVersion !== null || report.baseState.cachedPlayerIncludesV4) {
+  if (report.baseState.playerShellVersion !== 'v4' || report.baseState.cachedPlayerIncludesV5) {
     throw new Error('기준 프로필이 예상보다 새 player.js를 사용했습니다.');
   }
-  step('같은 persistent profile에 v3 셸 캐시 확인', report.baseState);
+  step('같은 persistent profile에 v4 셸 캐시 확인', report.baseState);
 
   mode = 'head';
   report.deployedHeadState = {
-    directHeadFetched: false,
-    activeWorkerStillServesV3: false,
+    directHeadFetchedV5: false,
+    activeWorkerStillServesV4: false,
   };
   const directHead = await fetch(base + '/player/player.js?deploy=' + Date.now(), {
     headers: { 'Cache-Control': 'no-cache' },
   });
   const directHeadText = await directHead.text();
-  report.deployedHeadState.directHeadFetched = directHead.ok && directHeadText.includes("PLAYER_SHELL_VERSION = 'v4'");
+  report.deployedHeadState.directHeadFetchedV5 = directHead.ok && directHeadText.includes("PLAYER_SHELL_VERSION = 'v5'");
   const staleFetchText = await page.evaluate(async () => (await fetch('/player/player.js', { cache: 'no-store' })).text());
-  report.deployedHeadState.activeWorkerStillServesV3 = !staleFetchText.includes("PLAYER_SHELL_VERSION = 'v4'");
-  if (!report.deployedHeadState.directHeadFetched || !report.deployedHeadState.activeWorkerStillServesV3) {
-    throw new Error('HEAD 배포 전후의 v3 재현 상태가 올바르지 않습니다: ' + JSON.stringify(report.deployedHeadState));
+  report.deployedHeadState.activeWorkerStillServesV4 = staleFetchText.includes("PLAYER_SHELL_VERSION = 'v4'");
+  if (!report.deployedHeadState.directHeadFetchedV5 || !report.deployedHeadState.activeWorkerStillServesV4) {
+    throw new Error('HEAD 배포 전후의 v4 재현 상태가 올바르지 않습니다: ' + JSON.stringify(report.deployedHeadState));
   }
-  step('같은 origin에 HEAD 배포 후 기존 v3 워커가 stale 자산 반환', report.deployedHeadState);
+  step('같은 origin에 HEAD 배포 후 기존 v4 워커가 stale 자산 반환', report.deployedHeadState);
 
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
@@ -192,7 +192,7 @@ try {
   }).catch((error) => {
     if (!String(error.message).includes('Execution context was destroyed')) throw error;
   });
-  const updatedPlayerState = await waitForShellVersion(page, 'v4');
+  const updatedPlayerState = await waitForShellVersion(page, 'v5');
   report.updatedState = await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
     const keys = await caches.keys();
@@ -203,24 +203,24 @@ try {
       controller: navigator.serviceWorker.controller?.scriptURL ?? null,
       active: registration.active?.scriptURL ?? null,
       playerShellVersion: window.__signagePlayer.getState().shellVersion,
-      cachedPlayerIncludesV4: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v4'")),
+      cachedPlayerIncludesV5: Boolean((await cachedPlayer?.text())?.includes("PLAYER_SHELL_VERSION = 'v5'")),
       cachedWallInputIncludesUrlKinds: Boolean((await cachedWallInput?.text())?.includes('kind: item.content.kind')),
     };
   });
   report.updatedState.playerShellVersion = updatedPlayerState.shellVersion;
-  if (report.updatedState.playerShellVersion !== 'v4') {
+  if (report.updatedState.playerShellVersion !== 'v5') {
     throw new Error('등록 갱신 뒤에도 이전 player.js가 실행 중입니다.');
   }
-  if (!report.updatedState.cacheKeys.includes('gugak-signage-shell-v4') || report.updatedState.cacheKeys.includes('gugak-signage-shell-v3')) {
-    throw new Error('셸 캐시 v4 전환이 올바르지 않습니다: ' + JSON.stringify(report.updatedState.cacheKeys));
+  if (!report.updatedState.cacheKeys.includes('gugak-signage-shell-v5') || report.updatedState.cacheKeys.includes('gugak-signage-shell-v4')) {
+    throw new Error('셸 캐시 v5 전환이 올바르지 않습니다: ' + JSON.stringify(report.updatedState.cacheKeys));
   }
-  if (!report.updatedState.cachedPlayerIncludesV4 || !report.updatedState.cachedWallInputIncludesUrlKinds) {
-    throw new Error('새 player.js 또는 URL 지원 engine 자산이 v4 캐시에 없습니다.');
+  if (!report.updatedState.cachedPlayerIncludesV5 || !report.updatedState.cachedWallInputIncludesUrlKinds) {
+    throw new Error('새 player.js 또는 URL 지원 engine 자산이 v5 캐시에 없습니다.');
   }
   if (!report.updatedState.controller?.endsWith('/player/sw.js')) {
     throw new Error('새 서비스 워커가 page controller가 되지 않았습니다.');
   }
-  step('registration.update 뒤 새 워커가 v4 자산으로 1회 갱신', report.updatedState);
+  step('registration.update 뒤 새 워커가 v5 자산으로 1회 갱신', report.updatedState);
   report.result = 'passed';
 } catch (error) {
   report.result = 'failed';

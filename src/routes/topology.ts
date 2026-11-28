@@ -137,7 +137,22 @@ export function topologyRoutes(db: DB, config: AppConfig): Router {
     const orientation = req.body?.orientation as Orientation | undefined;
     const rotation = req.body?.rotation === undefined ? undefined : Number(req.body.rotation) as DisplayRotation;
     const fitMode = req.body?.fitMode as FitMode | undefined;
-    updateDisplay(db, req.params.id, {
+    const rawNativeMonitorId: unknown = req.body?.nativeMonitorId;
+    let nativeMonitorId: string | null | undefined;
+    if (rawNativeMonitorId !== undefined) {
+      if (rawNativeMonitorId !== null && typeof rawNativeMonitorId !== 'string') {
+        throw new Error('물리 모니터 ID 형식이 올바르지 않습니다.');
+      }
+      const normalized = typeof rawNativeMonitorId === 'string' ? rawNativeMonitorId.trim() : '';
+      if (normalized.length > 512 || /[\u0000-\u001f\u007f-\u009f]/u.test(normalized)) {
+        throw new Error('물리 모니터 ID는 제어문자 없이 512자 이내로 입력해 주세요.');
+      }
+      if (normalized && !/^MONITOR\\/iu.test(normalized)) {
+        throw new Error('연결 단자 이름이 아닌 Windows 모니터 장치 ID를 선택해 주세요.');
+      }
+      nativeMonitorId = normalized || null;
+    }
+    updateDisplay(db, req.params.id, config.heartbeatOnlineMs, {
       name: req.body?.name === undefined ? undefined : asTrimmed(req.body.name, 120),
       playlistId: req.body?.playlistId === undefined ? undefined : playlistExists(db, req.body.playlistId),
       width: req.body?.width === undefined ? undefined : Number(req.body.width),
@@ -146,11 +161,15 @@ export function topologyRoutes(db: DB, config: AppConfig): Router {
       rotation,
       fitMode,
       deviceId: req.body?.deviceId === undefined ? undefined : asTrimmed(req.body.deviceId, 100) || null,
+      nativeMonitorId,
       startIndex: req.body?.startIndex === undefined ? undefined : Number(req.body.startIndex),
       step: req.body?.step === undefined ? undefined : Number(req.body.step),
     });
-    const display = get<{ group_id: string }>(db, 'SELECT group_id FROM displays WHERE id = ?', req.params.id);
-    res.json({ preview: display ? previewWall(db, display.group_id, { heartbeatOnlineMs: config.heartbeatOnlineMs }) : null });
+    const display = get<{ group_id: string; native_monitor_id: string | null }>(db, 'SELECT group_id, native_monitor_id FROM displays WHERE id = ?', req.params.id);
+    res.json({
+      nativeMonitorId: display?.native_monitor_id ?? null,
+      preview: display ? previewWall(db, display.group_id, { heartbeatOnlineMs: config.heartbeatOnlineMs }) : null,
+    });
   });
 
   router.get('/groups/:id/preview', (req, res) => {

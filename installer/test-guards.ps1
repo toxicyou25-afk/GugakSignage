@@ -159,6 +159,36 @@ try {
     if ($message -notmatch "설치 폴더|install") { throw "내부 데이터 경로 오류가 명확하지 않습니다: $message" }
     $results.legacyDataInsideInstallBlocked = $true
 
+    $fallbackProfile = Join-Path $env:USERPROFILE "GugakSignage-ServiceProfile-$suffix"
+    $fallbackDocuments = Get-UserDocumentsPath -KnownFolderPath "" -UserProfilePath $fallbackProfile
+    $expectedDocuments = Join-Path $fallbackProfile "Documents"
+    if (-not (Test-PathEqual -Left $fallbackDocuments -Right $expectedDocuments)) {
+        throw "제한 계정의 Documents 경로 fallback이 잘못되었습니다: $fallbackDocuments"
+    }
+    $message = Assert-Throws -Description "fallback Documents data removal blocked" -Action {
+        Assert-SafeDataRemovalTarget -DataDir (Join-Path $fallbackDocuments "GugakSignage\data") -ProtectedPaths @($fallbackDocuments)
+    }
+    if ($message -notmatch "데이터 폴더가 보호 대상과 겹칩니다") {
+        throw "fallback Documents가 지정된 보호 경로로 거부되지 않았습니다: $message"
+    }
+    $results.restrictedProfileDocumentsPathBlocked = $true
+
+    $protectedInstallPath = Join-Path $env:PUBLIC "GugakSignage-InstallGuard-$suffix"
+    $protectedProfilePath = Join-Path $env:PUBLIC "GugakSignage-ProfileGuard-$suffix"
+    $safeRemovalPath = Join-Path $env:PUBLIC "GugakSignage-DataGuard-$suffix"
+    Assert-SafeDataRemovalTarget -DataDir $safeRemovalPath -ProtectedPaths @($protectedInstallPath, $protectedProfilePath)
+    $results.multipleProtectedPathsValidated = $true
+    foreach ($protectedPath in @($protectedInstallPath, $protectedProfilePath)) {
+        $overlappingDataPath = Join-Path $protectedPath "uploads"
+        $message = Assert-Throws -Description "protected install/profile subtree blocked" -Action {
+            Assert-SafeDataRemovalTarget -DataDir $overlappingDataPath -ProtectedPaths @($protectedInstallPath, $protectedProfilePath)
+        }
+        if ($message -notmatch "데이터 폴더가 보호 대상과 겹칩니다") {
+            throw "보호 경로 하위 데이터가 보호 경로로 거부되지 않았습니다: $message"
+        }
+    }
+    $results.protectedInstallAndProfilePathsBlocked = $true
+
     $equalDir = Join-Path $tempRoot "equal"
     $message = Assert-Throws -Description "설치 폴더와 같은 데이터 폴더" -Action {
         & $installScript -SourceDir $repoRoot -InstallDir $equalDir -DataDir $equalDir -NoStart -NoAutoStart -TaskName "GugakSignage-Guard-Equal-$suffix"
@@ -220,7 +250,7 @@ try {
     $unsafeCases = @(
         (Join-Path $env:SystemRoot "System32\GugakSignage"),
         (Join-Path $env:ProgramFiles "GugakSignage\data"),
-        (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "GugakSignage\data"),
+        (Join-Path (Get-UserDocumentsPath) "GugakSignage\data"),
         $env:USERPROFILE
     )
     foreach ($unsafePath in $unsafeCases) {
@@ -249,11 +279,10 @@ try {
     $adminShortcutDir = Join-Path $tempRoot "admin-desktop"
     New-Item -ItemType Directory -Path $adminShortcutDir -Force | Out-Null
     $adminShortcutPath = Join-Path $adminShortcutDir "GugakSignage 관리자.lnk"
-    $adminShortcut = $shell.CreateShortcut($adminShortcutPath)
-    $adminShortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $adminShortcut.Arguments = '//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"'
-    $adminShortcut.WorkingDirectory = $adminOwnerApp
-    $adminShortcut.Save()
+    Save-WindowsShortcut -ShortcutPath $adminShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $adminOwnerOps "admin-launch.vbs") + '"') `
+        -WorkingDirectory $adminOwnerApp -Description "Unicode admin shortcut fixture"
     if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $adminShortcutPath -InstallDir $adminOwnerApp)) {
         throw "GugakSignage 관리자 바로가기 소유권을 확인하지 못했습니다."
     }
@@ -292,24 +321,109 @@ try {
     }
     $results.foreignScheduledTaskDetected = $true
 
-    $currentProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $PID"
+    $testProcessId = 424242
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+        CommandLine = "powershell.exe -NoLogo -NoProfile -File test-guards.ps1"
+        CreationDate = [DateTime]::UtcNow.ToString("o")
+    }
+    function Get-CimInstance {
+        [CmdletBinding()]
+        param([string]$ClassName, [string]$Filter)
+        if ($ClassName -ne "Win32_Process" -or $Filter -notmatch "ProcessId\s*=\s*$testProcessId\b") { return }
+        $currentProcess
+    }
     $actualStart = ([DateTime]$currentProcess.CreationDate).ToUniversalTime().ToString("o")
-    $verified = Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
-    if (-not $verified) { throw "현재 PowerShell 프로세스의 정상 소유권 검증이 실패했습니다." }
+    $verified = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
+    if (-not $verified) { throw "현재 프로세스 메타데이터의 정상 소유권 검증이 실패했습니다." }
+    $processWithPath = $currentProcess
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = '"' + $processWithPath.ExecutablePath + '" -NoLogo -NoProfile -File C:\GugakSignage\dist\server.js'
+        CreationDate = $processWithPath.CreationDate
+    }
+    $verifiedFromCommandLine = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$processWithPath.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("C:\GugakSignage", "dist\server.js")
+    $currentProcess = $processWithPath
+    if (-not $verifiedFromCommandLine) { throw "실행 파일 경로가 비어 있는 프로세스의 정확한 명령행 신원 검증이 실패했습니다." }
+    $results.processIdentityFromCommandLineWhenExecutablePathUnavailable = $true
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = '"' + (Join-Path $env:SystemRoot "System32\notepad.exe") + '" -NoLogo -NoProfile -File C:\GugakSignage\dist\server.js'
+        CreationDate = $processWithPath.CreationDate
+    }
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$processWithPath.ExecutablePath) -ExpectedStartTime $actualStart -CommandLineContains @("C:\GugakSignage", "dist\server.js")) {
+        throw "실행 파일 경로가 비어 있어도 다른 첫 실행 파일을 소유 프로세스로 판정했습니다."
+    }
+    $currentProcess = $processWithPath
+    $results.foreignCommandLineExecutableBlocked = $true
+    $nativeProcess = Get-Process -Id $PID -ErrorAction Stop
+    $nativeStart = $nativeProcess.StartTime.ToUniversalTime().ToString("o")
+    $ownedInstallDir = Join-Path $tempRoot "state-owned-process-app"
+    $ownedDataDir = Join-Path $tempRoot "state-owned-process-data"
+    $ownedLogDir = Join-Path $ownedDataDir "logs"
+    $ownedControlDir = Join-Path $ownedDataDir "control"
+    New-Item -ItemType Directory -Path $ownedInstallDir, $ownedLogDir, $ownedControlDir -Force | Out-Null
+    $ownedInstanceId = "state-owned-process-test"
+    [IO.File]::WriteAllText((Join-Path $ownedInstallDir "install.json"), (@{
+        product = "GugakSignage"; installDir = $ownedInstallDir; dataDir = $ownedDataDir; logDir = $ownedLogDir
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), (@{
+        serverPid = $PID; serverStartedAt = $nativeStart; serverInstanceId = $ownedInstanceId
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $ownedControlDir "server-instance.json"), (@{
+        id = $ownedInstanceId; pid = $PID; startedAt = $nativeStart
+    } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    $testProcessId = $PID
+    $currentProcess = [pscustomobject]@{
+        ExecutablePath = ""
+        CommandLine = ""
+        CreationDate = $nativeProcess.StartTime
+        Name = [IO.Path]::GetFileName([string]$nativeProcess.Path)
+    }
+    $verifiedFromInstallState = Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir
+    if (-not $verifiedFromInstallState) { throw "CIM 실행 파일 경로와 명령행이 비어 있어도 설치 상태, PID, 시작 시각으로 프로세스 신원을 확인해야 합니다." }
+    $results.processIdentityFromInstallStateWhenCimMetadataUnavailable = $true
+    $currentState = Read-JsonFile -Path (Join-Path $ownedLogDir "watchdog-state.json")
+    $currentState.serverInstanceId = $null
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    if (-not (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir)) {
+        throw "이전 watchdog 상태에 serverInstanceId가 없어도 서버 인스턴스 파일의 PID·시작 시각을 확인하면 소유 프로세스로 판정해야 합니다."
+    }
+    $results.legacyInstallStateProcessIdentityVerified = $true
+    $currentProcess.Name = "notepad.exe"
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir) {
+        throw "설치 상태가 일치해도 Windows 실행 프로세스 이름이 다르면 종료 대상이 아닙니다."
+    }
+    $currentProcess.Name = [IO.Path]::GetFileName([string]$nativeProcess.Path)
+    $results.foreignProcessNameBlocked = $true
+    $currentState.serverInstanceId = $ownedInstanceId
+    $currentState.serverPid = $PID + 1
+    [IO.File]::WriteAllText((Join-Path $ownedLogDir "watchdog-state.json"), ($currentState | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$nativeProcess.Path) -ExpectedStartTime $nativeStart -CommandLineContains @($ownedInstallDir, "dist\server.js") -InstallDir $ownedInstallDir) {
+        throw "설치 상태의 PID가 다르면 실행 파일과 시작 시각이 같아도 소유 프로세스로 판정하면 안 됩니다."
+    }
+    $results.mismatchedInstallStateBlocked = $true
+    $testProcessId = 424242
+    $currentProcess = $processWithPath
     $wrongTime = ([DateTime]$currentProcess.CreationDate).AddHours(-2).ToUniversalTime().ToString("o")
-    if (Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable ([string]$currentProcess.ExecutablePath) -ExpectedStartTime $wrongTime -CommandLineContains @("powershell")) {
         throw "잘못된 시작 시각을 가진 PID를 소유 프로세스로 판정했습니다."
     }
-    if (Get-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")) {
+    if (Get-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")) {
         throw "다른 실행 파일을 가진 PID를 소유 프로세스로 판정했습니다."
     }
     $null = Assert-Throws -Description "검증 실패 프로세스 종료 거부" -Action {
-        Stop-VerifiedOwnedProcess -ProcessId $PID -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
+        Stop-VerifiedOwnedProcess -ProcessId $testProcessId -ExpectedExecutable (Join-Path $env:SystemRoot "System32\notepad.exe") -ExpectedStartTime $actualStart -CommandLineContains @("powershell")
     }
     $results.pidIdentityMismatchBlocked = $true
 
     $results.result = "passed"
     $results | ConvertTo-Json -Depth 5 -Compress
+} catch {
+    Write-Output "Guard exception: $($_.Exception.ToString())"
+    Write-Output "Position: $($_.InvocationInfo.PositionMessage)"
+    Write-Output "Stack: $($_.ScriptStackTrace)"
+    throw
 } finally {
     if (-not $KeepArtifacts) {
         $tempBase = Get-NormalizedPath -Path ([IO.Path]::GetTempPath())
@@ -322,3 +436,4 @@ try {
         Write-Host "Guard artifacts: $tempRoot"
     }
 }
+

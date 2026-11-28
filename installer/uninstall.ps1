@@ -22,6 +22,13 @@ $config = Read-JsonFile -Path $configPath
 if ([string]$config.product -ne "GugakSignage") {
     throw "GugakSignage 설치 정보가 아닙니다: $configPath"
 }
+$roleProperty = $config.PSObject.Properties["role"]
+$configuredRole = if ($null -eq $roleProperty) { "integrated" } else { [string]$roleProperty.Value }
+$serverEntry = switch ($configuredRole) {
+    { $_ -in @("integrated", "manager") } { "server.js" }
+    "player-host" { "player-host-main.js" }
+    default { throw "install.json의 역할이 유효하지 않아 서버 프로세스를 안전하게 확인할 수 없습니다." }
+}
 $installDir = Get-NormalizedPath -Path ([string]$config.installDir)
 $expectedInstallDir = Get-NormalizedPath -Path (Join-Path $PSScriptRoot "..")
 if (-not (Test-PathEqual -Left $installDir -Right $expectedInstallDir)) {
@@ -76,7 +83,7 @@ function Remove-ExactShortcut {
     $fullPath = [IO.Path]::GetFullPath($ShortcutPath)
     $fileName = [IO.Path]::GetFileName($fullPath)
     $isAdminShortcut = $fileName -in @("GugakSignage 관리자.lnk", "열린안내판 관리자.lnk")
-    if ($fileName -notin @("GugakSignage.lnk", "열린안내판.lnk") -and -not $isAdminShortcut) { return }
+    if ($fileName -notin @("GugakSignage.lnk", "열린안내판.lnk", "열린안내판 재생기.lnk") -and -not $isAdminShortcut) { return }
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return }
     $owned = if ($isAdminShortcut) {
         Test-AdminShortcutOwnedByInstall -ShortcutPath $fullPath -InstallDir $installDir
@@ -106,7 +113,7 @@ try {
     if ($state -and $state.watchdogPid) {
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         while ([DateTime]::UtcNow -lt $deadline) {
-            $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs")
+            $watchdog = Get-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir
             if (-not $watchdog) { break }
             Start-Sleep -Milliseconds 250
         }
@@ -126,13 +133,13 @@ try {
     }
 
     if ($state) {
-        if ($state.serverPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\server.js"))) {
+        if ($state.serverPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.serverPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.serverStartedAt) -CommandLineContains @($installDir, "dist\$serverEntry") -InstallDir $installDir)) {
             Write-Step "남아 있던 서버 프로세스 종료: $($state.serverPid)"
         }
-        if ($state.browserPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @($profileDir))) {
+        if ($state.browserPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.browserPid) -ExpectedExecutable ([string]$config.browserPath) -ExpectedStartTime ([string]$state.browserStartedAt) -CommandLineContains @($profileDir) -InstallDir $installDir)) {
             Write-Step "남아 있던 재생기 프로세스 종료: $($state.browserPid)"
         }
-        if ($state.watchdogPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs"))) {
+        if ($state.watchdogPid -and (Stop-VerifiedOwnedProcess -ProcessId ([int]$state.watchdogPid) -ExpectedExecutable ([string]$config.nodePath) -ExpectedStartTime ([string]$state.watchdogStartedAt) -CommandLineContains @($installDir, "watchdog.mjs") -InstallDir $installDir)) {
             Write-Step "남아 있던 watchdog 프로세스 종료: $($state.watchdogPid)"
         }
     }

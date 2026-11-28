@@ -15,6 +15,13 @@ $evidenceDir = [IO.Path]::GetFullPath($EvidenceDir)
 if (-not $SetupExe) { $SetupExe = Join-Path $PSScriptRoot "build\inno\GugakSignage-Setup-0.1.0.exe" }
 $SetupExe = (Resolve-Path -LiteralPath $SetupExe).Path
 if (-not (Test-Path -LiteralPath $SetupExe -PathType Leaf)) { throw "Inno Setup EXE가 없습니다: $SetupExe" }
+$innoSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "GugakSignage.iss"))
+if ($innoSource -notmatch 'SaveStringsToUTF8FileWithoutBOM\(SecretPath, PasswordLines, False\)' -or
+    $innoSource -notmatch 'PasswordLines\[0\] := Password' -or
+    -not $innoSource.Contains("if TlsPage.Values[3] <> '' then") -or
+    $innoSource -notmatch '-AdminPasswordFile "' -or $innoSource -match '-AdminPassword "') {
+    throw "Inno setup must transfer the Manager password through its temporary UTF-8 file, not a process argument."
+}
 $nodePath = (Get-Command "node.exe").Source
 New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 
@@ -221,11 +228,16 @@ try {
     if ($installer.ExitCode -ne 0) { throw "Inno Setup 설치 실패: exit=$($installer.ExitCode), log=$installerLog" }
     Wait-Until -TimeoutSeconds 30 -Description "Inno 설치 파일" -Condition { Test-Path -LiteralPath (Join-Path $installDir "install.json") }
     $config = Read-JsonFile -Path (Join-Path $installDir "install.json")
+    if ([string]$config.role -ne "integrated" -or [string]$config.setupRole -ne "all" -or [string]$config.mode -ne "standalone") {
+        throw "기본 Inno 설치가 legacy integrated/standalone 역할 계약을 기록하지 않았습니다."
+    }
     if (-not (Test-PathEqual -Left ([string]$config.installDir) -Right $installDir)) { throw "EXE 설치 경로가 격리 경로와 다릅니다." }
     if (-not (Test-PathEqual -Left ([string]$config.dataDir) -Right $dataDir)) { throw "EXE 데이터 경로가 /DATADIR와 다릅니다." }
+    if ([string]$config.adminUrl -ne "http://127.0.0.1:$port/admin/") { throw "Integrated install did not retain the localhost HTTP admin URL." }
     if ([string]$config.taskName -ne $taskName) { throw "EXE 작업 이름이 /WATCHDOGTASK와 다릅니다." }
     $report.checks.isolatedInstallDir = $true
     $report.checks.isolatedDataDir = $true
+    $report.checks.legacyIntegratedRole = $true
     $report.checks.headlessTestBrowser = [bool]$config.browserHeadless
     if (@($config.adminShortcuts).Count -ne 2) { throw "EXE 설치가 관리자 바로가기 두 개를 install.json에 기록하지 않았습니다." }
     if ($config.adminAutoOpen.enabled -ne $false) { throw "headless EXE 설치가 관리자 페이지 자동 열기를 끄지 않았습니다." }
@@ -247,7 +259,7 @@ try {
     foreach ($shortcutPath in $adminShortcuts) {
         if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "관리자 바로가기가 없습니다: $shortcutPath" }
         if (-not (Test-AdminShortcutOwnedByInstall -ShortcutPath $shortcutPath -InstallDir $installDir)) { throw "관리자 바로가기 소유권 확인 실패: $shortcutPath" }
-        $adminShortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+        $adminShortcut = [pscustomobject]@{ IconLocation = [GugakShortcutNative]::GetIconLocation($shortcutPath) }
         if ($adminShortcut.IconLocation -notlike "*msedge.exe*" -and $adminShortcut.IconLocation -notlike "*chrome.exe*") {
             throw "관리자 바로가기 아이콘이 설치된 브라우저를 가리키지 않습니다: $($adminShortcut.IconLocation)"
         }
@@ -339,6 +351,7 @@ try {
     Set-LegacyEnvDataDir -EnvFile $dataEnvPath -DataDir $dataDir
     Move-Item -LiteralPath $dataEnvPath -Destination $legacyEnvPath
     $legacyEnvAclSddl = (Get-Acl -LiteralPath $legacyEnvPath).Sddl
+    $legacyEnvBytesBefore = [IO.File]::ReadAllBytes($legacyEnvPath)
     $legacyEnvBefore = [IO.File]::ReadAllText($legacyEnvPath)
     $legacyEnvHashBefore = Get-StableFileHash -Path $legacyEnvPath
     $appSentinel = Join-Path $installDir "package.json"
@@ -360,9 +373,11 @@ try {
     }
     if (-not (Test-PathEqual -Left ([string]$upgradedConfig.envFile) -Right $dataEnvPath)) { throw "legacy .env를 데이터 폴더로 이전하지 않았습니다." }
     if (-not (Test-PathEqual -Left (Get-EnvValue -EnvFile $legacyEnvPath -Name "DATA_DIR") -Right $dataDir)) { throw "escaped .env DATA_DIR를 복원하지 못했습니다." }
-    $upgradedEnv = [IO.File]::ReadAllText($dataEnvPath)
-    if ($upgradedEnv -notmatch "(?m)^ADMIN_PASSWORD=0000\s*$") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
-    if ($upgradedEnv -notmatch "(?m)^SEED_SAMPLES=false\s*$") { throw "legacy 업그레이드가 샘플 시드를 비활성화하지 않았습니다." }
+    if ((Get-EnvValue -EnvFile $dataEnvPath -Name "ADMIN_PASSWORD") -ne "0000") { throw "legacy 관리자 비밀번호 0000을 보존하지 않았습니다." }
+    if ((Get-EnvValue -EnvFile $dataEnvPath -Name "SEED_SAMPLES") -ne "true") { throw "legacy 업그레이드가 .env의 SEED_SAMPLES 값을 변경했습니다." }
+    if (-not [Linq.Enumerable]::SequenceEqual([byte[]]$legacyEnvBytesBefore, [byte[]][IO.File]::ReadAllBytes($dataEnvPath))) {
+        throw "legacy 업그레이드가 복사한 .env 바이트를 변경했습니다."
+    }
     if ((Get-Acl -LiteralPath $dataEnvPath).Sddl -ne $legacyEnvAclSddl) { throw "legacy .env ACL을 보존하지 않았습니다." }
     if ((Get-StableFileHash -Path $legacyEnvPath) -ne $legacyEnvHashBefore) { throw "legacy 설치 폴더의 원본 .env를 변경했습니다." }
     if ((Get-DatabaseRowCounts -Path $databasePath) -ne $databaseRowsBeforeUpgrade) { throw "legacy 업그레이드가 기존 SQLite 행 수를 변경했습니다." }
@@ -372,7 +387,7 @@ try {
     $report.checks.innoLegacyEscapedUnicodePath = $true
     $report.checks.innoLegacyCopiesEnvAndPreservesAcl = $true
     $report.checks.innoLegacyPreservesAdminPassword0000 = $true
-    $report.checks.innoLegacyDisablesSampleSeed = $true
+    $report.checks.innoLegacyPreservesEnvBytesAndAcl = $true
     $report.checks.innoLegacyPreservesDatabaseHashAndRows = $true
     $report.checks.innoLegacyPreservesUploads = $true
     $report.checks.innoLegacySourceEnvUnchanged = $true
@@ -416,6 +431,8 @@ try {
         return (-not $currentState.serverPid -and -not $currentState.browserPid)
     }
     $uploadsHashBeforeReupgrade = Get-DirectoryContentHash -Path $uploadsDir
+    $envHashBeforeReupgrade = Get-StableFileHash -Path $dataEnvPath
+    $envAclBeforeReupgrade = (Get-Acl -LiteralPath $dataEnvPath).Sddl
     $reupgradeArguments = '/CURRENTUSER /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART=1 /HEADLESS=1 /DIR="' + $installDir + '" /WATCHDOGTASK="' + $taskName + '" /DESKTOPDIR="' + $desktopDir + '" /STARTMENUDIR="' + $startMenuDir + '" /PLAYERPROFILE="' + $profileDir + '" /LOG="' + $reupgradeLog + '"'
     $reupgrader = Start-Process -FilePath $SetupExe -ArgumentList $reupgradeArguments -Wait -PassThru -WindowStyle Hidden
     if ($reupgrader.ExitCode -ne 0) { throw "same-version Inno 재업그레이드 실패: exit=$($reupgrader.ExitCode), log=$reupgradeLog" }
@@ -423,6 +440,10 @@ try {
     if (-not (Test-PathEqual -Left ([string]$reupgradedConfig.dataDir) -Right $dataDir)) { throw "same-version 재업그레이드가 데이터 경로를 변경했습니다." }
     if ((Get-DirectoryContentHash -Path $uploadsDir) -ne $uploadsHashBeforeReupgrade) {
         throw "same-version 재업그레이드가 기존 데이터를 변경했습니다."
+    }
+    if ((Get-StableFileHash -Path $dataEnvPath) -ne $envHashBeforeReupgrade -or
+        (Get-Acl -LiteralPath $dataEnvPath).Sddl -ne $envAclBeforeReupgrade) {
+        throw "same-version 재업그레이드가 기존 .env 바이트 또는 ACL을 변경했습니다."
     }
     $report.checks.sameVersionReupgradePreservesLegacyData = $true
 

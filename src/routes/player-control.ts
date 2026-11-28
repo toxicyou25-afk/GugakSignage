@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import type { AppConfig } from '../config.js';
 import { get, type DB } from '../db.js';
+import { publishedScreenTargets } from '../publishing.js';
 import { readPlayerState, requestPlayerLaunch, requestPlayerStop } from '../player-control.js';
 import type { DeviceRow } from '../types.js';
 
@@ -10,7 +11,7 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
 
   router.get('/state', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ player: readPlayerState(config.dataDir) });
+    res.json({ player: { ...readPlayerState(config.dataDir), launchSupported: config.role !== 'manager' } });
   });
 
   router.post('/launch', (req, res) => {
@@ -24,17 +25,27 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
       res.status(404).json({ error: '기기를 찾을 수 없습니다.' });
       return;
     }
-    const result = requestPlayerLaunch(config, device);
+    const assignments = publishedScreenTargets(db, device);
+    // A stale heartbeat must not discard saved local monitor bindings on stop/restart.
+    const screenTargets = device.last_host_local === 1 && assignments.length > 0 && assignments.every((display) => Boolean(display.nativeMonitorId))
+      ? assignments.map((display) => ({ displayId: display.displayId, nativeMonitorId: display.nativeMonitorId! }))
+      : [];
+    const result = requestPlayerLaunch(config, device, screenTargets);
     res.status(202).json({
       ok: true,
       accepted: true,
       commandId: result.command.id,
       playerUrl: result.command.playerUrl,
+      screenTargetCount: result.command.screenTargets.length,
       player: result.state,
     });
   });
 
   router.post('/stop', (_req, res) => {
+    if (config.role === 'manager') {
+      res.status(403).json({ error: 'Manager 서버에서는 로컬 재생기를 제어할 수 없습니다.' });
+      return;
+    }
     const result = requestPlayerStop(config);
     res.status(202).json({
       ok: true,

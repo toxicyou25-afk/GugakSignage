@@ -61,6 +61,15 @@ export function initializeAdminPassword(db: DB, config: AppConfig): void {
     if (getMeta(db, SESSION_EPOCH_KEY) === undefined) {
       setMeta(db, SESSION_EPOCH_KEY, LEGACY_SESSION_EPOCH);
     }
+    const isMarkedTestDefault = getMeta(db, DEFAULT_PASSWORD_MARKER_KEY) === '1';
+    const configuredBootstrapPassword = config.adminPassword;
+    if (config.mode !== 'standalone' && isMarkedTestDefault &&
+        configuredBootstrapPassword && configuredBootstrapPassword.trim() &&
+        configuredBootstrapPassword !== TEST_DEFAULT_ADMIN_PASSWORD) {
+      setMeta(db, PASSWORD_HASH_KEY, hashPassword(configuredBootstrapPassword));
+      setMeta(db, DEFAULT_PASSWORD_MARKER_KEY, '0');
+      setMeta(db, SESSION_EPOCH_KEY, crypto.randomUUID());
+    }
   });
 }
 

@@ -56,13 +56,17 @@ export interface DeviceRow {
   width: number;
   height: number;
   pairing_code: string;
+  pairing_code_expires_at: string | null;
+  pairing_code_consumed_at: string | null;
   hardware_id: string | null;
   player_token: string | null;
+  player_token_hash: string | null;
   playlist_id: string | null;
   published_version: number;
   published_at: string | null;
   last_seen: string | null;
   last_ip: string | null;
+  last_host_local: number;
   player_state: string | null;
   last_error: string | null;
   player_version: string | null;
@@ -78,6 +82,12 @@ export interface DeviceRow {
   site_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PlayerMonitorReportRow {
+  device_id: string;
+  snapshot_json: string;
+  reported_at: string;
 }
 
 export interface SiteRow {
@@ -132,6 +142,7 @@ export interface DisplayRow {
   start_index: number;
   step: number;
   enabled: number;
+  native_monitor_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -261,6 +272,7 @@ export interface WallSnapshot {
   displays: Array<{
     id: string;
     deviceId: string | null;
+    nativeMonitorId?: string | null;
     groupId: string;
     name: string;
     resolution: { width: number; height: number };

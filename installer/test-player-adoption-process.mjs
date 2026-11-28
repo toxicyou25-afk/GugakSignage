@@ -31,7 +31,10 @@ test('무관한 장기 실행 PID는 채택하지 않고 종료하지 않는다'
   const opsDir = path.join(installDir, 'ops');
   fs.mkdirSync(opsDir, { recursive: true });
   fs.mkdirSync(logDir, { recursive: true });
-  for (const file of ['watchdog.mjs', 'watchdog-health.mjs', 'admin-startup.mjs', 'player-state.mjs', 'player-adoption.mjs']) {
+  for (const file of [
+    'watchdog.mjs', 'watchdog-role.mjs', 'watchdog-health.mjs', 'admin-startup.mjs', 'player-state.mjs',
+    'player-adoption.mjs', 'player-windows.mjs', 'cdp-websocket.mjs',
+  ]) {
     fs.copyFileSync(path.join(repoRoot, 'installer', 'ops', file), path.join(opsDir, file));
   }
 

@@ -31,6 +31,10 @@ function hasProxyHeaders(req: Request): boolean {
   return PROXY_HEADERS.some((header) => req.headers[header] !== undefined);
 }
 
+export function isDirectLoopbackRequest(req: Pick<Request, 'headers' | 'socket'>): boolean {
+  return isLoopbackAddress(req.socket.remoteAddress) && !hasProxyHeaders(req as Request);
+}
+
 export function restrictAdminToLoopback(isDefaultPassword: () => boolean) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!isDefaultPassword() || (isLoopbackAddress(req.socket.remoteAddress) && !hasProxyHeaders(req))) {

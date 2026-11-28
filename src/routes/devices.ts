@@ -59,6 +59,8 @@ function deviceDto(db: DB, config: AppConfig, device: DeviceRow) {
     width: device.width,
     height: device.height,
     pairingCode: device.pairing_code,
+    pairingCodeExpiresAt: device.pairing_code_expires_at,
+    pairingCodeConsumedAt: device.pairing_code_consumed_at,
     paired: Boolean(device.hardware_id),
     playlistId: device.playlist_id,
     playlistName: playlist?.name ?? null,
@@ -196,12 +198,13 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
     const deviceId = id();
     const now = nowIso();
     const code = uniquePairingCode(db);
+    const codeExpiresAt = config.mode === 'standalone' ? null : new Date(Date.now() + 10 * 60_000).toISOString();
     run(
       db,
       `INSERT INTO devices(id, name, location, orientation, width, height, pairing_code, hardware_id,
-                           player_token, playlist_id, published_version, published_at, last_seen, last_ip,
+                           player_token, pairing_code_expires_at, pairing_code_consumed_at, playlist_id, published_version, published_at, last_seen, last_ip,
                            player_state, last_error, notes, reported_width, reported_height, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, 0, NULL, NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
       deviceId,
       name,
       location,
@@ -209,6 +212,7 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       width,
       height,
       code,
+      codeExpiresAt,
       playlist?.id ?? null,
       notes,
       now,
@@ -322,17 +326,23 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       return;
     }
     const code = uniquePairingCode(db);
-    run(
-      db,
-      `UPDATE devices SET pairing_code = ?, hardware_id = NULL, player_token = NULL, last_seen = NULL,
+    const codeExpiresAt = config.mode === 'standalone' ? null : new Date(Date.now() + 10 * 60_000).toISOString();
+    transaction(db, () => {
+      run(
+        db,
+        `UPDATE devices SET pairing_code = ?, pairing_code_expires_at = ?, pairing_code_consumed_at = NULL,
+             hardware_id = NULL, player_token = NULL, player_token_hash = NULL, last_seen = NULL,
              last_ip = NULL, player_state = NULL, last_error = NULL, player_version = NULL,
              manifest_version = NULL, last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL,
-             last_reconnect_at = NULL, updated_at = ?
-        WHERE id = ?`,
-      code,
-      nowIso(),
-      device.id,
-    );
+             last_reconnect_at = NULL, last_host_local = 0, updated_at = ?
+          WHERE id = ?`,
+        code,
+        codeExpiresAt,
+        nowIso(),
+        device.id,
+      );
+      run(db, 'UPDATE displays SET native_monitor_id = NULL WHERE device_id = ?', device.id);
+    });
     const updated = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', device.id);
     res.json({ device: updated ? deviceDto(db, config, updated) : null });
   });
@@ -343,16 +353,19 @@ export function deviceRoutes(db: DB, config: AppConfig): Router {
       res.status(404).json({ error: '기기를 찾을 수 없습니다.' });
       return;
     }
-    run(
-      db,
-      `UPDATE devices SET hardware_id = NULL, player_token = NULL, last_seen = NULL, last_ip = NULL,
+    transaction(db, () => {
+      run(
+        db,
+        `UPDATE devices SET hardware_id = NULL, player_token = NULL, player_token_hash = NULL, last_seen = NULL, last_ip = NULL,
              player_state = NULL, last_error = NULL, player_version = NULL, manifest_version = NULL,
              last_manifest_at = NULL, cache_ready = NULL, last_heartbeat_at = NULL, last_reconnect_at = NULL,
-             updated_at = ?
-        WHERE id = ?`,
-      nowIso(),
-      device.id,
-    );
+             last_host_local = 0, updated_at = ?
+          WHERE id = ?`,
+        nowIso(),
+        device.id,
+      );
+      run(db, 'UPDATE displays SET native_monitor_id = NULL WHERE device_id = ?', device.id);
+    });
     const updated = get<DeviceRow>(db, 'SELECT * FROM devices WHERE id = ?', device.id);
     res.json({ device: updated ? deviceDto(db, config, updated) : null });
   });

@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 export interface NativeMonitor {
-  stableId: string; deviceName: string; friendlyName: string; bounds: { x: number; y: number; width: number; height: number };
+  stableId: string; bindingId: string | null; deviceName: string; friendlyName: string; bounds: { x: number; y: number; width: number; height: number };
   resolution: { width: number; height: number }; orientation: 'landscape' | 'portrait'; primary: boolean; attached: boolean;
 }
 export interface NativeMonitorResult {
@@ -25,6 +25,9 @@ export function parseNativeMonitorOutput(output: string, detectedAt = new Date()
     if (value.supported !== true || !Array.isArray(value.monitors)) {
       return emptyResult(detectedAt, 'Windows display discovery returned no monitor data.');
     }
+    if (typeof (value as { error?: unknown }).error === 'string' && (value as { error: string }).error) {
+      return emptyResult(detectedAt, (value as { error: string }).error);
+    }
     const monitors: NativeMonitor[] = [];
     for (const raw of value.monitors) {
       if (!raw || typeof raw !== 'object') return emptyResult(detectedAt, 'Windows display discovery returned invalid monitor data.');
@@ -40,8 +43,11 @@ export function parseNativeMonitorOutput(output: string, detectedAt = new Date()
       const y = validatedNumbers[1]!;
       const width = validatedNumbers[2]!;
       const height = validatedNumbers[3]!;
+      const stableId = (m.stableId as string).trim();
+      const rawBindingId = typeof m.bindingId === 'string' ? m.bindingId.trim() : '';
+      const bindingId = rawBindingId.length <= 512 && /^MONITOR\\/iu.test(rawBindingId) ? rawBindingId : null;
       monitors.push({
-        stableId: m.stableId as string, deviceName: m.deviceName as string, friendlyName: m.friendlyName as string,
+        stableId, bindingId, deviceName: m.deviceName as string, friendlyName: m.friendlyName as string,
         bounds: { x, y, width, height }, resolution: { width, height }, orientation: m.orientation as NativeMonitor['orientation'],
         primary: m.primary, attached: m.attached,
       });

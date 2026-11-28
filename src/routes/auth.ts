@@ -23,7 +23,7 @@ export function authRoutes(db: DB, config: AppConfig): Router {
       res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
       return;
     }
-    setSessionCookie(res, config.sessionSecret, adminSessionEpoch(db));
+    setSessionCookie(res, config.sessionSecret, adminSessionEpoch(db), config.role === 'manager' && config.mode !== 'standalone');
     res.json({ ok: true });
   });
 

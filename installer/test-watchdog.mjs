@@ -23,6 +23,10 @@ try {
     path.join(opsDir, 'watchdog.mjs'),
   );
   fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'watchdog-role.mjs'),
+    path.join(opsDir, 'watchdog-role.mjs'),
+  );
+  fs.copyFileSync(
     path.join(repoRoot, 'installer', 'ops', 'watchdog-health.mjs'),
     path.join(opsDir, 'watchdog-health.mjs'),
   );
@@ -37,6 +41,14 @@ try {
   fs.copyFileSync(
     path.join(repoRoot, 'installer', 'ops', 'player-adoption.mjs'),
     path.join(opsDir, 'player-adoption.mjs'),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'player-windows.mjs'),
+    path.join(opsDir, 'player-windows.mjs'),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'installer', 'ops', 'cdp-websocket.mjs'),
+    path.join(opsDir, 'cdp-websocket.mjs'),
   );
   const config = {
     installDir,

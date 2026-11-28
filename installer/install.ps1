@@ -5,6 +5,15 @@ param(
     [string]$InstallDir = "",
     [string]$DataDir = "",
     [int]$Port = 3000,
+    [ValidateSet("all", "manager", "player")][string]$Role = "",
+    [ValidateSet("standalone", "lan")][string]$Mode = "",
+    [string]$TlsCertFile = "",
+    [string]$TlsKeyFile = "",
+    [string]$ManagerUrl = "",
+    [string]$ManagerCaFile = "",
+    [string]$ManagerBaseUrl = "",
+    [string]$AdminPassword = "",
+    [string]$AdminPasswordFile = "",
     [string]$PlayerUrl = "",
     [string]$BrowserPath = "",
     [string]$NodePath = "",
@@ -32,6 +41,26 @@ if (-not (Test-Path -LiteralPath $commonPath)) {
     $commonPath = Join-Path $PSScriptRoot "..\ops\install-common.ps1"
 }
 . $commonPath
+
+if ($AdminPasswordFile) {
+    $passwordTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $passwordFilePath = [IO.Path]::GetFullPath($AdminPasswordFile)
+    if (-not $passwordFilePath.StartsWith($passwordTempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $passwordFilePath -PathType Leaf)) {
+        throw "관리자 비밀번호 임시 파일 경로가 유효하지 않습니다."
+    }
+    try {
+        $filePassword = [IO.File]::ReadAllText($passwordFilePath, [Text.UTF8Encoding]::new($false, $true))
+        $filePassword = $filePassword.TrimEnd([char]13, [char]10)
+        if ([string]::IsNullOrWhiteSpace($filePassword) -or $filePassword -eq "0000" -or $filePassword -match "[\r\n]") {
+            throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+        }
+        $AdminPassword = $filePassword
+    } finally {
+        Remove-Item -LiteralPath $passwordFilePath -Force -ErrorAction SilentlyContinue
+        $filePassword = $null
+    }
+}
 
 $script:TranscriptStarted = $false
 $script:InstallLogPath = $null
@@ -85,6 +114,87 @@ function Copy-EnvironmentFilePreservingAcl {
     Set-Acl -LiteralPath $Destination -AclObject $sourceAcl
 }
 
+function ConvertTo-EnvSetting {
+    param([string]$Name, [string]$Value)
+    if ($Value.Contains([char]13) -or $Value.Contains([char]10)) {
+        throw "환경 변수 값에 줄바꿈이 있습니다: $Name"
+    }
+    $delimiter = if (-not $Value.Contains("'")) { "'" } elseif (-not $Value.Contains([char]96)) { [string][char]96 } else {
+        throw "환경 변수 값에 지원되지 않는 인용 문자가 있습니다: $Name"
+    }
+    return $Name + "=" + $delimiter + $Value + $delimiter
+}
+
+function Test-ServiceRestartRequired {
+    param(
+        $PreviousConfig,
+        [bool]$RoleWasExplicit,
+        [string]$RequestedRole,
+        [string]$RequestedMode,
+        [string]$RequestedManagerUrl = "",
+        [string]$RequestedManagerCaFile = "",
+        [string]$RequestedTlsCertFile = "",
+        [string]$RequestedTlsKeyFile = "",
+        [string]$RequestedManagerBaseUrl = ""
+    )
+    if (-not $PreviousConfig) { return $false }
+    if ($RoleWasExplicit -and [string]$PreviousConfig.role -ne $RequestedRole) { return $true }
+    if ($RequestedRole -eq "manager") {
+        if ([string]$PreviousConfig.mode -ne $RequestedMode) { return $true }
+        if ($RequestedMode -eq "lan" -and (
+            -not [string]::Equals([string]$PreviousConfig.tlsCertFile, $RequestedTlsCertFile, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$PreviousConfig.tlsKeyFile, $RequestedTlsKeyFile, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$PreviousConfig.managerBaseUrl, $RequestedManagerBaseUrl, [StringComparison]::OrdinalIgnoreCase)
+        )) { return $true }
+    }
+    if ($RequestedRole -in @("player", "player-host") -and (
+        -not [string]::Equals([string]$PreviousConfig.managerUrl, $RequestedManagerUrl, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$PreviousConfig.managerCaFile, $RequestedManagerCaFile, [StringComparison]::OrdinalIgnoreCase)
+    )) { return $true }
+    return $false
+}
+
+function Test-ManagerTlsCertificate {
+    param(
+        [Security.Cryptography.X509Certificates.X509Certificate]$Certificate,
+        [System.Net.Security.SslPolicyErrors]$SslPolicyErrors,
+        [Security.Cryptography.X509Certificates.X509Certificate2[]]$TrustedCertificates
+    )
+    if (($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateNameMismatch) -ne 0 -or
+        ($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateNotAvailable) -ne 0) { return $false }
+    if ($SslPolicyErrors -eq [System.Net.Security.SslPolicyErrors]::None) { return $true }
+    if (($SslPolicyErrors -band [System.Net.Security.SslPolicyErrors]::RemoteCertificateChainErrors) -eq 0) { return $false }
+    $customChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $customChain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $customChain.ChainPolicy.VerificationFlags = [Security.Cryptography.X509Certificates.X509VerificationFlags]::AllowUnknownCertificateAuthority
+        foreach ($trustedCertificate in $TrustedCertificates) { [void]$customChain.ChainPolicy.ExtraStore.Add($trustedCertificate) }
+        $built = $customChain.Build([Security.Cryptography.X509Certificates.X509Certificate2]::new($Certificate))
+        $hasOnlyConfiguredTrustBoundaryErrors = @($customChain.ChainStatus | Where-Object {
+            $_.Status -notin @(
+                [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::UntrustedRoot,
+                [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::PartialChain
+            )
+        }).Count -eq 0
+        $chainRootThumbprint = if ($customChain.ChainElements.Count -gt 0) { $customChain.ChainElements[$customChain.ChainElements.Count - 1].Certificate.Thumbprint } else { "" }
+        return (($built -or $hasOnlyConfiguredTrustBoundaryErrors) -and $TrustedCertificates.Thumbprint -contains $chainRootThumbprint)
+    } finally {
+        $customChain.Dispose()
+    }
+}
+
+function Set-EnvSetting {
+    param([string]$Path, [string]$Name, [string]$Value)
+    $text = [IO.File]::ReadAllText($Path)
+    $line = ConvertTo-EnvSetting -Name $Name -Value $Value
+    if ($text -match "(?m)^$([regex]::Escape($Name))=.*$") {
+        $text = [regex]::Replace($text, "(?m)^$([regex]::Escape($Name))=.*$", [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $line })
+    } else {
+        $text = $text.TrimEnd() + [Environment]::NewLine + $line + [Environment]::NewLine
+    }
+    [IO.File]::WriteAllText($Path, $text, [Text.UTF8Encoding]::new($false))
+}
+
 function Find-Browser {
     $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
     $candidates = @(
@@ -128,7 +238,8 @@ function Write-InstallConfig {
         [string[]]$AdminShortcuts,
         [bool]$AdminAutoOpenEnabled,
         $PreviousConfig,
-        [bool]$AutoStartRegistered
+        [bool]$AutoStartRegistered,
+        [string]$WatchdogRole
     )
     $createdAt = if ($PreviousConfig -and $PreviousConfig.createdAt) {
         [string]$PreviousConfig.createdAt
@@ -144,6 +255,16 @@ function Write-InstallConfig {
         envFile             = $envFile
         logDir              = $LogDir
         port                = $Port
+        role                = $WatchdogRole
+        setupRole           = $Role
+        mode                = $Mode
+        tlsCertFile         = $TlsCertFile
+        tlsKeyFile          = $TlsKeyFile
+        managerUrl          = $ManagerUrl
+        managerCaFile       = $ManagerCaFile
+        managerBaseUrl      = $ManagerBaseUrl
+        playerAutoStart     = ($WatchdogRole -eq "player-host")
+        adminUrl            = if ($Role -eq "player") { $null } elseif ($Role -eq "manager" -and $Mode -eq "lan") { $ManagerBaseUrl.TrimEnd('/') + "/admin/" } else { "http://127.0.0.1:$Port/admin/" }
         playerUrl           = $PlayerUrl
         browserPath         = $BrowserPath
         nodePath            = $NodePath
@@ -189,15 +310,10 @@ function New-Shortcut {
     )
     $parent = Split-Path -Parent $ShortcutPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\watchdog-launch.vbs") + '"'
-    $shortcut.WorkingDirectory = $InstallDir
-    $shortcut.Description = $Description
-    $shortcut.IconLocation = "$BrowserPath,0"
-    $shortcut.Save()
-    return $ShortcutPath
+    return Save-WindowsShortcut -ShortcutPath $ShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $InstallDir "ops\watchdog-launch.vbs") + '"') `
+        -WorkingDirectory $InstallDir -Description $Description -IconPath $BrowserPath
 }
 
 function New-AdminShortcut {
@@ -207,15 +323,24 @@ function New-AdminShortcut {
     )
     $parent = Split-Path -Parent $ShortcutPath
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($ShortcutPath)
-    $shortcut.TargetPath = Join-Path $env:SystemRoot "System32\wscript.exe"
-    $shortcut.Arguments = '//B //NoLogo "' + (Join-Path $InstallDir "ops\admin-launch.vbs") + '"'
-    $shortcut.WorkingDirectory = $InstallDir
-    $shortcut.Description = $Description
-    $shortcut.IconLocation = "$BrowserPath,0"
-    $shortcut.Save()
-    return $ShortcutPath
+    return Save-WindowsShortcut -ShortcutPath $ShortcutPath `
+        -TargetPath (Join-Path $env:SystemRoot "System32\wscript.exe") `
+        -Arguments ('//B //NoLogo "' + (Join-Path $InstallDir "ops\admin-launch.vbs") + '"') `
+        -WorkingDirectory $InstallDir -Description $Description -IconPath $BrowserPath
+}
+
+function Test-AdminShortcutOwnedByInstall {
+    param([string]$ShortcutPath, [string]$InstallDir)
+    if (-not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) { return $true }
+    $targetPath = [GugakShortcutNative]::GetTargetPath($ShortcutPath)
+    $arguments = [GugakShortcutNative]::GetArguments($ShortcutPath)
+    $workingDirectory = [GugakShortcutNative]::GetWorkingDirectory($ShortcutPath)
+    $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $launcher = Join-Path $InstallDir "ops\admin-launch.vbs"
+    if ((Test-PathEqual -Left $targetPath -Right $wscript) -and
+        $arguments.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        (Test-PathEqual -Left $workingDirectory -Right $InstallDir)) { return $true }
+    return $false
 }
 
 function Register-WatchdogTask {
@@ -238,20 +363,42 @@ function Register-WatchdogTask {
 function Wait-ServerHealth {
     param([int]$TimeoutSeconds = 150)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    $client = [System.Net.Http.HttpClient]::new()
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $trustedCertificates = @()
+    if ($watchdogRole -eq "manager" -and $Mode -eq "lan" -and $TlsCertFile -and (Test-Path -LiteralPath $TlsCertFile -PathType Leaf)) {
+        $pemText = [IO.File]::ReadAllText($TlsCertFile)
+        foreach ($certificateMatch in [regex]::Matches($pemText, '(?s)-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----')) {
+            $certificateBytes = [Convert]::FromBase64String(($certificateMatch.Groups[1].Value -replace '\s', ''))
+            $trustedCertificates += [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificateBytes)
+        }
+        if ($trustedCertificates.Count -eq 0) {
+            $handler.Dispose()
+            throw "Manager HTTPS 인증서 파일에서 신뢰할 인증서를 읽지 못했습니다: $TlsCertFile"
+        }
+        $certificateValidator = (Get-Command Test-ManagerTlsCertificate -CommandType Function -ErrorAction Stop).ScriptBlock
+        $handler.ServerCertificateCustomValidationCallback = {
+            param($request, $certificate, $chain, $sslPolicyErrors)
+            return (& $certificateValidator -Certificate $certificate -SslPolicyErrors $sslPolicyErrors -TrustedCertificates $trustedCertificates)
+        }.GetNewClosure()
+    }
+    $client = [System.Net.Http.HttpClient]::new($handler)
     $client.Timeout = [TimeSpan]::FromSeconds(2)
+    $healthPort = if ($watchdogRole -eq "player-host") { 43127 } else { $Port }
+    $healthService = if ($watchdogRole -eq "player-host") { "gugak-player-host" } else { "gugak-signage" }
+    $healthUrl = if ($watchdogRole -eq "manager" -and $Mode -eq "lan") { $ManagerBaseUrl.TrimEnd('/') + "/api/health" } else { "http://127.0.0.1:$healthPort/api/health" }
     try {
         while ([DateTime]::UtcNow -lt $deadline) {
             try {
-                $content = $client.GetStringAsync("http://127.0.0.1:$Port/api/health").GetAwaiter().GetResult()
+                $content = $client.GetStringAsync($healthUrl).GetAwaiter().GetResult()
                 $response = $content | ConvertFrom-Json
-                if ($response.ok -and $response.service -eq "gugak-signage") { return $true }
+                if ($response.ok -and $response.service -eq $healthService) { return $true }
             } catch {
             }
             Start-Sleep -Milliseconds 500
         }
     } finally {
         $client.Dispose()
+        foreach ($trustedCertificate in $trustedCertificates) { $trustedCertificate.Dispose() }
     }
     return $false
 }
@@ -272,6 +419,45 @@ $previousConfig = if (Test-Path -LiteralPath $configPath) {
 } else {
     $null
 }
+$roleExplicit = $PSBoundParameters.ContainsKey("Role") -and $Role
+if (-not $roleExplicit) {
+    $Role = if ($previousConfig -and $previousConfig.setupRole) { [string]$previousConfig.setupRole } else { "all" }
+}
+if (-not $Mode) { $Mode = if ($previousConfig -and $previousConfig.mode) { [string]$previousConfig.mode } else { "standalone" } }
+if (-not $TlsCertFile -and $previousConfig) { $TlsCertFile = [string]$previousConfig.tlsCertFile }
+if (-not $TlsKeyFile -and $previousConfig) { $TlsKeyFile = [string]$previousConfig.tlsKeyFile }
+if (-not $ManagerUrl -and $previousConfig) { $ManagerUrl = [string]$previousConfig.managerUrl }
+if (-not $ManagerCaFile -and $previousConfig) { $ManagerCaFile = [string]$previousConfig.managerCaFile }
+if (-not $ManagerBaseUrl -and $previousConfig) { $ManagerBaseUrl = [string]$previousConfig.managerBaseUrl }
+if ($Role -eq "all" -and $Mode -ne "standalone") { throw "GUGAK_ROLE=all only supports GUGAK_MODE=standalone." }
+if ($Role -eq "player" -and $Mode -ne "lan") { throw "Player-only installs require LAN mode and an HTTPS Manager." }
+if ($Role -eq "manager" -and $Mode -eq "lan") {
+    if (-not $TlsCertFile -or -not $TlsKeyFile -or !(Test-Path -LiteralPath $TlsCertFile -PathType Leaf) -or !(Test-Path -LiteralPath $TlsKeyFile -PathType Leaf)) { throw "LAN Manager requires existing TLS certificate and key files." }
+    $TlsCertFile = (Resolve-Path -LiteralPath $TlsCertFile).Path
+    $TlsKeyFile = (Resolve-Path -LiteralPath $TlsKeyFile).Path
+    $managerBaseUri = $null
+    if (-not [Uri]::TryCreate($ManagerBaseUrl, [UriKind]::Absolute, [ref]$managerBaseUri) -or
+        $managerBaseUri.Scheme -ne "https" -or $managerBaseUri.UserInfo -or $managerBaseUri.Query -or $managerBaseUri.Fragment -or
+        ($managerBaseUri.AbsolutePath -ne "/" -and $managerBaseUri.AbsolutePath -ne "")) {
+        throw "LAN Manager requires an HTTPS base URL with no path, query, or fragment."
+    }
+    $ManagerBaseUrl = $managerBaseUri.GetLeftPart([UriPartial]::Authority).TrimEnd('/')
+}
+if ($Role -eq "player" -and $Mode -eq "lan") {
+    $managerUri = $null
+    if (-not [Uri]::TryCreate($ManagerUrl, [UriKind]::Absolute, [ref]$managerUri) -or $managerUri.Scheme -ne "https") { throw "LAN Player requires an HTTPS Manager URL." }
+    if (-not $ManagerCaFile -or !(Test-Path -LiteralPath $ManagerCaFile -PathType Leaf)) { throw "LAN Player requires an existing CA certificate file." }
+    $ManagerCaFile = (Resolve-Path -LiteralPath $ManagerCaFile).Path
+}
+if ($Role -eq "player" -and $ManagerUrl) {
+    $managerUri = $null
+    if (-not [Uri]::TryCreate($ManagerUrl, [UriKind]::Absolute, [ref]$managerUri)) { throw "Player Host Manager URL must be an absolute HTTP(S) URL." }
+    $managerAddress = $null
+    $isLoopbackManager = $managerUri.Host -eq "localhost" -or
+        ([Net.IPAddress]::TryParse($managerUri.Host, [ref]$managerAddress) -and [Net.IPAddress]::IsLoopback($managerAddress))
+    if ($managerUri.Scheme -ne "https" -and -not $isLoopbackManager) { throw "Player Host requires HTTPS for every non-loopback Manager URL." }
+}
+$watchdogRole = switch ($Role) { "all" { "integrated" } "manager" { "manager" } "player" { "player-host" } }
 if ($previousConfig -and -not (Test-PathEqual -Left ([string]$previousConfig.installDir) -Right $InstallDir)) {
     throw "기존 install.json의 설치 경로가 현재 대상과 다릅니다. 다른 설치를 덮어쓰지 않습니다: $($previousConfig.installDir)"
 }
@@ -282,6 +468,7 @@ $useHeadlessBrowser = if ($PSBoundParameters.ContainsKey("HeadlessBrowser")) {
 } else {
     $false
 }
+
 $adminAutoOpenEnabled = if ($NoAdminAutoOpen) {
     $false
 } elseif ($useHeadlessBrowser) {
@@ -295,7 +482,7 @@ $adminAutoOpenEnabled = if ($NoAdminAutoOpen) {
 } else {
     $true
 }
-
+if ($Role -eq "player") { $adminAutoOpenEnabled = $false }
 $defaultDataDir = if ($isAdmin) {
     Join-Path $env:ProgramData "GugakSignage"
 } else {
@@ -315,6 +502,27 @@ if ($dataDirChanged -and -not $AllowDataDirChange) {
 }
 
 Assert-DataDirOutsideInstall -InstallDir $InstallDir -DataDir $DataDir
+
+if ($Role -eq "manager" -and $Mode -eq "lan") {
+    $bootstrapEnvFile = Join-Path $DataDir ".env"
+    if (-not (Test-Path -LiteralPath $bootstrapEnvFile -PathType Leaf)) {
+        $legacyBootstrapEnv = Join-Path $InstallDir ".env"
+        if (Test-Path -LiteralPath $legacyBootstrapEnv -PathType Leaf) { $bootstrapEnvFile = $legacyBootstrapEnv }
+    }
+    $existingAdminPassword = if (Test-Path -LiteralPath $bootstrapEnvFile -PathType Leaf) {
+        Get-EnvValue -EnvFile $bootstrapEnvFile -Name "ADMIN_PASSWORD"
+    } else {
+        ""
+    }
+    if ([string]::IsNullOrWhiteSpace($existingAdminPassword) -or $existingAdminPassword -eq "0000") {
+        if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+            $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+        }
+        if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+            throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+        }
+    }
+}
 
 $existingDataDetected = [bool]$resolvedData.HasPreviousEvidence
 if (Test-Path -LiteralPath (Join-Path $DataDir "signage.sqlite")) { $existingDataDetected = $true }
@@ -369,6 +577,16 @@ if ($DesktopDir -or $StartMenuDir -or $previousShortcuts.Count -lt 2) {
             (Join-Path (Split-Path -Parent $previousShortcuts[1]) "열린안내판 관리자.lnk")
         )
     }
+}
+
+$roleChanged = $previousConfig -and $roleExplicit -and ([string]$previousConfig.role -ne $watchdogRole)
+$serviceRestartRequired = Test-ServiceRestartRequired -PreviousConfig $previousConfig -RoleWasExplicit $roleExplicit -RequestedRole $watchdogRole -RequestedMode $Mode `
+    -RequestedManagerUrl $ManagerUrl -RequestedManagerCaFile $ManagerCaFile -RequestedTlsCertFile $TlsCertFile -RequestedTlsKeyFile $TlsKeyFile -RequestedManagerBaseUrl $ManagerBaseUrl
+if ($roleChanged -and $dataDirChanged) { throw "Role changes cannot be combined with a data-folder change." }
+if ($Role -eq "manager") { $shortcutPaths = @(); $adminShortcutPaths = @($adminShortcutPaths) }
+if ($Role -eq "player") {
+    $shortcutPaths = @($shortcutPaths | ForEach-Object { Join-Path (Split-Path -Parent $_) "열린안내판 재생기.lnk" })
+    $adminShortcutPaths = @()
 }
 
 if (-not $LogDir) {
@@ -459,6 +677,36 @@ try {
         if (Test-PathEqual -Left $SourceDir -Right $InstallDir) {
             throw "원본과 설치 폴더가 같습니다. 별도 설치 폴더를 지정하세요."
         }
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\watchdog.mjs"))) {
+        throw "ConfigureOnly 실행에 필요한 ops\watchdog.mjs가 없습니다."
+    }
+
+    if ($serviceRestartRequired) {
+        $stopScript = Join-Path $InstallDir "ops\stop.ps1"
+        $stopScriptSource = @(
+            (Join-Path $PSScriptRoot "ops\stop.ps1"),
+            (Join-Path $PSScriptRoot "..\ops\stop.ps1"),
+            (Join-Path $InstallDir "ops\stop.ps1")
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $stopScriptSource) {
+            throw "현재 GugakSignage 프로세스를 안전하게 중지할 stop.ps1을 찾지 못했습니다."
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $stopScript) -Force | Out-Null
+        if (-not (Test-PathEqual -Left $stopScriptSource -Right $stopScript)) {
+            Copy-Item -LiteralPath $stopScriptSource -Destination $stopScript -Force
+        }
+        Write-Step "서비스 역할/모드 전환: 기존 watchdog과 소유 프로세스를 중지 (service restart)"
+        & $stopScript -Quiet
+        if (-not $NoAutoStart) {
+            $staleTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+            if ($staleTask -and (Test-ScheduledTaskOwnedByInstall -Task $staleTask -InstallDir $InstallDir)) {
+                Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+            }
+        }
+    }
+
+    if (-not $ConfigureOnly) {
         Write-Step "서버 파일 복사"
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         foreach ($directory in @("dist", "public", "poc\packages\engine", "seed", "node_modules")) {
@@ -471,8 +719,6 @@ try {
             }
         }
         Copy-DirectoryContents -Source (Join-Path $PSScriptRoot "ops") -Destination (Join-Path $InstallDir "ops")
-    } elseif (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\watchdog.mjs"))) {
-        throw "ConfigureOnly 실행에 필요한 ops\watchdog.mjs가 없습니다."
     }
 
     $toolsDir = Join-Path $InstallDir "tools"
@@ -517,29 +763,42 @@ try {
     }
     if (-not (Test-Path -LiteralPath $envFile)) {
         Write-Step "환경 설정과 임의 비밀번호 생성"
-        $adminPassword = "0000"
+        $newEnvAdminPassword = "0000"
+        if ($Role -eq "manager" -and $Mode -eq "lan") {
+            if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+                $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+            }
+            if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+                throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+            }
+            $newEnvAdminPassword = $AdminPassword
+        }
         $sessionSecret = New-RandomSecret -ByteCount 48
-        $dataDirEnv = $DataDir.Replace('"', '\"')
         $seedSamples = if ($existingDataDetected) { "false" } else { "true" }
         $lines = @(
             "# Generated by GugakSignage installer. Do not commit this file.",
-            [string]::Concat("ADMIN_PASSWORD=", $adminPassword),
+            (ConvertTo-EnvSetting -Name "ADMIN_PASSWORD" -Value $newEnvAdminPassword),
             [string]::Concat("SESSION_SECRET=", $sessionSecret),
             [string]::Concat("PORT=", $Port),
-            "HOST=0.0.0.0",
-            [string]::Concat('DATA_DIR="', $dataDirEnv, '"'),
-            [string]::Concat('DB_PATH="', (Join-Path $DataDir "signage.sqlite").Replace('"', '\"'), '"'),
-            [string]::Concat('UPLOAD_DIR="', (Join-Path $DataDir "uploads").Replace('"', '\"'), '"'),
+            $(if ($Role -eq "player" -or ($Role -eq "manager" -and $Mode -eq "standalone")) { "HOST=127.0.0.1" } else { "HOST=0.0.0.0" }),
+            "GUGAK_ROLE=$Role",
+            "GUGAK_MODE=$Mode",
+            (ConvertTo-EnvSetting -Name "DATA_DIR" -Value $DataDir),
+            (ConvertTo-EnvSetting -Name "DB_PATH" -Value (Join-Path $DataDir "signage.sqlite")),
+            (ConvertTo-EnvSetting -Name "UPLOAD_DIR" -Value (Join-Path $DataDir "uploads")),
             "MAX_UPLOAD_MB=300",
             [string]::Concat("SEED_SAMPLES=", $seedSamples)
         )
         [IO.File]::WriteAllLines($envFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
         Protect-EnvironmentFile -Path $envFile
-        Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+        if ($newEnvAdminPassword -eq "0000") {
+            Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+        }
     } else {
-        $existingEnv = [IO.File]::ReadAllText($envFile, [Text.UTF8Encoding]::new($false, $true))
-        if ($existingEnv -match "(?m)^ADMIN_PASSWORD=gugak1234\s*$" -or
-            $existingEnv -match "(?m)^SESSION_SECRET=change-this-to-a-long-random-string\s*$") {
+        $existingDevAdminPassword = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+        $existingDevSessionSecret = Get-EnvValue -EnvFile $envFile -Name "SESSION_SECRET"
+        if ($existingDevAdminPassword -eq "gugak1234" -or
+            $existingDevSessionSecret -eq "change-this-to-a-long-random-string") {
             throw "기존 .env에 개발용 기본 비밀값이 있습니다. 파일을 보존한 상태로 관리자 비밀번호와 세션 시크릿을 교체한 뒤 다시 설치하세요."
         }
         $existingPort = Get-EnvValue -EnvFile $envFile -Name "PORT"
@@ -549,15 +808,48 @@ try {
         } else {
             Write-Step "기존 환경 설정 보존"
         }
-        $databasePath = Join-Path $DataDir "signage.sqlite"
-        if ((Test-Path -LiteralPath $databasePath) -and $existingEnv -match "(?m)^SEED_SAMPLES=true\s*$") {
-            $updatedEnv = [regex]::Replace($existingEnv, "(?m)^SEED_SAMPLES=true\s*$", "SEED_SAMPLES=false")
-            [IO.File]::WriteAllText($envFile, $updatedEnv, [Text.UTF8Encoding]::new($false))
-            Write-Step "기존 데이터 감지로 샘플 시드 비활성화"
+        if ($Role -eq "manager" -and $Mode -eq "lan") {
+            $existingAdminPassword = Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+            if ([string]::IsNullOrWhiteSpace($existingAdminPassword) -or $existingAdminPassword -eq "0000") {
+                if ([string]::IsNullOrWhiteSpace($AdminPassword) -and -not $ConfigureOnly) {
+                    $AdminPassword = Read-Host "Manager LAN 관리자 비밀번호 (0000 제외)"
+                }
+                if ([string]::IsNullOrWhiteSpace($AdminPassword) -or $AdminPassword -eq "0000" -or $AdminPassword -match "[\r\n]") {
+                    throw "Manager LAN 설치에는 비어 있지 않은 관리자 비밀번호가 필요하며 0000은 사용할 수 없습니다."
+                }
+                Set-EnvSetting -Path $envFile -Name "ADMIN_PASSWORD" -Value $AdminPassword
+            }
         }
     }
 
-    if (-not $PlayerUrl) {
+    $writeModeEnv = ($Role -ne "all") -or $roleExplicit -or ($previousConfig -and ([string]$previousConfig.role -ne "integrated"))
+    if ($writeModeEnv) {
+        Set-EnvSetting -Path $envFile -Name "GUGAK_ROLE" -Value $Role
+        Set-EnvSetting -Path $envFile -Name "GUGAK_MODE" -Value $Mode
+    }
+    if ($Role -eq "manager" -and $Mode -eq "lan") {
+        Set-EnvSetting -Path $envFile -Name "HOST" -Value "0.0.0.0"
+        Set-EnvSetting -Path $envFile -Name "GUGAK_TLS_CERT_FILE" -Value $TlsCertFile
+        Set-EnvSetting -Path $envFile -Name "GUGAK_TLS_KEY_FILE" -Value $TlsKeyFile
+        Set-EnvSetting -Path $envFile -Name "GUGAK_MANAGER_BASE_URL" -Value $ManagerBaseUrl
+    } elseif ($Role -eq "manager" -and $Mode -eq "standalone") {
+        Set-EnvSetting -Path $envFile -Name "HOST" -Value "127.0.0.1"
+    } elseif ($Role -eq "player") {
+        Set-EnvSetting -Path $envFile -Name "HOST" -Value "127.0.0.1"
+        Set-EnvSetting -Path $envFile -Name "GUGAK_PLAYER_HOST_PORT" -Value "43127"
+        if ($ManagerUrl) { Set-EnvSetting -Path $envFile -Name "GUGAK_MANAGER_URL" -Value $ManagerUrl }
+        if ($ManagerCaFile) { Set-EnvSetting -Path $envFile -Name "GUGAK_TLS_CA_FILE" -Value $ManagerCaFile }
+    }
+    if ($Role -eq "manager" -and $Mode -eq "lan") {
+        $managerBaseUri = [Uri]$ManagerBaseUrl
+        if ($managerBaseUri.Port -ne $Port) { throw "Manager HTTPS base URL port must match the effective listener port from the preserved .env." }
+    }
+
+    if ($Role -eq "player") {
+        $requiredPlayerUrl = "http://127.0.0.1:43127/player/"
+        if ($PlayerUrl -and $PlayerUrl -ne $requiredPlayerUrl) { throw "Player Host must use $requiredPlayerUrl." }
+        $PlayerUrl = $requiredPlayerUrl
+    } elseif (-not $PlayerUrl) {
         $PlayerUrl = if ($previousConfig -and $previousConfig.playerUrl) {
             [string]$previousConfig.playerUrl
         } else {
@@ -585,7 +877,7 @@ try {
         }
         $null = New-Shortcut -ShortcutPath $shortcutPath -Description "열린안내판 서버와 관리자 페이지를 시작합니다."
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\admin-launch.vbs") -PathType Leaf)) {
+    if ($adminShortcutPaths.Count -gt 0 -and -not (Test-Path -LiteralPath (Join-Path $InstallDir "ops\admin-launch.vbs") -PathType Leaf)) {
         throw "관리자 실행 파일이 없습니다. 설치 패키지를 다시 준비하세요: ops\admin-launch.vbs"
     }
     foreach ($adminShortcutPath in $adminShortcutPaths) {
@@ -619,10 +911,20 @@ try {
         $autoStartRegistered = [bool]($existingTask -and $existingTask.State -ne "Disabled")
     }
 
-    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -AdminShortcuts $adminShortcutPaths -AdminAutoOpenEnabled $adminAutoOpenEnabled -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered
+    Write-InstallConfig -ConfigPath $configPath -Shortcuts $shortcutPaths -AdminShortcuts $adminShortcutPaths -AdminAutoOpenEnabled $adminAutoOpenEnabled -PreviousConfig $previousConfig -AutoStartRegistered $autoStartRegistered -WatchdogRole $watchdogRole
 
     # Remove only recorded legacy links owned by this installation, after new links and config exist.
     if ($previousConfig) {
+        foreach ($oldPath in @($previousConfig.shortcuts)) {
+            if ($oldPath -and $shortcutPaths -notcontains [string]$oldPath -and
+                (Test-Path -LiteralPath $oldPath -PathType Leaf) -and
+                (Test-ShortcutOwnedByInstall -ShortcutPath $oldPath -InstallDir $InstallDir)) { Remove-Item -LiteralPath $oldPath -Force }
+        }
+        foreach ($oldPath in @($previousConfig.adminShortcuts)) {
+            if ($oldPath -and $adminShortcutPaths -notcontains [string]$oldPath -and
+                (Test-Path -LiteralPath $oldPath -PathType Leaf) -and
+                (Test-AdminShortcutOwnedByInstall -ShortcutPath $oldPath -InstallDir $InstallDir)) { Remove-Item -LiteralPath $oldPath -Force }
+        }
         foreach ($legacyPath in @($previousConfig.shortcuts)) {
             if ($legacyPath -and [IO.Path]::GetFileName([string]$legacyPath) -eq "GugakSignage.lnk" -and
                 (Test-Path -LiteralPath $legacyPath -PathType Leaf) -and
@@ -662,14 +964,28 @@ try {
             }
             throw "서버가 150초 안에 준비되지 않았습니다.$([Environment]::NewLine)$tail"
         }
-        Write-Step "서버 준비 완료: http://127.0.0.1:$Port/api/health"
+        $healthUrl = if ($watchdogRole -eq "manager" -and $Mode -eq "lan") { $ManagerBaseUrl.TrimEnd('/') + "/api/health" } elseif ($watchdogRole -eq "player-host") { "http://127.0.0.1:43127/api/health" } else { "http://127.0.0.1:$Port/api/health" }
+        Write-Step "서버 준비 완료: $healthUrl"
     }
 
     Write-Step "설치 완료"
-    Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
-    Write-Step "관리자 화면: http://127.0.0.1:$Port/admin/"
-    Write-Step "관리자 바로가기: $($adminShortcutPaths -join ', ')"
-    Write-Step "관리자 페이지 자동 열기: $(if ($adminAutoOpenEnabled) { '사용' } else { '사용 안 함' })"
+    $effectiveAdminPassword = if ($null -ne $newEnvAdminPassword) {
+        $newEnvAdminPassword
+    } else {
+        Get-EnvValue -EnvFile $envFile -Name "ADMIN_PASSWORD"
+    }
+    if ($effectiveAdminPassword -eq "0000") {
+        Write-Step "경고: 테스트 기본 비밀번호 0000 · 설정에서 변경 필요"
+    }
+    if ($Role -eq "player") {
+        Write-Step "재생기 화면: $PlayerUrl"
+        Write-Step "중앙 Manager: $ManagerUrl"
+    } else {
+        $adminUrl = if ($Role -eq "manager" -and $Mode -eq "lan") { $ManagerBaseUrl.TrimEnd('/') + "/admin/" } else { "http://127.0.0.1:$Port/admin/" }
+        Write-Step "관리자 화면: $adminUrl"
+        Write-Step "관리자 바로가기: $($adminShortcutPaths -join ', ')"
+        Write-Step "관리자 페이지 자동 열기: $(if ($adminAutoOpenEnabled) { '사용' } else { '사용 안 함' })"
+    }
     Write-Step "초기 비밀번호: $envFile 의 ADMIN_PASSWORD (로그에는 기록하지 않음)"
     Write-Step "설치 로그: $script:InstallLogPath"
     Write-Step "watchdog 로그: $(Join-Path $LogDir "watchdog.log")"
