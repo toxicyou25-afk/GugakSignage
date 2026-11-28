@@ -497,6 +497,17 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     });
     assert.equal(assignedTargets.status, 200, JSON.stringify(assignedTargets.body));
     assert.deepEqual(assignedTargets.body.screenTargets, [{ displayId: remoteDisplay.id, nativeMonitorId: 'MONITOR\\REMOTE-1' }]);
+    db.prepare('UPDATE devices SET last_host_local = 1 WHERE id = ?').run(created.deviceId);
+    db.prepare('UPDATE displays SET enabled = 0 WHERE id = ?').run(remoteDisplay.id);
+    const launchAfterUnpublishedTopologyEdit = await admin('/api/player/launch', {
+      method: 'POST', body: { deviceId: created.deviceId },
+    });
+    assert.equal(launchAfterUnpublishedTopologyEdit.status, 202, JSON.stringify(launchAfterUnpublishedTopologyEdit.body));
+    assert.equal(launchAfterUnpublishedTopologyEdit.body.screenTargetCount, 1);
+    const launchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
+    assert.deepEqual(launchCommand.screenTargets, [{ displayId: remoteDisplay.id, nativeMonitorId: 'MONITOR\\REMOTE-1' }]);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
+    db.prepare('UPDATE displays SET enabled = 1 WHERE id = ?').run(remoteDisplay.id);
     db.prepare('UPDATE devices SET last_host_local = 0 WHERE id = ?').run(created.deviceId);
   });
 

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { Router } from 'express';
 import type { AppConfig } from '../config.js';
-import { all, get, type DB } from '../db.js';
+import { get, type DB } from '../db.js';
+import { publishedScreenTargets } from '../publishing.js';
 import { readPlayerState, requestPlayerLaunch, requestPlayerStop } from '../player-control.js';
 import type { DeviceRow } from '../types.js';
 
@@ -24,14 +25,10 @@ export function playerControlRoutes(db: DB, config: AppConfig): Router {
       res.status(404).json({ error: '기기를 찾을 수 없습니다.' });
       return;
     }
-    const assignments = all<{ id: string; native_monitor_id: string | null }>(
-      db,
-      'SELECT id, native_monitor_id FROM displays WHERE device_id = ? AND enabled = 1 ORDER BY start_index, created_at, id',
-      deviceId,
-    );
+    const assignments = publishedScreenTargets(db, device);
     // A stale heartbeat must not discard saved local monitor bindings on stop/restart.
-    const screenTargets = device.last_host_local === 1 && assignments.length > 0 && assignments.every((display) => Boolean(display.native_monitor_id))
-      ? assignments.map((display) => ({ displayId: display.id, nativeMonitorId: display.native_monitor_id! }))
+    const screenTargets = device.last_host_local === 1 && assignments.length > 0 && assignments.every((display) => Boolean(display.nativeMonitorId))
+      ? assignments.map((display) => ({ displayId: display.displayId, nativeMonitorId: display.nativeMonitorId! }))
       : [];
     const result = requestPlayerLaunch(config, device, screenTargets);
     res.status(202).json({
