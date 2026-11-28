@@ -524,12 +524,9 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       method: 'POST', body: { deviceId: device.body.device.id },
     });
     assert.equal(launchWithMonitorTargets.status, 202, JSON.stringify(launchWithMonitorTargets.body));
-    assert.equal(launchWithMonitorTargets.body.screenTargetCount, 4);
+    assert.equal(launchWithMonitorTargets.body.screenTargetCount, 0);
     const launchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
-    assert.deepEqual(launchCommand.screenTargets.map((target: any) => target.displayId), displays.map((display: any) => display.id));
-    assert.deepEqual(launchCommand.screenTargets.map((target: any) => target.nativeMonitorId), [
-      'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\RIGHT', 'MONITOR\\DISCONNECTED-SAVED',
-    ]);
+    assert.deepEqual(launchCommand.screenTargets, []);
     fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
 
     run(db, 'UPDATE devices SET last_host_local = 1, last_seen = ? WHERE id = ?',
@@ -538,12 +535,9 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       method: 'POST', body: { deviceId: device.body.device.id },
     });
     assert.equal(staleLocalLaunch.status, 202, JSON.stringify(staleLocalLaunch.body));
-    assert.equal(staleLocalLaunch.body.screenTargetCount, 4);
+    assert.equal(staleLocalLaunch.body.screenTargetCount, 0);
     const staleLaunchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
-    assert.deepEqual(staleLaunchCommand.screenTargets.map((target: any) => target.displayId), displays.map((display: any) => display.id));
-    assert.deepEqual(staleLaunchCommand.screenTargets.map((target: any) => target.nativeMonitorId), [
-      'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\RIGHT', 'MONITOR\\DISCONNECTED-SAVED',
-    ]);
+    assert.deepEqual(staleLaunchCommand.screenTargets, []);
     fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
     run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', new Date().toISOString(), device.body.device.id);
 
@@ -595,7 +589,7 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
       method: 'POST', body: { deviceId: secondDevice.body.device.id },
     });
     assert.equal(localLaunchAfterBinding.status, 202, JSON.stringify(localLaunchAfterBinding.body));
-    assert.equal(localLaunchAfterBinding.body.screenTargetCount, 1);
+    assert.equal(localLaunchAfterBinding.body.screenTargetCount, 0);
     fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
 
     const sameIdOnOtherDevice = await request(`/api/displays/${displays[3].id}`, {
@@ -662,6 +656,17 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
     assert.equal(published.status, 200, JSON.stringify(published.body));
     assert.equal(published.body.version, 1);
     assert.equal(published.body.deviceIds.length, 2);
+    const launchAfterPublish = await request('/api/player/launch', {
+      method: 'POST', body: { deviceId: device.body.device.id },
+    });
+    assert.equal(launchAfterPublish.status, 202, JSON.stringify(launchAfterPublish.body));
+    assert.equal(launchAfterPublish.body.screenTargetCount, 3);
+    const publishedLaunchCommand = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'control', 'player-command.json'), 'utf8'));
+    assert.deepEqual(publishedLaunchCommand.screenTargets.map((target: any) => target.displayId), displays.slice(0, 3).map((display: any) => display.id));
+    assert.deepEqual(publishedLaunchCommand.screenTargets.map((target: any) => target.nativeMonitorId), [
+      'MONITOR\\PRIMARY', 'MONITOR\\LEFT', 'MONITOR\\DISCONNECTED-SAVED',
+    ]);
+    fs.rmSync(path.join(config.dataDir, 'control', 'player-command.json'), { force: true });
     const frozen = get<{ snapshot: string }>(db, 'SELECT snapshot FROM publications WHERE device_id = ? AND version = 1', device.body.device.id)!.snapshot;
     assert(frozen.includes('"schemaVersion":2'));
     assert(frozen.includes('"playlistId":"playlist-2"'));
