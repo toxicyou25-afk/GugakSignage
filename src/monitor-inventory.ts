@@ -19,6 +19,7 @@ export interface SiteMonitorDevice {
   deviceId: string;
   name: string;
   localHost: boolean;
+  status: ReturnType<typeof deviceStatus>;
   online: boolean;
   lastSeen: string | null;
   publishedVersion: number;
@@ -102,13 +103,15 @@ export function monitorInventoryForSite(
       }));
       const lastSeenMs = device.last_seen ? Date.parse(device.last_seen) : Number.NaN;
       const heartbeatAgeMs = generatedAtMs - lastSeenMs;
-      const online = deviceStatus(device, heartbeatOnlineMs) === 'online';
+      const status = deviceStatus(device, heartbeatOnlineMs);
+      const online = status === 'online';
 
       return {
         deviceId: device.id,
         name: device.name,
         localHost: device.last_host_local === 1 && Number.isFinite(lastSeenMs) &&
           heartbeatAgeMs >= 0 && heartbeatAgeMs <= heartbeatOnlineMs,
+        status,
         online,
         lastSeen: device.last_seen,
         publishedVersion: device.published_version,

@@ -791,6 +791,19 @@ test('장소·4모니터·화면별 배정·미리보기·불변 게시 흐름',
         monitorDetected: assignment.monitorDetected,
       })), [{ displayId: displays[1].id, nativeMonitorId: 'MONITOR\\REMOTE-PRIMARY', monitorDetected: true }]);
 
+      const emptyReportAt = new Date().toISOString();
+      run(db, 'INSERT INTO player_monitor_reports(device_id, snapshot_json, reported_at) VALUES (?, ?, ?) ON CONFLICT(device_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, reported_at = excluded.reported_at',
+        device.body.device.id, '[]', emptyReportAt);
+      run(db, 'UPDATE devices SET hardware_id = NULL, last_seen = NULL WHERE id = ?', device.body.device.id);
+      const pendingInventory = await request('/api/sites/' + site.body.site.id + '/monitor-inventory');
+      const pendingHost = pendingInventory.body.devices.find((entry: any) => entry.deviceId === device.body.device.id);
+      assert.equal(pendingHost.status, 'pending');
+      assert.equal(pendingHost.online, false);
+      assert.equal(pendingHost.monitorReport.reported, true);
+      assert.deepEqual(pendingHost.monitorReport.monitors, []);
+      run(db, 'DELETE FROM player_monitor_reports WHERE device_id = ?', device.body.device.id);
+      run(db, 'UPDATE devices SET hardware_id = ?, last_seen = ? WHERE id = ?', 'hardware-four-monitors', new Date().toISOString(), device.body.device.id);
+
       const staleAt = new Date(Date.now() - 120_000).toISOString();
       run(db, 'UPDATE player_monitor_reports SET reported_at = ? WHERE device_id = ?', staleAt, secondDevice.body.device.id);
       run(db, 'UPDATE devices SET last_seen = ? WHERE id = ?', staleAt, secondDevice.body.device.id);
