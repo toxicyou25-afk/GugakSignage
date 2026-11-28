@@ -525,7 +525,7 @@ begin
       Result := False;
     end;
   end;
-  if (CurPageID = RolePage.ID) and (RolePage.SelectedValueIndex = 0) and (ModePage.SelectedValueIndex = 1) then
+  if (CurPageID = ModePage.ID) and (RolePage.SelectedValueIndex = 0) and (ModePage.SelectedValueIndex = 1) then
   begin
     MsgBox('Integrated mode supports Standalone only.', mbError, MB_OK);
     Result := False;
