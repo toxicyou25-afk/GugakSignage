@@ -78,6 +78,14 @@
 | Media 다운로드 | 목표 `GET /api/media/:sha256` (기존 static uploads는 하위 호환) | Player Bearer token. Manifest에 `{sha256, url, mime, byteLength, width, height}`를 제공한다. URL은 same-origin standalone에서 상대 경로, central/LAN에서는 Manager base URL 기준 절대 URL이 가능하다. | hash가 URL/resource identity다. `ETag`는 강한 content hash, `Range` 요청을 지원한다. 자산은 checksum 일치 후에만 local cache에 활성화한다. 인증 실패 `401/403`, hash 불일치 `422`, 제한 초과 `413`; 일시 오류는 지수 backoff. |
 | 관리자 조회·미리보기 | 기존 `/api/contents`, `/api/playlists`, `/api/sites`, `/api/groups/:id/preview`, `/api/devices` | 관리자 cookie/session + 역할 권한. 관리 API를 Player token으로 열지 않는다. | 오류는 공통 오류 envelope를 사용하되, 기존 `{error: string}` 응답을 소비하는 클라이언트가 있는 동안 호환한다. 읽기 GET은 안전 재시도 가능하다. |
 
+### v1.0 사이트별 모니터 인벤토리
+
+GET /api/sites/:id/monitor-inventory는 관리자 세션 전용이며 site에 연결된 PC만 반환한다. 기존 player_monitor_reports snapshot과 devices, displays, display_groups, playlists 행을 조합한다. 새 테이블이나 외부 서비스는 추가하지 않는다.
+
+응답은 siteId와 generatedAt, 그리고 PC별 deviceId/name/localHost/online/lastSeen/publishedVersion, monitorReport(reported/reportedAt/ageMs/monitors), assignments(displayId/displayName/groupId/groupName/playlistId/playlistName/nativeMonitorId/monitorDetected), logicalDisplayCount, assignedDisplayCount, unassignedDisplayIds를 포함한다.
+
+Assignments는 저장된 초안 설정이며 활성 게시본을 바꾸지 않는다. monitorDetected는 저장된 binding ID가 최신 보고 목록에 있는지 나타낸다. offline PC의 마지막 report는 조사 목적으로 표시하지만 새 배정 선택지로 사용하지 않는다. 보고가 한 번도 없었던 상태(reported=false)와 성공한 빈 보고(reported=true, monitors=[])를 구분한다. 없는 site는 404를 반환한다.
+
 ### 목표 manifest 예시
 
 아래는 계약 필드 예시이며 현재 응답 형식이 아니다. ID/필드는 실제 schema review 때 고정한다.
