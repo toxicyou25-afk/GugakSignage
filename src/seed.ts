@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import fs from 'node:fs';
 import path from 'node:path';
+import { sha256Buffer } from './content-integrity.js';
 import { get, run, setMeta, transaction, type DB } from './db.js';
 import type { AppConfig } from './config.js';
 import { publishDevice } from './publishing.js';
@@ -94,10 +95,11 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
       const destination = path.join(config.uploadDir, storedName);
       if (!fs.existsSync(destination)) fs.copyFileSync(source, destination);
       const contentId = `ct-sample-${content.key}`;
+      const checksum = sha256Buffer(fs.readFileSync(destination));
       run(
         db,
         `INSERT INTO contents(id, name, kind, mime, stored_name, external_url, file_size, width, height, checksum, created_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
         contentId,
         content.name,
         content.kind,
@@ -106,6 +108,7 @@ export function seedDatabase(db: DB, config: AppConfig): { seeded: boolean; devi
         fs.statSync(destination).size,
         content.width,
         content.height,
+        checksum,
         createdAt,
       );
       contentIds.set(content.key, contentId);

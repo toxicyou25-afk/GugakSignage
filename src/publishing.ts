@@ -40,6 +40,7 @@ interface ItemContentRow extends PlaylistItemRow {
   c_external_url: string | null;
   c_width: number | null;
   c_height: number | null;
+  c_checksum: string | null;
 }
 
 function mediaUrl(storedName: string | null): string | null {
@@ -54,7 +55,7 @@ export function buildPlaylist(db: DB, playlistId: string): ManifestPlaylist | nu
     db,
     `SELECT pi.*, c.name AS c_name, c.kind AS c_kind, c.mime AS c_mime,
             c.stored_name AS c_stored_name, c.external_url AS c_external_url,
-            c.width AS c_width, c.height AS c_height
+            c.width AS c_width, c.height AS c_height, c.checksum AS c_checksum
        FROM playlist_items pi
        JOIN contents c ON c.id = pi.content_id
       WHERE pi.playlist_id = ?
@@ -76,6 +77,7 @@ export function buildPlaylist(db: DB, playlistId: string): ManifestPlaylist | nu
       url: row.c_kind === 'url' ? row.c_external_url : mediaUrl(row.c_stored_name),
       width: row.c_width,
       height: row.c_height,
+      ...(row.c_checksum ? { checksum: row.c_checksum } : {}),
     },
   }));
   return {
@@ -184,9 +186,42 @@ export function publishedScreenTargets(db: DB, device: DeviceRow): Array<{ displ
   }));
 }
 
+function snapshotWithContentChecksums(db: DB, snapshot: Snapshot): Snapshot {
+  const playlist = (value: ManifestPlaylist | null): ManifestPlaylist | null => value ? {
+    ...value,
+    items: value.items.map((item) => {
+      const checksum = item.content.checksum ?? get<{ checksum: string }>(
+        db,
+        'SELECT checksum FROM contents WHERE id = ? AND checksum IS NOT NULL',
+        item.content.id,
+      )?.checksum ?? null;
+      return checksum ? { ...item, content: { ...item.content, checksum } } : item;
+    }),
+  } : null;
+  return {
+    ...snapshot,
+    defaultPlaylist: playlist(snapshot.defaultPlaylist),
+    schedules: snapshot.schedules.map((schedule) => ({
+      ...schedule,
+      playlist: playlist(schedule.playlist)!,
+    })),
+    ...(snapshot.wall ? {
+      wall: {
+        ...snapshot.wall,
+        groupPlaylist: playlist(snapshot.wall.groupPlaylist),
+        screens: snapshot.wall.screens.map((screen) => ({
+          ...screen,
+          playlist: playlist(screen.playlist)!,
+        })),
+      },
+    } : {}),
+  };
+}
+
 export function manifestForDevice(db: DB, device: DeviceRow): DeviceManifest {
   const publication = latestPublication(db, device.id);
-  const snapshot = publication ? safeJsonParse<Snapshot>(publication.snapshot) : null;
+  const storedSnapshot = publication ? safeJsonParse<Snapshot>(publication.snapshot) : null;
+  const snapshot = storedSnapshot ? snapshotWithContentChecksums(db, storedSnapshot) : null;
   const ownDisplayIds = new Set(
     snapshot?.wall?.displays
       .filter((display) => display.deviceId === device.id)

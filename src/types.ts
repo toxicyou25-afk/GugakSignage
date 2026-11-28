@@ -182,6 +182,7 @@ export interface ManifestContent {
   url: string | null;
   width: number | null;
   height: number | null;
+  checksum?: string | null;
 }
 
 export interface ManifestItem {

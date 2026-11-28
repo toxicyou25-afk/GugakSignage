@@ -78,6 +78,10 @@
 | Media 다운로드 | 목표 `GET /api/media/:sha256` (기존 static uploads는 하위 호환) | Player Bearer token. Manifest에 `{sha256, url, mime, byteLength, width, height}`를 제공한다. URL은 same-origin standalone에서 상대 경로, central/LAN에서는 Manager base URL 기준 절대 URL이 가능하다. | hash가 URL/resource identity다. `ETag`는 강한 content hash, `Range` 요청을 지원한다. 자산은 checksum 일치 후에만 local cache에 활성화한다. 인증 실패 `401/403`, hash 불일치 `422`, 제한 초과 `413`; 일시 오류는 지수 backoff. |
 | 관리자 조회·미리보기 | 기존 `/api/contents`, `/api/playlists`, `/api/sites`, `/api/groups/:id/preview`, `/api/devices` | 관리자 cookie/session + 역할 권한. 관리 API를 Player token으로 열지 않는다. | 오류는 공통 오류 envelope를 사용하되, 기존 `{error: string}` 응답을 소비하는 클라이언트가 있는 동안 호환한다. 읽기 GET은 안전 재시도 가능하다. |
 
+### 현재 미디어 무결성 처리
+
+이미지·영상 업로드와 sample seed는 `contents.checksum`에 SHA-256을 저장한다. 서버 시작 시 checksum이 없는 기존 파일은 읽을 수 있는 경우에만 backfill하며, 누락·읽기 오류는 checksum 없이 유지하고 경고한다. 신규 및 기존 게시 manifest 응답은 checksum을 포함하고, Player는 다운로드·IndexedDB 재사용 때 bytes를 검증해 임시 캐시 승격 전에 확인한다. 불일치는 새 manifest 활성화를 막고 이전 정상 캐시를 유지한다. 기존 checksum 없는 manifest는 호환성을 위해 계속 허용한다. 이 경로는 현재 `/media/:storedName` URL을 유지하며 목표 `/api/media/:sha256`·ETag·Range 계약은 별도 미구현 항목이다.
+
 ### v1.0 사이트별 모니터 인벤토리
 
 GET /api/sites/:id/monitor-inventory는 관리자 세션 전용이며 site에 연결된 PC와, 어느 site나 화면에도 아직 배정되지 않은 등록 PC 후보를 반환한다. 다른 site에 배정된 PC는 제외한다. 기존 player_monitor_reports snapshot과 devices, displays, display_groups, playlists 행을 조합한다. 새 테이블이나 외부 서비스는 추가하지 않는다.

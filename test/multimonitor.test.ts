@@ -33,7 +33,7 @@ function createLegacyDatabase(dbPath: string, deviceNames: string[]): void {
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE contents (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, mime TEXT,
       stored_name TEXT, external_url TEXT, file_size INTEGER, width INTEGER, height INTEGER,
-      checksum TEXT, created_at TEXT NOT NULL);
+      created_at TEXT NOT NULL);
     CREATE TABLE playlists (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE playlist_items (id TEXT PRIMARY KEY, playlist_id TEXT NOT NULL, content_id TEXT NOT NULL,
@@ -267,7 +267,7 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE contents (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, mime TEXT,
       stored_name TEXT, external_url TEXT, file_size INTEGER, width INTEGER, height INTEGER,
-      checksum TEXT, created_at TEXT NOT NULL);
+      created_at TEXT NOT NULL);
     CREATE TABLE playlists (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE playlist_items (id TEXT PRIMARY KEY, playlist_id TEXT NOT NULL, content_id TEXT NOT NULL,
@@ -285,7 +285,7 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
       snapshot TEXT NOT NULL, published_at TEXT NOT NULL, UNIQUE(device_id, version));
     INSERT INTO playlists VALUES ('playlist-old', '기존 목록', NULL, '2026-01-01', '2026-01-01');
     INSERT INTO contents VALUES ('content-old', '기존 이미지', 'image', 'image/png', 'old.png', NULL,
-      1, 1920, 1080, NULL, '2026-01-01');
+      1, 1920, 1080, '2026-01-01');
     INSERT INTO playlist_items VALUES ('item-old', 'playlist-old', 'content-old', 1, 10, 'contain', 300, 1);
     INSERT INTO devices VALUES ('device-old', '기존 로비 PC', '로비', 'landscape', 1920, 1080, 'OLD001',
       NULL, NULL, 'playlist-old', 7, '2026-01-02', NULL, NULL, 'playing', NULL, NULL, NULL, NULL,
@@ -297,6 +297,9 @@ test('기존 SQLite MVP 기기는 기본 장소와 1모니터로 멱등 마이�
   legacy.close();
 
   let db = openDatabase(dbPath);
+  const contentColumns = db.prepare('PRAGMA table_info(contents)').all() as Array<{ name: string }>;
+  assert.ok(contentColumns.some((column) => column.name === 'checksum'));
+  assert.equal(get<{ checksum: string | null }>(db, 'SELECT checksum FROM contents WHERE id = ?', 'content-old')?.checksum, null);
   assert.equal(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM sites')?.n, 1);
   assert.equal(get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM displays')?.n, 1);
   assert.equal(get<{ site_id: string }>(db, 'SELECT site_id FROM devices WHERE id = ?', 'device-old')?.site_id?.length, 36);
