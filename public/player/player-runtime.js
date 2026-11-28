@@ -10,6 +10,11 @@ export function restoreHostManagedMode(runtime, cached) {
   );
 }
 
+export function calculateServerOffsetMs(serverTime, receivedAt, fallback) {
+  const serverMs = Date.parse(serverTime);
+  return Number.isFinite(serverMs) ? serverMs - receivedAt : fallback;
+}
+
 export async function promotePreparedManifest({ isCurrent, prepareAssets, persistManifest, activateManifest }) {
   if (!isCurrent()) return false;
   const prepared = await prepareAssets();
@@ -47,13 +52,16 @@ export async function prepareAssetBatch(contents, {
 
 export function createCacheReadiness() {
   let generation = 0;
+  let currentKey = null;
   const flights = new Map();
   let ready = false;
 
   return {
     get ready() { return ready; },
-    begin() {
+    begin(key) {
+      if (key !== undefined && key !== null && key === currentKey) return generation;
       generation += 1;
+      currentKey = key ?? null;
       ready = false;
       for (const [token, operation] of flights) {
         if (token < generation) flights.delete(token);
@@ -79,6 +87,7 @@ export function createCacheReadiness() {
     },
     invalidate() {
       generation += 1;
+      currentKey = null;
       ready = false;
       for (const [token, operation] of flights) {
         if (token < generation) flights.delete(token);

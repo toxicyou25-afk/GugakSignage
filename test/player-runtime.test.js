@@ -123,6 +123,39 @@ test('a partial asset download leaves the active media intact and discards stage
   assert.equal(promotionCount, 0);
 });
 
+test('a repeated poll for the same manifest does not cancel an in-flight asset preparation', async () => {
+  const cache = createCacheReadiness();
+  const firstToken = cache.begin('device-1:manifest-4');
+  const gate = deferred();
+  let calls = 0;
+  const first = cache.prepare(firstToken, async (isCurrent) => {
+    calls += 1;
+    await gate.promise;
+    return isCurrent();
+  });
+
+  const repeatedToken = cache.begin('device-1:manifest-4');
+  const repeated = cache.prepare(repeatedToken, async () => { calls += 1; return true; });
+  gate.resolve();
+
+  assert.equal(repeatedToken, firstToken);
+  assert.deepEqual(await Promise.all([first, repeated]), [true, true]);
+  assert.equal(calls, 1);
+});
+
+test('manifest offset stays anchored to response receipt through a delayed asset preparation', () => {
+  assert.equal(typeof playerRuntime.calculateServerOffsetMs, 'function');
+  const serverTime = '2026-11-28T00:00:00.000Z';
+  const serverMs = Date.parse(serverTime);
+  const receivedAt = serverMs + 1_500;
+  const measuredOffset = playerRuntime.calculateServerOffsetMs(serverTime, receivedAt, 0);
+
+  assert.equal(measuredOffset, -1_500);
+  assert.equal(measuredOffset, playerRuntime.calculateServerOffsetMs(serverTime, receivedAt, 0));
+  assert.notEqual(measuredOffset, playerRuntime.calculateServerOffsetMs(serverTime, receivedAt + 5_000, 0));
+  assert.equal(playerRuntime.calculateServerOffsetMs('invalid server time', receivedAt, -250), -250);
+});
+
 
 test('concurrent prefetch callers share one result instead of replacing cacheReady with undefined', async () => {
   const cache = createCacheReadiness();

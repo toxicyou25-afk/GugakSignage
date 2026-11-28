@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode } from './player-runtime.js';
+import { calculateServerOffsetMs, createCacheReadiness, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode } from './player-runtime.js';
 
 const PLAYER_SHELL_VERSION = 'v5';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
@@ -53,8 +53,10 @@ const runtime = {
   deviceId: safeGet(STORAGE.deviceId),
   hostManaged: false,
   connectionGeneration: 0,
+  manifestRequestGeneration: 0,
   manifest: null,
   pendingManifest: null,
+  pendingManifestClock: null,
   playlistId: null,
   queue: [],
   index: 0,
@@ -228,6 +230,7 @@ async function pair(code, auto = false, options = {}) {
       safeRemove(STORAGE.manifestCachedAt);
       runtime.manifest = null;
       runtime.pendingManifest = null;
+      runtime.pendingManifestClock = null;
       await clearMediaCache();
     }
     showPlayer();
@@ -335,9 +338,10 @@ function serverNow() {
 
 async function fetchManifest(options = {}) {
   if (!isConnected()) return;
+  const requestGeneration = ++runtime.manifestRequestGeneration;
   const connection = connectionSnapshot();
   const requestToken = runtime.token;
-  const manifestGeneration = runtime.cacheReadiness.begin();
+  let manifestGeneration;
   try {
     const response = await fetch('/api/player/manifest', {
       headers: runtime.hostManaged ? {} : { Authorization: `Bearer ${requestToken}` },
@@ -348,26 +352,27 @@ async function fetchManifest(options = {}) {
       return;
     }
     const data = await response.json().catch(() => null);
-    if (!isCurrentConnection(connection)) return;
+    if (requestGeneration !== runtime.manifestRequestGeneration || !isCurrentConnection(connection)) return;
     if (!response.ok) throw new Error(data?.error || `서버 응답 오류 (${response.status})`);
     const manifest = data?.manifest;
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
-    if (!isCurrentConnection(connection)) return;
+    if (requestGeneration !== runtime.manifestRequestGeneration || !isCurrentConnection(connection)) return;
     setOffline(false);
-    const serverMs = Date.parse(manifest.serverTime);
-    const manifestCachedAt = Date.now();
-    const manifestServerOffsetMs = Number.isFinite(serverMs) ? serverMs - manifestCachedAt : runtime.serverOffsetMs;
+    const manifestKey = `${connection.generation}:${connection.identity}:${manifest.version}`;
+    manifestGeneration = runtime.cacheReadiness.begin(manifestKey);
+    const receivedAt = Date.now();
+    const measuredServerOffsetMs = calculateServerOffsetMs(manifest.serverTime, receivedAt, runtime.serverOffsetMs);
     const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
       (isCurrent) => promotePreparedManifest({
         isCurrent: () => isCurrent() && isCurrentConnection(connection),
         prepareAssets: () => prefetchAssets(manifest, connection, isCurrent),
-        persistManifest: () => persistManifestSnapshot(manifest, manifestServerOffsetMs, manifestCachedAt),
+        persistManifest: () => persistManifestSnapshot(manifest, measuredServerOffsetMs, receivedAt),
         activateManifest: () => {
-          runtime.serverOffsetMs = manifestServerOffsetMs;
+          runtime.serverOffsetMs = measuredServerOffsetMs;
           runtime.lastError = null;
           el.error.hidden = true;
-          acceptManifest(manifest, Boolean(options.initial));
+          acceptManifest(manifest, Boolean(options.initial), { serverOffsetMs: measuredServerOffsetMs });
         },
       }),
     );
@@ -383,8 +388,9 @@ async function fetchManifest(options = {}) {
     void pruneStaleCachedAssets(manifest, connection, () => runtime.cacheReadiness.isCurrent(manifestGeneration))
       .catch((error) => console.warn('[signage] 이전 콘텐츠 캐시 정리를 미뤘습니다.', error));
   } catch (error) {
+    if (requestGeneration !== runtime.manifestRequestGeneration) return;
     if (!isCurrentConnection(connection)) return;
-    if (!runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
+    if (manifestGeneration !== undefined && !runtime.cacheReadiness.isCurrent(manifestGeneration)) return;
     runtime.lastError = error.message;
     setOffline(true);
     runtime.cacheReady = false;
@@ -400,20 +406,23 @@ async function fetchManifest(options = {}) {
   }
 }
 
-function acceptManifest(manifest, initial) {
+function acceptManifest(manifest, initial, clock = {}) {
+  if (Number.isFinite(clock.serverOffsetMs)) runtime.serverOffsetMs = clock.serverOffsetMs;
   if (manifest.wall) {
     if (!runtime.manifest || initial || runtime.manifest.version !== manifest.version) {
-      applyManifest(manifest, true);
+      applyManifest(manifest, true, clock);
     } else {
       runtime.manifest = manifest;
-      runtime.serverOffsetMs = Number.isFinite(Date.parse(manifest.serverTime))
-        ? Date.parse(manifest.serverTime) - Date.now()
-        : runtime.serverOffsetMs;
+      if (!Number.isFinite(clock.serverOffsetMs)) {
+        runtime.serverOffsetMs = Number.isFinite(Date.parse(manifest.serverTime))
+          ? Date.parse(manifest.serverTime) - Date.now()
+          : runtime.serverOffsetMs;
+      }
     }
     return;
   }
   if (!runtime.manifest || initial || !runtime.currentNode || runtime.queue.length === 0) {
-    applyManifest(manifest, true);
+    applyManifest(manifest, true, clock);
     return;
   }
   const nextPlaylist = activePlaylist(manifest);
@@ -423,6 +432,7 @@ function acceptManifest(manifest, initial) {
     return;
   }
   runtime.pendingManifest = manifest;
+  runtime.pendingManifestClock = clock;
 }
 
 function reevaluateCachedSchedule() {
@@ -480,6 +490,7 @@ function queueFor(playlist) {
 function applyManifest(manifest, restart, clock = {}) {
   runtime.manifest = manifest;
   runtime.pendingManifest = null;
+  runtime.pendingManifestClock = null;
   hideCenter();
   el.error.hidden = true;
   el.deviceLabel.textContent = manifest.device?.name || '';
@@ -836,7 +847,7 @@ function advance() {
   clearTimeout(runtime.timer);
   runtime.timer = null;
   if (runtime.pendingManifest) {
-    applyManifest(runtime.pendingManifest, true);
+    applyManifest(runtime.pendingManifest, true, runtime.pendingManifestClock || {});
     return;
   }
   const playlist = activePlaylist(runtime.manifest);
@@ -1370,6 +1381,7 @@ el.disconnect.addEventListener('click', async () => {
   runtime.token = null;
   runtime.manifest = null;
   runtime.pendingManifest = null;
+  runtime.pendingManifestClock = null;
   await clearMediaCache();
   runtime.started = false;
   clearInterval(runtime.pollTimer);
