@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import { buildRenderPlan, wallScreenInput } from '/engine/index.js';
-import { calculateServerOffsetMs, createCacheReadiness, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, withPlayerRegistrationLock } from './player-runtime.js';
+import { assetIntegrityFingerprint, calculateServerOffsetMs, createCacheReadiness, invalidateCacheReadinessAfterAssetRemoval, manifestContentChecksum, playerMediaHeaders, prepareAssetBatch, promotePreparedManifest, restoreHostManagedMode, selectRegistrationToken, verifyAssetBlob, withPlayerRegistrationLock } from './player-runtime.js';
 
-const PLAYER_SHELL_VERSION = 'v5';
+const PLAYER_SHELL_VERSION = 'v7';
 const SERVICE_WORKER_UPDATE_MS = 15 * 60 * 1000;
 const STORAGE = {
   token: 'signage.player.token',
@@ -74,6 +74,7 @@ const runtime = {
   controlsTimer: null,
   cacheDbPromise: null,
   objectUrls: new Map(),
+  objectUrlChecksums: new Map(),
   prefetching: false,
   cacheReady: false,
   lastError: null,
@@ -392,15 +393,17 @@ async function fetchManifest(options = {}) {
     if (!manifest) throw new Error('재생목록 응답이 비어 있습니다.');
     if (requestGeneration !== runtime.manifestRequestGeneration || !isCurrentConnection(connection)) return;
     setOffline(false);
-    const manifestKey = `${connection.generation}:${connection.identity}:${manifest.version}`;
+    const manifestKey = `${connection.generation}:${connection.identity}:${manifest.version}:${assetIntegrityFingerprint(collectContents(manifest))}`;
     manifestGeneration = runtime.cacheReadiness.begin(manifestKey);
+    const assetsAlreadyReady = runtime.cacheReadiness.ready;
     const receivedAt = Date.now();
     const measuredServerOffsetMs = calculateServerOffsetMs(manifest.serverTime, receivedAt, runtime.serverOffsetMs);
     const prepared = await runtime.cacheReadiness.prepare(
       manifestGeneration,
       (isCurrent) => promotePreparedManifest({
         isCurrent: () => isCurrent() && isCurrentConnection(connection),
-        prepareAssets: () => prefetchAssets(manifest, connection, isCurrent),
+        // Avoid rehashing every video on the 15-second poll. Before playback, every newly read cached Blob is still checked.
+        prepareAssets: () => assetsAlreadyReady ? Promise.resolve(true) : prefetchAssets(manifest, connection, isCurrent),
         persistManifest: () => persistManifestSnapshot(manifest, measuredServerOffsetMs, receivedAt),
         activateManifest: () => {
           runtime.serverOffsetMs = measuredServerOffsetMs;
@@ -1183,11 +1186,13 @@ async function getCachedBlob(id) {
   return value?.blob || null;
 }
 
-async function putCachedBlob(id, blob, content) {
+async function putCachedBlob(id, blob, content, canWrite = () => true) {
   const db = await openCacheDb();
+  if (!canWrite()) return false;
   const tx = db.transaction('media', 'readwrite');
   tx.objectStore('media').put({ id, blob, mime: content.mime || blob.type, url: content.url, cachedAt: new Date().toISOString() });
   await transactionPromise(tx);
+  return true;
 }
 
 function stagedMediaId(batchId, contentId) {
@@ -1230,24 +1235,84 @@ async function promoteStagedBlobs(db, stagedItems) {
 
 async function resolveMediaUrl(content) {
   if (content.kind === 'url') return content.url;
-  if (runtime.objectUrls.has(content.id)) return runtime.objectUrls.get(content.id);
+  const requestGeneration = runtime.manifestRequestGeneration;
+  let checksum;
   try {
-    const blob = await getCachedBlob(content.id);
+    checksum = manifestContentChecksum(content);
+  } catch {
+    throw new Error('콘텐츠 무결성 정보를 확인하지 못했습니다.');
+  }
+  const checksumKey = checksum ? `${content.id}:${checksum}` : '';
+  let removedCorruptCache = false;
+  const cachedObjectUrl = runtime.objectUrls.get(content.id);
+  if (cachedObjectUrl && (runtime.objectUrlChecksums.get(content.id) || '') === checksumKey) {
+    // Object URLs retain the already-verified immutable Blob; they are not a shortcut to IndexedDB bytes.
+    return cachedObjectUrl;
+  }
+  if (cachedObjectUrl) {
+    URL.revokeObjectURL(cachedObjectUrl);
+    runtime.objectUrls.delete(content.id);
+    runtime.objectUrlChecksums.delete(content.id);
+  }
+  try {
+    let blob = await getCachedBlob(content.id);
+    if (blob && !(await verifyCachedAsset(content, blob))) {
+      removedCorruptCache = true;
+      invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
+      await deleteCachedIds(await openCacheDb(), [content.id]);
+      blob = null;
+    }
     if (blob) {
       const objectUrl = URL.createObjectURL(blob);
       runtime.objectUrls.set(content.id, objectUrl);
+      runtime.objectUrlChecksums.set(content.id, checksumKey);
       return objectUrl;
     }
   } catch { /* fall through to network */ }
   const url = mediaRouteUrl(content.url);
-  if (runtime.hostManaged) return url;
-  const response = await fetch(url, { cache: 'default', headers: playerMediaHeaders(false, runtime.token) });
+  const response = await fetch(url, { cache: 'default', headers: playerMediaHeaders(runtime.hostManaged, runtime.token) });
   if (!response.ok) throw new Error(`media ${response.status}`);
   const blob = await response.blob();
   if (blob.size === 0) throw new Error('재생할 콘텐츠가 비어 있습니다.');
+  if (!(await verifyAssetBlob(content, blob))) {
+    throw new Error('콘텐츠 무결성 검사를 통과하지 못했습니다.');
+  }
+  if (removedCorruptCache) {
+    const replacementIsCurrent = () => {
+      if (runtime.prefetching || runtime.manifestRequestGeneration !== requestGeneration) return false;
+      try {
+        return collectContents(runtime.manifest).some((candidate) =>
+          candidate.id === content.id && manifestContentChecksum(candidate) === checksum
+        );
+      } catch {
+        return false;
+      }
+    };
+    try {
+      const saved = await putCachedBlob(content.id, blob, content, replacementIsCurrent);
+      if (saved && !replacementIsCurrent()) {
+        invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
+      }
+    } catch (error) {
+      console.warn('[signage] 검증된 미디어를 오프라인 캐시에 저장하지 못했습니다.', error);
+      invalidateCacheReadinessAfterAssetRemoval(runtime.cacheReadiness, runtime);
+    }
+  }
   const objectUrl = URL.createObjectURL(blob);
   runtime.objectUrls.set(content.id, objectUrl);
+  runtime.objectUrlChecksums.set(content.id, checksumKey);
   return objectUrl;
+}
+
+async function verifyCachedAsset(content, blob) {
+  const existing = runtime.objectUrls.get(content.id);
+  if (existing) {
+    URL.revokeObjectURL(existing);
+    runtime.objectUrls.delete(content.id);
+    runtime.objectUrlChecksums.delete(content.id);
+  }
+  if (!content?.checksum) return true;
+  return verifyAssetBlob(content, blob);
 }
 
 function mediaRouteUrl(url) {
@@ -1291,6 +1356,10 @@ async function prefetchAssets(manifest, connection, isCurrent) {
     return await prepareAssetBatch(contents, {
       isCurrent: () => isConnected() && isCurrentConnection(connection) && isCurrent(),
       hasCachedContent: (contentId) => existing.has(contentId),
+      verifyCachedContent: async (content) => {
+        const blob = await getCachedBlob(content.id);
+        return Boolean(blob && await verifyCachedAsset(content, blob));
+      },
       fetchAsset: async (content) => {
         const response = await fetch(mediaRouteUrl(content.url), {
           cache: 'default',
@@ -1352,6 +1421,7 @@ function revokeUnusedObjectUrls(activeIds, keepContentId) {
     if (activeIds.has(contentId) || contentId === keepContentId) continue;
     URL.revokeObjectURL(objectUrl);
     runtime.objectUrls.delete(contentId);
+    runtime.objectUrlChecksums.delete(contentId);
   }
 }
 
@@ -1363,6 +1433,7 @@ async function clearMediaCache() {
     await transactionPromise(tx);
     for (const url of runtime.objectUrls.values()) URL.revokeObjectURL(url);
     runtime.objectUrls.clear();
+    runtime.objectUrlChecksums.clear();
   } catch { /* ignore */ }
 }
 

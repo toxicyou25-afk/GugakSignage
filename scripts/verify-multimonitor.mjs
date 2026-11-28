@@ -844,16 +844,32 @@ try {
   await player.reload({ waitUntil: 'domcontentloaded' });
   await player.waitForSelector('#offline-badge:not([hidden])', { timeout: 15_000 });
   await player.waitForSelector('.wall-surface .wall-screen', { timeout: 20_000 });
-  await player.waitForFunction(() => {
-    const state = window.__signagePlayer.getState();
-    const plans = Object.values(state.wallPlans || {});
-    const urlPlanCount = plans.filter((plan) => plan.kind === 'url').length;
-    const imagePlanCount = plans.length - urlPlanCount;
-    return plans.length === 4 && urlPlanCount > 0 &&
-      document.querySelectorAll('.wall-screen .wall-media').length === imagePlanCount &&
-      document.querySelectorAll('.wall-screen .wall-url-offline').length === urlPlanCount &&
-      document.querySelectorAll('.wall-screen iframe').length === 0;
-  }, null, { timeout: 20_000 });
+  try {
+    await player.waitForFunction(() => {
+      const state = window.__signagePlayer.getState();
+      const plans = Object.values(state.wallPlans || {});
+      const urlPlanCount = plans.filter((plan) => plan.kind === 'url').length;
+      const imagePlanCount = plans.length - urlPlanCount;
+      return plans.length === 4 && urlPlanCount > 0 &&
+        document.querySelectorAll('.wall-screen .wall-media').length === imagePlanCount &&
+        document.querySelectorAll('.wall-screen .wall-url-offline').length === urlPlanCount &&
+        document.querySelectorAll('.wall-screen iframe').length === 0;
+    }, null, { timeout: 20_000 });
+  } catch (error) {
+    const offlineDebug = await player.evaluate(() => {
+      const state = window.__signagePlayer.getState();
+      return {
+        offline: state.offline,
+        cacheReady: state.cacheReady,
+        lastError: state.lastError,
+        wallPlanCount: Object.keys(state.wallPlans || {}).length,
+        wallMediaCount: document.querySelectorAll('.wall-screen .wall-media').length,
+        urlFallbackCount: document.querySelectorAll('.wall-screen .wall-url-offline').length,
+        urlFrameCount: document.querySelectorAll('.wall-screen iframe').length,
+      };
+    }).catch(() => null);
+    throw new Error(`${error.message}; offline debug=${JSON.stringify(offlineDebug)}`);
+  }
   report.offlineReload = await player.evaluate(async () => {
     const shared = await import('/engine/index.js');
     const snapshot = JSON.parse(localStorage.getItem('signage.player.manifestSnapshot.v2'));

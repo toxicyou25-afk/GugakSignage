@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { createApp } from '../src/app.js';
+import { backfillContentChecksums } from '../src/content-integrity.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { openDatabase, type DB } from '../src/db.js';
 
@@ -23,6 +25,7 @@ let tempDir: string;
 let cookie = '';
 const created = {
   imageId: '',
+  imageChecksum: '',
   videoId: '',
   urlId: '',
   playlistId: '',
@@ -139,6 +142,11 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(imageUpload.body.contents[0].kind, 'image');
     assert.equal(imageUpload.body.contents[0].width, 1920);
     created.imageId = imageUpload.body.contents[0].id;
+    created.imageChecksum = createHash('sha256').update(fs.readFileSync(path.join(root, 'seed', 'poster-autumn.png'))).digest('hex');
+    assert.equal(imageUpload.body.contents[0].checksum, created.imageChecksum);
+    db.prepare('UPDATE contents SET checksum = NULL WHERE id = ?').run(created.imageId);
+    assert.deepEqual(await backfillContentChecksums(db, config.uploadDir), { updated: 1, skipped: 0 });
+    assert.equal(db.prepare('SELECT checksum FROM contents WHERE id = ?').get(created.imageId)?.checksum, created.imageChecksum);
 
     const videoForm = new FormData();
     videoForm.append('files', new Blob([fs.readFileSync(path.join(root, 'seed', 'sample-video.mp4'))], { type: 'video/mp4' }), 'sample.mp4');
@@ -281,6 +289,12 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     const publish = await admin(`/api/devices/${created.deviceId}/publish`, { method: 'POST' });
     assert.equal(publish.status, 200, JSON.stringify(publish.body));
     assert.equal(publish.body.version, 1);
+    const storedPublication = db.prepare('SELECT id, snapshot FROM publications WHERE device_id = ? AND version = ?')
+      .get(created.deviceId, 1) as { id: string; snapshot: string };
+    const legacyPublication = JSON.parse(storedPublication.snapshot);
+    assert.equal(legacyPublication.defaultPlaylist.items[0].content.checksum, created.imageChecksum);
+    delete legacyPublication.defaultPlaylist.items[0].content.checksum;
+    db.prepare('UPDATE publications SET snapshot = ? WHERE id = ?').run(JSON.stringify(legacyPublication), storedPublication.id);
 
     const manifest = await player('/api/player/manifest');
     assert.equal(manifest.status, 200);
@@ -288,6 +302,7 @@ test('관리 서버 API 핵심 흐름', async (t) => {
     assert.equal(value.version, 1);
     assert.equal(value.defaultPlaylist.items.length, 3);
     assert.match(value.defaultPlaylist.items[0].content.url, /^\/media\//);
+    assert.equal(value.defaultPlaylist.items[0].content.checksum, created.imageChecksum);
     assert.equal(value.defaultPlaylist.items[2].content.url, 'https://example.com/notice');
     assert.equal(value.device.orientation, 'portrait');
   });

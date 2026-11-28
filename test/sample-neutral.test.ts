@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,6 +72,8 @@ test('first-run sample seeding preserves existing user rows and colliding upload
   assert.equal(seeded.seeded, true);
   assert.deepEqual(fs.readFileSync(path.join(uploadDir, 'seed-poster-welcome.png')), userBytes);
   assert.deepEqual(fs.readFileSync(path.join(uploadDir, 'user-upload.png')), userBytes);
+  const seededPoster = get<{ checksum: string }>(db, 'SELECT checksum FROM contents WHERE id = ?', 'ct-sample-poster-autumn');
+  assert.equal(seededPoster?.checksum, createHash('sha256').update(fs.readFileSync(path.join(uploadDir, 'seed-poster-autumn.png'))).digest('hex'));
   const savedUserContent = get<{ id: string; name: string; stored_name: string }>(
     db,
     'SELECT id, name, stored_name FROM contents WHERE id = ?',

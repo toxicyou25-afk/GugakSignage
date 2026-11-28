@@ -5,6 +5,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
 import { imageSize } from 'image-size';
+import { sha256File } from '../content-integrity.js';
 import type { AppConfig } from '../config.js';
 import { all, get, run, transaction, type DB } from '../db.js';
 import type { Snapshot } from '../publishing.js';
@@ -130,61 +131,65 @@ export function contentRoutes(db: DB, config: AppConfig): Router {
     res.json({ contents: rows.map(contentDto) });
   });
 
-  router.post('/', upload.array('files', 20), (req, res) => {
-    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-    if (files.length === 0) {
-      res.status(400).json({ error: '업로드할 파일을 선택해 주세요.' });
-      return;
-    }
-    const prepared: Array<{
-      file: Express.Multer.File;
-      kind: ContentKind;
-      dimensions: { width?: number; height?: number };
-    }> = [];
-    try {
-      for (const file of files) {
-        const kind: ContentKind = IMAGE_MIME.has(file.mimetype) ? 'image' : 'video';
-        if (!sniffFile(file.path, kind)) {
-          throw new Error(`${file.originalname} 파일의 실제 형식이 확장자와 다릅니다.`);
-        }
-        let dimensions: { width?: number; height?: number } = {};
-        if (kind === 'image') {
-          dimensions = imageSize(fs.readFileSync(file.path));
-          if (!dimensions.width || !dimensions.height) throw new Error(`${file.originalname} 이미지 크기를 읽지 못했습니다.`);
-        }
-        prepared.push({ file, kind, dimensions });
+  router.post('/', upload.array('files', 20), (req, res, next) => {
+    void (async () => {
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+      if (files.length === 0) {
+        res.status(400).json({ error: '업로드할 파일을 선택해 주세요.' });
+        return;
       }
-    } catch (error) {
-      for (const file of files) removeQuietly(file.path);
-      res.status(400).json({ error: error instanceof Error ? error.message : '파일 검사에 실패했습니다.' });
-      return;
-    }
+      const prepared: Array<{
+        file: Express.Multer.File;
+        kind: ContentKind;
+        dimensions: { width?: number; height?: number };
+        checksum: string;
+      }> = [];
+      try {
+        for (const file of files) {
+          const kind: ContentKind = IMAGE_MIME.has(file.mimetype) ? 'image' : 'video';
+          if (!sniffFile(file.path, kind)) {
+            throw new Error(`${file.originalname} 파일의 실제 형식이 확장자와 다릅니다.`);
+          }
+          let dimensions: { width?: number; height?: number } = {};
+          if (kind === 'image') {
+            dimensions = imageSize(fs.readFileSync(file.path));
+            if (!dimensions.width || !dimensions.height) throw new Error(`${file.originalname} 이미지 크기를 읽지 못했습니다.`);
+          }
+          prepared.push({ file, kind, dimensions, checksum: await sha256File(file.path) });
+        }
+      } catch (error) {
+        for (const file of files) removeQuietly(file.path);
+        res.status(400).json({ error: error instanceof Error ? error.message : '파일 검사에 실패했습니다.' });
+        return;
+      }
 
-    const createdAt = nowIso();
-    const inserted: ContentRow[] = [];
-    transaction(db, () => {
-      for (const item of prepared) {
-        const contentId = id();
-        const displayName = path.basename(item.file.originalname, path.extname(item.file.originalname)).slice(0, 200) || item.file.originalname;
-        run(
-          db,
-          `INSERT INTO contents(id, name, kind, mime, stored_name, external_url, file_size, width, height, checksum, created_at)
-           VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?)`,
-          contentId,
-          displayName,
-          item.kind,
-          item.file.mimetype,
-          item.file.filename,
-          item.file.size,
-          item.dimensions.width ?? null,
-          item.dimensions.height ?? null,
-          createdAt,
-        );
-        const row = get<ContentRow>(db, 'SELECT * FROM contents WHERE id = ?', contentId);
-        if (row) inserted.push(row);
-      }
-    });
-    res.status(201).json({ contents: inserted.map(contentDto) });
+      const createdAt = nowIso();
+      const inserted: ContentRow[] = [];
+      transaction(db, () => {
+        for (const item of prepared) {
+          const contentId = id();
+          const displayName = path.basename(item.file.originalname, path.extname(item.file.originalname)).slice(0, 200) || item.file.originalname;
+          run(
+            db,
+            `INSERT INTO contents(id, name, kind, mime, stored_name, external_url, file_size, width, height, checksum, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+            contentId,
+            displayName,
+            item.kind,
+            item.file.mimetype,
+            item.file.filename,
+            item.file.size,
+            item.dimensions.width ?? null,
+            item.dimensions.height ?? null,
+            item.checksum,
+            createdAt,
+          );
+          const row = get<ContentRow>(db, 'SELECT * FROM contents WHERE id = ?', contentId);
+          if (row) inserted.push(row);
+        }
+      });
+      res.status(201).json({ contents: inserted.map(contentDto) });
+    })().catch(next);
   });
 
   router.post('/url', (req, res) => {

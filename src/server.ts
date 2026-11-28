@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import { assertManagerPasswordChanged } from './auth.js';
+import { backfillContentChecksums } from './content-integrity.js';
 import { isLoopbackBindHost } from './admin-access.js';
 import { initializeAdminPassword, usesTestDefaultAdminPassword } from './admin-password.js';
 import { createApp } from './app.js';
@@ -43,6 +44,10 @@ fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(config.uploadDir, { recursive: true });
 const db = openDatabase(config.dbPath);
 initializeAdminPassword(db, config);
+const checksumMigration = await backfillContentChecksums(db, config.uploadDir);
+if (checksumMigration.skipped > 0) {
+  console.warn(`[integrity] ${checksumMigration.skipped}개 기존 콘텐츠는 파일 확인이 불가능해 checksum을 설정하지 않았습니다.`);
+}
 if (httpsManager && usesTestDefaultAdminPassword(db)) {
   db.close();
   assertManagerPasswordChanged(true);

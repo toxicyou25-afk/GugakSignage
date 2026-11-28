@@ -14,6 +14,10 @@ export function openDatabase(dbPath: string): DB {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA busy_timeout = 5000;');
   migrate(db);
+  const contentColumns = db.prepare('PRAGMA table_info(contents)').all() as Array<{ name: string }>;
+  if (!contentColumns.some((column) => column.name === 'checksum')) {
+    db.exec('ALTER TABLE contents ADD COLUMN checksum TEXT;');
+  }
   migrateLegacyTopology(db);
   return db;
 }
