@@ -197,6 +197,74 @@ test('a stored database password is not replaced by a later environment value', 
   assert.equal(replacement.response.status, 401);
 });
 
+test('administrator login failures are rate-limited and produce redacted audit records', async (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-auth-rate-limit-'));
+  const apps: RunningApp[] = [];
+  t.after(async () => {
+    await Promise.all(apps.map((app) => app.close()));
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const app = await startApp(tempDir, 'rate-limit-test-password');
+  apps.push(app);
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const response = await request(app, '/api/auth/login', {
+      method: 'POST', body: { password: `wrong-password-${attempt}` },
+    });
+    assert.equal(response.status, attempt === 5 ? 429 : 401);
+    if (attempt === 5) assert.equal(response.headers.get('retry-after'), '600');
+  }
+
+  const lockedCorrectPassword = await login(app, 'rate-limit-test-password');
+  assert.equal(lockedCorrectPassword.response.status, 429);
+  const unauthenticatedAudit = await request(app, '/api/auth/audit');
+  assert.equal(unauthenticatedAudit.status, 401);
+  assert.equal(unauthenticatedAudit.body.events, undefined);
+
+  const attempt = app.db.prepare('SELECT client_key_hash, failed_count, blocked_until FROM admin_login_attempts').get() as {
+    client_key_hash: string; failed_count: number; blocked_until: string;
+  };
+  assert.match(attempt.client_key_hash, /^[a-f0-9]{64}$/);
+  assert.equal(attempt.failed_count, 5);
+  assert.ok(Date.parse(attempt.blocked_until) > Date.now());
+
+  const auditRows = app.db.prepare('SELECT event_type, outcome, client_key_hash FROM admin_audit_events ORDER BY occurred_at').all() as Array<{
+    event_type: string; outcome: string; client_key_hash: string;
+  }>;
+  assert.deepEqual(auditRows.map(({ event_type, outcome }) => [event_type, outcome]), [
+    ['admin.login.failed', 'failure'],
+    ['admin.login.failed', 'failure'],
+    ['admin.login.failed', 'failure'],
+    ['admin.login.failed', 'failure'],
+    ['admin.login.rate_limited', 'rate_limited'],
+  ]);
+  assert.ok(auditRows.every((row) => row.client_key_hash === attempt.client_key_hash));
+  assert.doesNotMatch(JSON.stringify(auditRows), /wrong-password|rate-limit-test-password|127\.0\.0\.1|192\.168\./);
+
+  app.db.prepare('UPDATE admin_login_attempts SET blocked_until = ?, window_started_at = ?')
+    .run(new Date(Date.now() - 11 * 60_000).toISOString(), new Date(Date.now() - 11 * 60_000).toISOString());
+  const expiredFailure = await request(app, '/api/auth/login', {
+    method: 'POST', body: { password: 'wrong-after-lock-expired' },
+  });
+  assert.equal(expiredFailure.status, 401);
+  const resetAttempt = app.db.prepare('SELECT failed_count, blocked_until FROM admin_login_attempts').get() as {
+    failed_count: number; blocked_until: string | null;
+  };
+  assert.equal(resetAttempt.failed_count, 1);
+  assert.equal(resetAttempt.blocked_until, null);
+  const accepted = await login(app, 'rate-limit-test-password');
+  assert.equal(accepted.response.status, 200);
+  assert.ok(accepted.cookie.startsWith('signage_session='));
+  assert.equal((app.db.prepare('SELECT COUNT(*) AS count FROM admin_login_attempts').get() as { count: number }).count, 0);
+
+  const audit = await request(app, '/api/auth/audit', { cookie: accepted.cookie });
+  assert.equal(audit.status, 200);
+  assert.equal(audit.body.events[0].eventType, 'admin.login.succeeded');
+  assert.equal(audit.body.events[0].outcome, 'success');
+  assert.match(audit.body.events[0].clientKey, /^[a-f0-9]{64}$/);
+  assert.equal(audit.body.events.some((event: { clientKey?: string }) => event.clientKey?.includes('192.168.')), false);
+});
+
 test('an existing pre-credential database keeps its prior development password when the environment is empty', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gugak-auth-legacy-'));
   const apps: RunningApp[] = [];
