@@ -18,6 +18,7 @@ export interface SiteMonitorAssignment {
 export interface SiteMonitorDevice {
   deviceId: string;
   name: string;
+  siteAssigned: boolean;
   localHost: boolean;
   status: ReturnType<typeof deviceStatus>;
   online: boolean;
@@ -65,7 +66,16 @@ export function monitorInventoryForSite(
 
   const generatedAt = nowIso();
   const generatedAtMs = Date.parse(generatedAt);
-  const devices = all<DeviceRow>(db, 'SELECT * FROM devices WHERE site_id = ? ORDER BY name, id', siteId);
+  const devices = all<DeviceRow>(
+    db,
+    `SELECT * FROM devices
+      WHERE site_id = ?
+         OR (site_id IS NULL AND NOT EXISTS (
+           SELECT 1 FROM displays assigned WHERE assigned.device_id = devices.id
+         ))
+      ORDER BY name, id`,
+    siteId,
+  );
 
   return {
     siteId,
@@ -109,6 +119,7 @@ export function monitorInventoryForSite(
       return {
         deviceId: device.id,
         name: device.name,
+        siteAssigned: device.site_id === siteId,
         localHost: device.last_host_local === 1 && Number.isFinite(lastSeenMs) &&
           heartbeatAgeMs >= 0 && heartbeatAgeMs <= heartbeatOnlineMs,
         status,
